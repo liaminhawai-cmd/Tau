@@ -106,7 +106,10 @@ goto menu
 
 rem ---------- setup: private Python environment in marketing\.venv ----------
 :setup
-if exist "%PY%" exit /b 0
+rem Bump the marker name whenever requirements.txt changes, so old setups update.
+set "MARK=%VENV%\installed-yolo-1"
+if exist "%MARK%" exit /b 0
+if exist "%PY%" goto install
 echo.
 echo First-time setup (takes a few minutes, only happens once)...
 set "BASEPY="
@@ -120,8 +123,12 @@ if not defined BASEPY (
   exit /b 1
 )
 %BASEPY% -m venv "%VENV%" || exit /b 1
+:install
+echo.
+echo Installing the detection tools (a few hundred MB, only happens once)...
 "%PY%" -m pip install --upgrade pip >nul
 "%PY%" -m pip install -r "%TOOLS%\requirements.txt" || exit /b 1
+echo done> "%MARK%"
 exit /b 0
 
 :fail

@@ -57,6 +57,10 @@ def main():
     args = ap.parse_args()
 
     data = json.load(open(args.json))
+    if data["frames"] and isinstance(data["frames"][0], dict):
+        # A raw detect.py file (every tracked person): keep just the two auto-picked fighters.
+        ids = data.get("fighters", ["0", "1"])
+        data["frames"] = [[fr.get(i) if i else None for i in ids] for fr in data["frames"]]
     J = {n: i for i, n in enumerate(data["joints"])}
     src_w, src_h = data["width"], data["height"]
     W, H = args.width or src_w, args.height or src_h

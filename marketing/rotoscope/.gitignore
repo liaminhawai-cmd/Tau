@@ -1,2 +1,3 @@
 pose_landmarker_*.task
+yolo*.pt
 __pycache__/

@@ -57,7 +57,9 @@
   <kbd>V</kbd> stylised preview ·
   <kbd>I</kbd>/<kbd>O</kbd> set in/out (trim the clip), <kbd>X</kbd> clear.
   Export and Record only use the part between in and out.
-  Timeline: <span style="color:var(--flag)">orange</span> = suspicious jump, white = keyframe, <span style="color:var(--swap)">purple</span> = swap.
+  <br>Dashed grey figures are everyone else (referee, crowd). If a fighter gets lost or the wrong person is red or blue,
+  click the right grey figure and press <kbd>1</kbd> (red) or <kbd>2</kbd> (blue). It applies from this frame on.
+  <br>Timeline: <span style="color:var(--flag)">orange</span> = suspicious jump, white = keyframe, <span style="color:var(--swap)">purple</span> = swap or reassignment.
 </div>
 <video id="video" muted playsinline preload="auto"></video>
 <div id="drop">Drop a video and its .pose.json</div>
@@ -86,6 +88,8 @@ let J = {};                // joint name -> index
 let frame = 0, nFrames = 0, fps = 30;
 let styled = false, playing = false, selected = null, dragging = false;
 let flags = [], undoStack = [], videoURL = null, pendingSeek = false;
+let slotIds = [];          // [f] -> [red track id, blue track id]
+let picked = null;         // track id of a grey (non-fighter) person clicked in this frame
 
 // ---------- data ----------
 function fillGaps(frames, people, nj) {
@@ -109,11 +113,37 @@ function fillGaps(frames, people, nj) {
   return out;
 }
 
-function swappedAt(f) { let s = 0; for (const x of edits.swaps) if (x <= f) s ^= 1; return s; }
+// Which tracked person each fighter slot follows, frame by frame. Starts from the
+// fighters detect.py picked, then applies swaps and reassignments in frame order.
+function rebuild() {
+  const events = [
+    ...edits.swaps.map(f => ({ f, swap: true })),
+    ...(edits.assign || []).map(a => ({ ...a })),
+  ].sort((a, b) => a.f - b.f);
+  let ids = pose.fighters.slice(), e = 0;
+  slotIds = [];
+  for (let f = 0; f < nFrames; f++) {
+    while (e < events.length && events[e].f <= f) {
+      const ev = events[e++];
+      if (ev.swap) ids = [ids[1], ids[0]];
+      else {
+        const other = 1 - ev.p;
+        if (ids[other] === ev.id) ids[other] = ids[ev.p];  // taking the other's person swaps them
+        ids[ev.p] = ev.id;
+      }
+    }
+    slotIds.push(ids.slice());
+  }
+  const mapped = pose.frames.map((fr, f) => slotIds[f].map(id => (id != null && fr[id]) || null));
+  raw = fillGaps(mapped, 2, pose.joints.length);
+}
 function base(p, j, f) {
-  const src = pose.people === 2 ? p ^ swappedAt(f) : p;
-  const person = raw[f] && raw[f][src];
+  const person = raw[f] && raw[f][p];
   return person ? person[j] : null;
+}
+function others(f) {
+  const fr = pose.frames[f] || {}, ids = slotIds[f];
+  return Object.keys(fr).filter(id => id !== ids[0] && id !== ids[1]);
 }
 function kfList(p, j) {
   const k = edits.keyframes[p + ":" + j];
@@ -212,11 +242,25 @@ function drawSkeleton(p, f, stylised) {
     if (isSel) { ctx.lineWidth = 2 * scale; ctx.strokeStyle = "#ffd23f"; ctx.stroke(); }
   });
 }
+// Everyone who isn't a fighter (referee, crowd) in thin grey; click one to reassign.
+function drawOther(id) {
+  const sk = pose.frames[frame][id], scale = view.height / 720, on = picked === id;
+  ctx.strokeStyle = on ? "#ffd23f" : "rgba(230,230,230,0.55)";
+  ctx.lineWidth = (on ? 3 : 1.5) * scale; ctx.setLineDash(on ? [] : [4 * scale, 4 * scale]);
+  for (const [a, b] of BONES) {
+    const qa = sk[J[a]], qb = sk[J[b]];
+    if (!qa || !qb) continue;
+    const [x1, y1] = toPx(qa), [x2, y2] = toPx(qb);
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+}
 function draw() {
   if (!pose) return;
   if (styled) { ctx.fillStyle = "#0c0e11"; ctx.fillRect(0, 0, view.width, view.height); }
   else if (video.readyState >= 2) ctx.drawImage(video, 0, 0, view.width, view.height);
   else { ctx.fillStyle = "#111"; ctx.fillRect(0, 0, view.width, view.height); }
+  if (!styled) for (const id of others(frame)) drawOther(id);
   for (let p = 0; p < pose.people; p++) drawSkeleton(p, frame, styled);
   drawTimeline(); drawStatus();
 }
@@ -236,11 +280,14 @@ function drawTimeline() {
   tctx.fillStyle = "#e07a5f"; for (const f of flags) tctx.fillRect(x(f) - 1, 4, 2, 12);
   tctx.fillStyle = "#e6e6e6";
   for (const k in edits.keyframes) for (const f in edits.keyframes[k]) tctx.fillRect(x(+f) - 1, 18, 2, 10);
-  tctx.fillStyle = "#b48cff"; for (const f of edits.swaps) tctx.fillRect(x(f) - 1.5, 30, 3, 10);
+  tctx.fillStyle = "#b48cff";
+  for (const f of edits.swaps) tctx.fillRect(x(f) - 1.5, 30, 3, 10);
+  for (const a of edits.assign || []) tctx.fillRect(x(a.f) - 1.5, 30, 3, 10);
   tctx.fillStyle = "#ffd23f"; tctx.fillRect(x(frame) - 1, 0, 2, h);
 }
 function drawStatus() {
-  const sel = selected ? `${selected.p ? "blue" : "red"} ${pose.joints[selected.j]}` : "none";
+  const sel = picked != null ? `grey person — press <kbd>1</kbd> to make them red, <kbd>2</kbd> blue`
+    : selected ? `${selected.p ? "blue" : "red"} ${pose.joints[selected.j]}` : "none";
   const nKeys = Object.values(edits.keyframes).reduce((n, k) => n + Object.keys(k).length, 0);
   $("status").innerHTML =
     `<span>Frame <b>${frame + 1}</b> / ${nFrames}</span><span>Video time <b>${((offset() + frame) / fps).toFixed(2)}s</b></span>` +
@@ -285,7 +332,16 @@ function play() {
 
 // ---------- editing ----------
 function snapshot() { undoStack.push(JSON.stringify(edits)); if (undoStack.length > 200) undoStack.shift(); }
-function changed() { computeFlags(); autosave(); draw(); }
+function changed() { rebuild(); computeFlags(); autosave(); draw(); }
+// Make the clicked grey person red (0) or blue (1) from this frame on.
+function assignPicked(p) {
+  if (picked == null) return;
+  snapshot();
+  edits.assign = (edits.assign || []).filter(a => !(a.f === frame && a.p === p));
+  edits.assign.push({ f: frame, p, id: picked });
+  picked = null;
+  changed();
+}
 function setKey(p, j, f, q) {
   const k = p + ":" + j;
   (edits.keyframes[k] = edits.keyframes[k] || {})[f] = [+q[0].toFixed(5), +q[1].toFixed(5)];
@@ -314,6 +370,14 @@ function hit(mx, my) {
     const [x, y] = toPx(q), d = Math.hypot(x - mx, y - my);
     if (d < bd) { bd = d; best = { p, j }; }
   });
+  if (best) return best;
+  // Otherwise, any grey person whose joints are near the click.
+  bd = 30 * view.height / 720;
+  for (const id of others(frame)) for (const q of pose.frames[frame][id]) {
+    if (!q) continue;
+    const [x, y] = toPx(q), d = Math.hypot(x - mx, y - my);
+    if (d < bd) { bd = d; best = { other: id }; }
+  }
   return best;
 }
 function mouse(e) {
@@ -323,7 +387,9 @@ function mouse(e) {
 view.addEventListener("pointerdown", e => {
   if (!pose || styled) return;
   const [mx, my] = mouse(e);
-  selected = hit(mx, my);
+  const h = hit(mx, my);
+  picked = h && h.other != null ? h.other : null;
+  selected = h && h.other == null ? h : null;
   if (selected) { snapshot(); dragging = true; view.setPointerCapture(e.pointerId); }
   draw();
 });
@@ -358,6 +424,8 @@ document.addEventListener("keydown", e => {
   else if (e.key === "i" || e.key === "I") setIn();
   else if (e.key === "o" || e.key === "O") setOut();
   else if (e.key === "x" || e.key === "X") clearTrim();
+  else if (e.key === "1" && picked != null) assignPicked(0);
+  else if (e.key === "2" && picked != null) assignPicked(1);
   else if ((e.key === "k" || e.key === "K") && selected) {
     const q = point(selected.p, selected.j, frame);
     if (q) { snapshot(); setKey(selected.p, selected.j, frame, q); changed(); }
@@ -382,17 +450,22 @@ function storageKey() { return "tau-rotoscope:" + (pose && pose.video); }
 function autosave() { try { localStorage.setItem(storageKey(), JSON.stringify(edits)); } catch (e) {} }
 function loadPose(data) {
   if (!data.frames || !data.joints) { alert("That doesn't look like a .pose.json from detect.py"); return; }
+  // Older files (MediaPipe) hold [red, blue] per frame; newer ones every tracked person by ID.
+  if (Array.isArray(data.frames[0])) {
+    data.frames = data.frames.map(fr => { const o = {}; fr.forEach((p, i) => { if (p) o[String(i)] = p; }); return o; });
+    data.fighters = ["0", "1"];
+  }
+  data.fighters = data.fighters || ["0", "1"];
   pose = data; fps = data.fps || 30; nFrames = data.frames.length; frame = 0;
   J = {}; data.joints.forEach((n, i) => J[n] = i);
-  raw = fillGaps(data.frames, data.people, data.joints.length);
   edits = data.edits ? JSON.parse(JSON.stringify(data.edits)) : { keyframes: {}, swaps: [] };
-  if (!data.edits) {
-    try {
-      const saved = localStorage.getItem(storageKey());
-      if (saved && confirm("Restore unsaved edits from your last session on this clip?")) edits = JSON.parse(saved);
-    } catch (e) {}
-  }
-  undoStack = []; selected = null;
+  edits.keyframes = edits.keyframes || {}; edits.swaps = edits.swaps || []; edits.assign = edits.assign || [];
+  try {
+    const saved = localStorage.getItem(storageKey());
+    if (saved && saved !== JSON.stringify(edits) && confirm("Restore unsaved edits from your last session on this clip?")) edits = JSON.parse(saved);
+  } catch (e) {}
+  undoStack = []; selected = null; picked = null;
+  rebuild();
   view.width = data.width; view.height = data.height;
   computeFlags(); seek(0);
 }

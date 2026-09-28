@@ -1,93 +1,37 @@
-"""Detect two fighters' skeletons in a video clip and save them for the editor.
+"""Find every person in a video clip, track them, and save their skeletons for the editor.
 
 Usage:
-    python detect.py fight.mp4            # writes fight.pose.json next to the clip
-    python detect.py fight.mp4 --start 12 --end 18   # only 0:12 to 0:18
-    python detect.py fight.mp4 --people 1 # single-person clip
+    python detect.py fight.mp4                      # writes fight.pose.json next to the clip
+    python detect.py fight.mp4 --start 1:23 --end 1:29
 
-The first run downloads MediaPipe's pose model (~30 MB for heavy) into this folder.
+Uses YOLO pose (Ultralytics), which handles crowds and overlapping bodies. The two
+people who fill the most of the frame are picked as the fighters (red on the left,
+blue on the right); in the editor you can click anyone else to reassign.
+The first run downloads the model (~50 MB) into this folder.
 """
 import argparse
 import json
 import os
 import sys
-import itertools
-import urllib.request
 
 import cv2
-import mediapipe as mp
-from mediapipe.tasks import python as mp_tasks
-from mediapipe.tasks.python import vision
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
-             "pose_landmarker_{0}/float16/latest/pose_landmarker_{0}.task")
 
-# Subset of MediaPipe's 33 landmarks that we keep (face detail is dropped).
+# Our joint names, and the COCO keypoint each comes from. YOLO has no heels or toes.
 JOINTS = {
     "nose": 0,
-    "l_shoulder": 11, "r_shoulder": 12,
-    "l_elbow": 13, "r_elbow": 14,
-    "l_wrist": 15, "r_wrist": 16,
-    "l_hip": 23, "r_hip": 24,
-    "l_knee": 25, "r_knee": 26,
-    "l_ankle": 27, "r_ankle": 28,
-    "l_heel": 29, "r_heel": 30,
-    "l_toe": 31, "r_toe": 32,
+    "l_shoulder": 5, "r_shoulder": 6,
+    "l_elbow": 7, "r_elbow": 8,
+    "l_wrist": 9, "r_wrist": 10,
+    "l_hip": 11, "r_hip": 12,
+    "l_knee": 13, "r_knee": 14,
+    "l_ankle": 15, "r_ankle": 16,
+    "l_heel": None, "r_heel": None,
+    "l_toe": None, "r_toe": None,
 }
 NAMES = list(JOINTS)
-
-
-def ensure_model(name):
-    path = os.path.join(HERE, f"pose_landmarker_{name}.task")
-    if not os.path.exists(path):
-        print(f"Downloading the {name} pose model (one time only)...")
-        urllib.request.urlretrieve(MODEL_URL.format(name), path)
-    return path
-
-
-def centroid(pose):
-    pts = [p for p in pose if p is not None]
-    if not pts:
-        return None
-    return (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts))
-
-
-def pose_dist(a, b):
-    """Mean joint distance between two poses (joints present in both)."""
-    d, n = 0.0, 0
-    for p, q in zip(a, b):
-        if p is not None and q is not None:
-            d += ((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2) ** 0.5
-            n += 1
-    return d / n if n else float("inf")
-
-
-def assign(tracks, detections, people):
-    """Match detections to tracks so identities stay stable frame to frame."""
-    out = [None] * people
-    if not detections:
-        return out
-    known = [i for i, t in enumerate(tracks) if t is not None]
-    # Match detections to people we've already seen, by closest pose.
-    best, best_cost = (), float("inf")
-    k = min(len(detections), len(known))
-    best_slots = ()
-    for dets in itertools.permutations(range(len(detections)), k):
-        for slots in itertools.permutations(known, k):
-            cost = sum(pose_dist(detections[d], tracks[s]) for d, s in zip(dets, slots))
-            if cost < best_cost:
-                best, best_slots, best_cost = dets, slots, cost
-    for d, s in zip(best, best_slots):
-        out[s] = detections[d]
-    # New people: red (0) takes the left of the screen, blue (1) the right.
-    for d in sorted(set(range(len(detections))) - set(best), key=lambda d: centroid(detections[d])[0]):
-        free = [s for s in range(people) if tracks[s] is None and out[s] is None]
-        if not free:
-            break
-        side = 0 if centroid(detections[d])[0] < 0.5 else people - 1
-        out[side if side in free else free[0]] = detections[d]
-    return out
+MODELS = {"large": "yolo11l-pose.pt", "medium": "yolo11m-pose.pt", "small": "yolo11s-pose.pt"}
 
 
 def timestamp(text):
@@ -98,18 +42,79 @@ def timestamp(text):
     return secs
 
 
+def centre(box):
+    return ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
+
+
+def pick_fighters(boxes, n_frames):
+    """The two tracks that cover the most of the frame over the clip, plus an
+    assignment list that re-attaches each fighter when the tracker loses them
+    and starts a new ID (common when bodies overlap)."""
+    size = {}
+    for f in range(n_frames):
+        for tid, b in boxes[f].items():
+            size[tid] = size.get(tid, 0) + (b[2] - b[0]) * (b[3] - b[1])
+    top = sorted(size, key=size.get, reverse=True)[:2]
+    if not top:
+        return [None, None], []
+    if len(top) == 2:
+        # Red takes whoever is further left when both are first on screen together.
+        both = next((f for f in range(n_frames) if top[0] in boxes[f] and top[1] in boxes[f]), None)
+        if both is not None and centre(boxes[both][top[0]])[0] > centre(boxes[both][top[1]])[0]:
+            top.reverse()
+    else:
+        top.append(None)
+
+    first = {}
+    last = {}
+    for f in range(n_frames):
+        for tid in boxes[f]:
+            first.setdefault(tid, f)
+            last[tid] = f
+
+    assign = []
+    for p, tid in enumerate(top):
+        cur, used = tid, set(top)
+        while cur is not None:
+            end = last[cur]
+            if end >= n_frames - 1:
+                break
+            cx, cy = centre(boxes[end][cur])
+            w = boxes[end][cur][2] - boxes[end][cur][0]
+            # A new track that appears soon after, close to where this one vanished.
+            best, best_d = None, None
+            for cand, f0 in first.items():
+                if cand in used or not (end < f0 <= end + 20):
+                    continue
+                qx, qy = centre(boxes[f0][cand])
+                d = ((qx - cx) ** 2 + (qy - cy) ** 2) ** 0.5
+                if d < max(w, 0.08) and (best_d is None or d < best_d):
+                    best, best_d = cand, d
+            if best is None:
+                break
+            assign.append({"f": first[best], "p": p, "id": str(best)})
+            used.add(best)
+            cur = best
+    return [str(t) if t is not None else None for t in top], assign
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("video")
-    ap.add_argument("--people", type=int, default=2)
     ap.add_argument("--out", help="output JSON path (default: <video>.pose.json)")
     ap.add_argument("--start", type=timestamp, default=0, help="start time, e.g. 83 or 1:23")
     ap.add_argument("--end", type=timestamp, help="end time (default: end of video)")
-    ap.add_argument("--model", choices=["heavy", "full", "lite"], default="heavy",
-                    help="heavy is slowest and most accurate (default)")
+    ap.add_argument("--model", choices=list(MODELS), default="medium",
+                    help="large is slower and a bit more accurate; small is quicker")
     args = ap.parse_args()
+    args.video = os.path.abspath(args.video)
+    if args.out:
+        args.out = os.path.abspath(args.out)
 
-    model_path = ensure_model(args.model)
+    from ultralytics import YOLO  # imported late so --help works without it
+    os.chdir(HERE)  # Ultralytics downloads the model into the working directory
+    model = YOLO(MODELS[args.model])
+
     cap = cv2.VideoCapture(args.video)
     if not cap.isOpened():
         sys.exit(f"Can't open {args.video}")
@@ -124,47 +129,46 @@ def main():
     cap.set(cv2.CAP_PROP_POS_FRAMES, start)
     total = end - start
 
-    options = vision.PoseLandmarkerOptions(
-        base_options=mp_tasks.BaseOptions(model_asset_path=model_path),
-        running_mode=vision.RunningMode.VIDEO,
-        num_poses=args.people,
-        min_pose_detection_confidence=0.3,
-        min_tracking_confidence=0.3,
-    )
-    frames = []
-    tracks = [None] * args.people
-    with vision.PoseLandmarker.create_from_options(options) as lm:
-        i = 0
-        while i < total:
-            ok, img = cap.read()
-            if not ok:
-                break
-            rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            res = lm.detect_for_video(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb),
-                                      int(i * 1000 / fps))
-            dets = []
-            for pose in res.pose_landmarks:
-                dets.append([
-                    [round(pose[k].x, 5), round(pose[k].y, 5)] if pose[k].visibility > 0.2 else None
-                    for k in JOINTS.values()
-                ])
-            people = assign(tracks, dets, args.people)
-            for p, pose in enumerate(people):
-                if pose is not None:
-                    tracks[p] = pose
-            frames.append(people)
-            i += 1
-            if i % 30 == 0:
-                print(f"\r{i}/{total} frames", end="", flush=True)
+    frames, boxes = [], []
+    i = 0
+    while i < total:
+        ok, img = cap.read()
+        if not ok:
+            break
+        res = model.track(img, persist=True, tracker="bytetrack.yaml", conf=0.25, verbose=False)[0]
+        people, fboxes = {}, {}
+        if res.boxes is not None and res.boxes.id is not None and res.keypoints is not None:
+            ids = res.boxes.id.int().tolist()
+            xyxyn = res.boxes.xyxyn.tolist()
+            kxy = res.keypoints.xyn.tolist()
+            kconf = res.keypoints.conf.tolist() if res.keypoints.conf is not None else None
+            for n, tid in enumerate(ids):
+                pose = []
+                for k in JOINTS.values():
+                    if k is None or (kconf and kconf[n][k] < 0.3):
+                        pose.append(None)
+                    else:
+                        x, y = kxy[n][k]
+                        pose.append([round(x, 5), round(y, 5)] if (x or y) else None)
+                people[str(tid)] = pose
+                fboxes[tid] = xyxyn[n]
+        frames.append(people)
+        boxes.append(fboxes)
+        i += 1
+        if i % 10 == 0:
+            print(f"\r{i}/{total} frames", end="", flush=True)
     print(f"\r{i}/{total} frames")
 
-    out = args.out or os.path.splitext(args.video)[0] + ".pose.json"
+    fighters, assign = pick_fighters(boxes, len(frames))
+    out = args.out or os.path.splitext(os.path.abspath(args.video))[0] + ".pose.json"
     with open(out, "w") as f:
-        json.dump({"version": 1, "video": os.path.basename(args.video), "fps": fps,
-                   "start_frame": start, "width": w, "height": h, "people": args.people,
-                   "joints": NAMES, "frames": frames}, f, separators=(",", ":"))
-    missing = sum(1 for fr in frames for p in fr if p is None)
-    print(f"Saved {out} ({len(frames)} frames, {missing} person-frames not detected)")
+        json.dump({"version": 2, "engine": "yolo", "video": os.path.basename(args.video), "fps": fps,
+                   "start_frame": start, "width": w, "height": h, "people": 2, "joints": NAMES,
+                   "fighters": fighters, "edits": {"keyframes": {}, "swaps": [], "assign": assign},
+                   "frames": frames}, f, separators=(",", ":"))
+    seen = len({tid for fr in frames for tid in fr})
+    print(f"Saved {out}: {len(frames)} frames, {seen} people tracked, "
+          f"fighters picked automatically ({len(assign)} re-links after lost tracking)")
 
 
 if __name__ == "__main__":
