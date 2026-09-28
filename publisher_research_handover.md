@@ -2,7 +2,7 @@
 
 **For:** a Cowork Claude session
 **From:** Liam Gomez-Kervin (designer of Tau), via Claude Code, 28 Sep 2026
-**Goal:** find the right board game publishers to pitch Tau to, collect how each one wants to be pitched, and draft a one-page sell sheet. **Research and drafting only. Nothing gets sent.**
+**Goal:** find the right board game publishers to pitch Tau to, collect how each one wants to be pitched, and check the drafted sell sheet against what they ask for. **Research and drafting only. Nothing gets sent.**
 
 ---
 
@@ -92,23 +92,14 @@ Write a short document (`submission_requirements.md`) covering:
 - **Conventions and events** where designers pitch in person (publisher "speed dating", designer days, Protospiel-style events) in the next 12 months, with dates, locations and sign-up deadlines. Include PAX Australia (Melbourne) and any Australian designer events, plus the big international ones. Check the dates on the official sites.
 - Licensing agents who handle abstract games, if there are any obvious ones, with a note on how they work and what they charge if published.
 
-## Task 3: Draft the sell sheet
+## Task 3: Check the sell sheet against what publishers want
 
-Draft a **one-page sell sheet** as a document Liam can edit, plus a short text version he can paste into an email.
+Liam will give you a **drafted one-page sell sheet** (`tau_sell_sheet.pdf`) and a **pitch email draft** (`pitch_email.md`). Don't rewrite them. Instead:
+- Compare them against the requirements you found in Task 2, and list anything publishers commonly ask for that's missing, such as a video link or a player count range.
+- For your top 5 publishers, write the one sentence for the email's "why this publisher" slot, naming a specific game of theirs Tau would sit well beside, with a source.
+- Note any publisher that needs a different format (a form with character limits, a video instead of a sell sheet, and so on) and what would need to change.
 
-**Include:**
-- Title (Tau: Abstract Grappling, marked provisional) and the one-line pitch above.
-- Placeholders for 2–3 images: the physical set, a board close-up, and a push-off moment. Leave labelled boxes; Liam supplies the photos.
-- Game stats: 2 players, age 10+ (flag this as a guess for Liam to confirm), play time (placeholder for Liam to fill in), and "no luck, no hidden information".
-- How it plays, in 3–4 short sentences.
-- What makes it different: continuous movement on a round board, one-line-crossing limit, magnetic pieces on steel, and a striking look.
-- Proof: the free digital version (the link, with a QR code placeholder), the depth analysis, the neural net, player and traction numbers (as placeholders for Liam to confirm), and the Steam release.
-- Component outline and a rough cost note (steel disc, 2 tripods, base), marked as indicative.
-- Designer contact: Liam Gomez-Kervin, contact@tau-game.com, tau-game.com.
-
-**Style:** use Liam's published voice. He writes in an earnest, analytical way, with proper punctuation. **No em dashes, no lists of three for rhythm, no clever sign-off lines, and no hype words** ("revolutionary", "like nothing you've seen"). Keep it plain and confident, and let the facts carry it.
-
-Keep it to one page. Publishers skim sell sheets in seconds, so the title, the image and the one-liner do most of the work.
+If you suggest wording, keep to Liam's published voice. He writes in an earnest, analytical way, with proper punctuation. **No em dashes, no lists of three for rhythm, no clever sign-off lines, and no hype words** ("revolutionary", "like nothing you've seen").
 
 ---
 
@@ -116,7 +107,7 @@ Keep it to one page. Publishers skim sell sheets in seconds, so the title, the i
 
 1. `publisher_research.xlsx`
 2. `submission_requirements.md`
-3. The sell sheet draft, plus the plain-text email version
+3. Your notes on the sell sheet and email, plus the "why this publisher" line for each of your top 5
 4. A short summary: your top 5 publishers and why, anything time-sensitive (a closing submission window or a convention deadline), and every placeholder or unconfirmed fact he needs to fill in.
 
 Don't send, submit or contact anything. Liam reviews all of it first.

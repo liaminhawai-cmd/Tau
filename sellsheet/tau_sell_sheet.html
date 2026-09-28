@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tau Sell Sheet</title>
+<style>
+  /* One A4 page. Print from Chrome with margins "None" and "Background graphics" on. */
+  @page { size: A4; margin: 0; }
+  :root { --ink: #1a1e24; --muted: #5a626e; --line: #d9dde2; --red: #d05a48; --blue: #2f4bd6; --bg: #ffffff; --panel: #f4f5f7; --dark: #15181c; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #e6e8eb; }
+  body { font: 10pt/1.42 "Helvetica Neue", Arial, sans-serif; color: var(--ink); }
+  .page { width: 210mm; height: 297mm; margin: 12px auto; background: var(--bg); overflow: hidden; display: flex; flex-direction: column; }
+  @media print { html, body { background: var(--bg); } .page { margin: 0; } .todo { outline: none; } }
+
+  header { background: var(--dark); color: #e6e6e6; padding: 11mm 14mm 9mm; }
+  header img { height: 17mm; display: block; }
+  .sub { margin-top: 2mm; font-size: 11pt; letter-spacing: .12em; text-transform: uppercase; color: #9aa4ad; }
+  .pitch { margin: 5mm 0 0; font-size: 15pt; line-height: 1.35; color: #fff; max-width: 160mm; }
+
+  .stats { display: flex; border-bottom: 1px solid var(--line); }
+  .stats div { flex: 1; padding: 3.5mm 0; text-align: center; border-right: 1px solid var(--line); font-size: 9pt; color: var(--muted); }
+  .stats div:last-child { border-right: 0; }
+  .stats b { display: block; font-size: 12.5pt; color: var(--ink); }
+
+  main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 7mm; padding: 6mm 14mm 4mm; }
+  h2 { font-size: 9pt; letter-spacing: .12em; text-transform: uppercase; color: var(--red); margin: 0 0 2mm; }
+  p { margin: 0 0 3mm; }
+  ul { margin: 0 0 3mm; padding-left: 4.5mm; }
+  li { margin-bottom: 1.6mm; }
+  .photo { width: 100%; aspect-ratio: 16 / 11; border-radius: 3mm; background: var(--panel); display: flex; align-items: center; justify-content: center; text-align: center; color: var(--muted); font-size: 9pt; border: 1.5px dashed #b8bec6; margin-bottom: 4mm; padding: 6mm; }
+  .boardrow { display: flex; gap: 4mm; align-items: center; margin-bottom: 4mm; }
+  .boardrow img { width: 34mm; height: 34mm; }
+  .boardrow p { margin: 0; font-size: 9pt; color: var(--muted); }
+  .todo { background: #fff3c4; outline: 1px solid #e8c547; padding: 0 1mm; border-radius: 1mm; }
+
+  footer { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 6mm; padding: 5mm 14mm; background: var(--panel); border-top: 1px solid var(--line); font-size: 9.5pt; }
+  footer b { font-size: 11pt; }
+  .qr { width: 22mm; height: 22mm; flex: none; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <img src="logo.png" alt="Tau">
+    <div class="sub">Abstract Grappling <span class="todo">(working subtitle)</span></div>
+    <p class="pitch">Go is war and chess is a battle. Tau is single combat: two pieces on one board, and the only way to win is to push your opponent off.</p>
+  </header>
+
+  <div class="stats">
+    <div><b>2</b>players</div>
+    <div><b class="todo">10+</b>ages</div>
+    <div><b class="todo">15–30 min</b>play time</div>
+    <div><b>None</b>luck or hidden information</div>
+  </div>
+
+  <main>
+    <section>
+      <div class="photo">Photo of the physical set goes here<br>(steel board with the red and blue tripods, shot from a low angle)</div>
+
+      <h2>How it plays</h2>
+      <p>Each player has one tripod piece on a round steel board. On your turn you pin one foot and swing the other two around it in an arc, so pieces move continuously rather than from square to square.</p>
+      <p>A piece may cross only one line per turn. Attacks have to be set up over several moves, and a player who is pushed near the edge can often turn the pressure around. You win by pushing one of your opponent's feet off the rim.</p>
+
+      <div class="boardrow">
+        <img src="board.jpg" alt="Board layout">
+        <p>The board: two rings and two facing arcs. The lines limit how far a piece can travel in a turn, which is where most of the strategy comes from.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Why it's different</h2>
+      <ul>
+        <li>It was designed from sumo and judo. The contest is over balance and position, and nothing is ever captured.</li>
+        <li>There are no straight lines or grid. Positions are read by how pieces sit relative to each other and to the edge.</li>
+        <li>The feet carry small magnets that grip the steel board, so pieces slide cleanly and stay exactly where they are placed.</li>
+        <li>The rules fit on a card, and new players are usually competitive after a few games.</li>
+      </ul>
+
+      <h2>Evidence</h2>
+      <ul>
+        <li>A free digital version at <b>tau-game.com</b> has online ranked play and eleven levels of AI opponent. A Steam release is <span class="todo">due [month]</span>.</li>
+        <li>A neural network trained on Tau in the style of AlphaZero found no forced win, and games become more varied as the level of play rises.</li>
+        <li><span class="todo">[35]</span> ranked online players and <span class="todo">[N]</span> sign-ups for a physical set. Community posts in English, French, German and Korean, and coverage by an independent YouTube creator.</li>
+      </ul>
+
+      <h2>Components</h2>
+      <p>A 267 mm brushed steel disc in a base, two nylon tripod pieces with magnets in the feet, and a rules card. A 400 mm edition suits a premium tier. At 500 units the disc is about US$3.90 and a painted pair of pieces about US$8, before packaging and freight. <span style="color:var(--muted)">(Indicative supplier quotes.)</span></p>
+    </section>
+  </main>
+
+  <footer>
+    <div>
+      <b>Liam Gomez-Kervin</b>, designer<br>
+      contact@tau-game.com · tau-game.com · Melbourne, Australia<br>
+      <span style="color:var(--muted)">A prototype set is available to send on request.</span>
+    </div>
+    <img class="qr" src="qr.png" alt="QR code to tau-game.com">
+  </footer>
+</div>
+</body>
+</html>
