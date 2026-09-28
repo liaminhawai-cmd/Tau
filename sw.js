@@ -3,7 +3,7 @@
 // network-first (so an online player always gets the newest build), with the cached copy as the
 // offline fallback; static assets are cache-first. Cross-origin requests (Supabase auth/realtime)
 // are never touched — they always go straight to the network.
-const CACHE = 'tau-v129';  // build 293: shared controller selection and persistent cosmetic clay
+const CACHE = 'tau-v130';  // loading screen is a real recorded throw (boot-throw.*)
 const ASSETS = [
   './', './index.html', './tau-logo.png',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png', './favicon-32.png',
@@ -25,6 +25,9 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin || req.method !== 'GET') return;   // Supabase etc. -> network only
+  // Video is fetched in byte ranges; a 206 cannot be cached and a cached 200 answers a range request
+  // badly in Safari. The loading-screen loop just goes to the network (the browser's HTTP cache has it).
+  if (/\.(mp4|webm)$/.test(url.pathname)) return;
 
   if (req.mode === 'navigate') {   // pages: newest when online, cached when offline
     e.respondWith(

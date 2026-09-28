@@ -672,89 +672,41 @@ if (window.TAU_DESKTOP) {
 <body>
 <!-- Boot splash: covers the first seconds while three.js and the game script parse and the menu demo
      simulates its first endgame -- without it the menu appeared as an empty black box, then the logo
-     and the 3D view popped in and every button jumped down. One big swing throw, on a loop.
-     Built from HTML boxes animated by CSS transform/opacity only, which the browser runs on its
-     compositor: the swing keeps moving even while the main thread is busy parsing the heavy
-     scripts below it, which is exactly when a requestAnimationFrame loop would freeze.
+     and the 3D view popped in and every button jumped down.
+     It is a real throw, not an illustration: a winning move found by the game's own engine (a 137deg
+     swing by an AI rung, played to its end), replayed in this page's own 3D scene with its own swing
+     and fall code, frame by frame, and encoded as a short loop (boot-throw.*). A video rather than
+     live 3D because the 3D is exactly what is still loading -- and a playing video keeps moving
+     while the main thread is busy parsing the scripts below it. The poster shows until it loads.
      Faded by tauBootDone() once the demo is actually playing (see demoStartTail). -->
 <style>
     #bootSplash { position:fixed; inset:0; z-index:9999; background:#15181c; display:flex; flex-direction:column;
                   align-items:center; justify-content:center; transition:opacity .45s ease; }
     #bootSplash.gone { opacity:0; pointer-events:none; }
-    #bootStage { position:relative; width:240px; height:240px; animation:bootLoop 2.8s linear infinite; }
-    #bootShake { position:absolute; inset:0; animation:bootJolt 2.8s infinite; }
-    #bootShake > div { position:absolute; width:0; height:0; }
-    #bootStage svg { position:absolute; overflow:visible; }
-    /* The blue piece's box has its origin ON the pinned foot, so rotating the box is the swing. */
-    #bootBlue, .bootGhost { left:100px; top:130px; transform-origin:0 0; animation:bootSwing 2.8s infinite; }
-    .bootGhost { opacity:.28; } .bootGhost.g2 { opacity:.13; }
-    .bootGhost { animation-delay:.045s; } .bootGhost.g2 { animation-delay:.09s; }
-    #bootRed { left:171px; top:130px; animation:bootFly 2.8s infinite; }
-    #bootHit { left:145px; top:130px; animation:bootHit 2.8s infinite; }
-    @media (min-width:600px) and (min-height:500px) { #bootStage { transform:scale(1.35); margin:40px 0; } }
-    #bootHint { margin-top:22px; font:12px Arial,sans-serif; letter-spacing:5px; color:#6d7680;
+    /* The render's own backdrop is a shade darker than the page; the soft oval mask melts the edges. */
+    #bootVid { width:min(640px, 94vw); aspect-ratio:8/5; object-fit:cover; background:transparent; pointer-events:none;
+               -webkit-mask-image:radial-gradient(ellipse 50% 50% at 50% 50%, #000 62%, transparent 100%);
+                       mask-image:radial-gradient(ellipse 50% 50% at 50% 50%, #000 62%, transparent 100%); }
+    #bootHint { margin-top:6px; font:12px Arial,sans-serif; letter-spacing:5px; color:#6d7680;
                 animation:bootHint 1.4s ease-in-out infinite alternate; }
-    @keyframes bootLoop  { 0% { opacity:0; } 6% { opacity:1; } 86% { opacity:1; } 100% { opacity:0; } }
-    /* Wound right back, then nearly a full turn about the pinned foot, gathering speed until its
-       leading foot slams into red -- 260deg of swing before contact, then a short follow-through. */
-    @keyframes bootSwing {
-        0%, 4%  { transform:rotate(-110deg); animation-timing-function:cubic-bezier(.6,0,.9,.5); }
-        44%     { transform:rotate(150deg); animation-timing-function:cubic-bezier(.2,.6,.4,1); }
-        53%, 100% { transform:rotate(178deg); } }
-    /* Struck on its near foot by a blow moving down-screen, red goes off the board's lower right. */
-    @keyframes bootFly {
-        0%, 44% { transform:translate(0,0) rotate(0deg) scale(1); opacity:1; animation-timing-function:cubic-bezier(.12,.75,.35,1); }
-        58%     { opacity:1; }
-        72%, 100% { transform:translate(118px,74px) rotate(340deg) scale(.5); opacity:0; } }
-    @keyframes bootHit {
-        0%, 43% { transform:scale(.2); opacity:0; }
-        45%     { transform:scale(.6); opacity:1; }
-        58%, 100% { transform:scale(2.2); opacity:0; } }
-    /* The whole board jolts on the hit. */
-    @keyframes bootJolt {
-        0%, 44% { transform:translate(0,0); }
-        45.5%   { transform:translate(5px,4px); }
-        47%     { transform:translate(-4px,-2px); }
-        48.5%   { transform:translate(3px,1px); }
-        50%     { transform:translate(-1px,1px); }
-        52%, 100% { transform:translate(0,0); } }
     @keyframes bootHint { from { opacity:.35; } to { opacity:.9; } }
 </style>
 <div id="bootSplash" aria-hidden="true">
-    <div id="bootStage"><div id="bootShake">
-        <svg width="240" height="240" viewBox="0 0 240 240" style="left:0;top:0">
-            <!-- The real board to scale (edge 112 = 66.667 board units): rings at 0.8 and 0.6 of the
-                 edge, and the two side arches -- the inner ring's radius, centred ON the rim. -->
-            <defs><clipPath id="bootDisc"><circle cx="120" cy="120" r="112"/></clipPath></defs>
-            <circle cx="120" cy="120" r="112" fill="#c9ad7a"/>
-            <circle cx="120" cy="120" r="89.6" fill="#d8c294"/>
-            <circle cx="120" cy="120" r="67.2" fill="#e6d3a8"/>
-            <g clip-path="url(#bootDisc)" fill="rgba(110,72,24,.2)" stroke="#4a3622" stroke-width="1.2">
-                <circle cx="8" cy="120" r="67.2"/><circle cx="232" cy="120" r="67.2"/></g>
-            <g fill="none" stroke="#4a3622" stroke-width="1.2">
-                <circle cx="120" cy="120" r="89.6"/><circle cx="120" cy="120" r="67.2"/></g>
-        </svg>
-        <div id="bootHit"><svg width="40" height="40" viewBox="-20 -20 40 40" style="left:-20px;top:-20px"><circle r="15" fill="none" stroke="#fff3d0" stroke-width="3"/></svg></div>
-        <div id="bootRed"><svg width="80" height="80" viewBox="-40 -40 80 80" style="left:-40px;top:-40px">
-            <g stroke="#f06464" stroke-width="4" stroke-linecap="round"><line x1="0" y1="0" x2="-26" y2="0"/><line x1="0" y1="0" x2="13" y2="22.5"/><line x1="0" y1="0" x2="13" y2="-22.5"/></g>
-            <g fill="#f06464"><circle cx="-26" cy="0" r="5"/><circle cx="13" cy="22.5" r="5"/><circle cx="13" cy="-22.5" r="5"/><circle r="3.5"/></g></svg></div>
-        <div class="bootGhost g2"><svg width="120" height="120" viewBox="-60 -60 120 120" style="left:-60px;top:-60px"><use href="#bootTripod"/></svg></div>
-        <div class="bootGhost"><svg width="120" height="120" viewBox="-60 -60 120 120" style="left:-60px;top:-60px"><use href="#bootTripod"/></svg></div>
-        <div id="bootBlue"><svg width="120" height="120" viewBox="-60 -60 120 120" style="left:-60px;top:-60px">
-            <g id="bootTripod"><g stroke="#6b9cf5" stroke-width="4" stroke-linecap="round"><line x1="-26" y1="0" x2="0" y2="0"/><line x1="-26" y1="0" x2="-39" y2="22.5"/><line x1="-26" y1="0" x2="-39" y2="-22.5"/></g>
-            <g fill="#6b9cf5"><circle cx="-39" cy="22.5" r="5"/><circle cx="-39" cy="-22.5" r="5"/><circle cx="-26" cy="0" r="3.5"/></g></g>
-            <circle r="5" fill="#6b9cf5"/><circle r="8.5" fill="none" stroke="#6b9cf5" stroke-width="1.6" opacity=".7"/></svg></div>
-    </div></div>
+    <video id="bootVid" autoplay muted loop playsinline preload="auto" disablepictureinpicture poster="boot-throw.jpg">
+        <source src="boot-throw.webm" type="video/webm"><source src="boot-throw.mp4" type="video/mp4">
+    </video>
     <div id="bootHint">LOADING</div>
 </div>
 <script>
+// Some browsers only honour autoplay once the muted PROPERTY is set, not just the attribute.
+(function () { const v = document.getElementById('bootVid'); if (v) v.muted = true; })();
 // Fades the splash once the menu is really showing something (or a direct link skipped the menu).
 // Idempotent; the hard deadline means a failed demo can never leave the page covered.
 window.tauBootDone = function () {
     const s = document.getElementById('bootSplash');
     if (!s || s.classList.contains('gone')) return;
     s.classList.add('gone');
-    setTimeout(() => s.remove(), 600);
+    setTimeout(() => s.remove(), 600);   // a video taken out of the document stops by itself
 };
 setTimeout(window.tauBootDone, 15000);
 </script>

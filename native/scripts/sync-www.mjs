@@ -28,6 +28,9 @@ const FILES = [
   'icon-192.png',
   'icon-512.png',
   'tau-logo.png',
+  'boot-throw.jpg',   // the loading screen's throw (poster + two encodings of the same loop)
+  'boot-throw.mp4',
+  'boot-throw.webm',
   'vendor/three/three.global.js',   // the game's three.js (classic-script bundle); every shell needs it
 ];
 

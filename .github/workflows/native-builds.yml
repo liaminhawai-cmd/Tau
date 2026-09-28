@@ -24,6 +24,9 @@ on:
       - 'icon-192.png'
       - 'icon-512.png'
       - 'tau-logo.png'
+      - 'boot-throw.jpg'
+      - 'boot-throw.mp4'
+      - 'boot-throw.webm'
 
 jobs:
   android:
