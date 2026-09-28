@@ -282,6 +282,15 @@ canvas.board{cursor:crosshair}
       <div class="block">
         <h2>Run</h2>
         <button class="btn primary" id="runBtn" style="width:100%" disabled>Run at current pose</button>
+        <div class="field" style="margin-top:10px">
+          <label>Animate through moves: map every</label>
+          <select id="moveStep">
+            <option value="1" selected>1° — a full map at every degree of each swing</option>
+            <option value="2">2°</option>
+            <option value="5">5°</option>
+            <option value="0">Stops only — the swing plays between maps</option>
+          </select>
+        </div>
         <button class="btn" id="animateBtn" style="width:100%;margin-top:8px" disabled>Animate through moves</button>
         <div class="row2" style="margin-top:8px">
           <button class="btn" id="pauseBtn" disabled>Pause</button>
@@ -301,7 +310,7 @@ canvas.board{cursor:crosshair}
             <label>Playback <small id="fpsLbl">24 fps</small></label>
             <input id="fps" type="range" min="4" max="60" step="1" value="24">
           </div>
-          <div class="hint">Captured from the board on the left by "Animate through moves" (the swing, then each finished map held for a beat) or "Spin &amp; capture a full turn" (the finished map at each step). GIF plays it back as one looping file; the zip keeps every frame as a separate full-resolution PNG.</div>
+          <div class="hint">Captured from the board on the left by "Animate through moves" (a finished map at every step of each swing, each planned stop held for a beat) or "Spin &amp; capture a full turn" (the finished map at each step). GIF plays it back as one looping file; the zip keeps every frame as a separate full-resolution PNG.</div>
         </div>
       </div>
 
@@ -1393,6 +1402,7 @@ $('swap').addEventListener('click', () => {
   syncPoseInputs(); opMovedManually(); enterSetup();
 });
 $('resSelect').addEventListener('change', () => { updateEstimate(); enterSetup(); });
+$('moveStep').addEventListener('change', () => updateEstimate());
 
 // Speed controls. Search width is only meaningful once something is searching, so it stays hidden
 // until a panel is set to D2/D3; the core count always applies, since even a D1 sweep parallelises.
@@ -1496,6 +1506,44 @@ function replayMovesTo(n) {
   }
   const g2 = Engine.getG();
   state.op = { x: g2.pieces[1].x, y: g2.pieces[1].y, rot: g2.pieces[1].rot };
+}
+function moveStepDeg() { return +$('moveStep').value; }
+function moveFrameCount() {
+  const step = moveStepDeg();
+  if (!step) return 1 + state.moves.length;
+  return 1 + state.moves.reduce((a, mv) => a + Math.max(1, Math.ceil(mv.targetRad*180/Math.PI/step - 1e-9)), 0);
+}
+// Every opponent pose the animation sweeps, in order: the start, then each move stepped through
+// the real engine stepDeg at a time, each move ending on exactly the stop replayMovesTo gives it
+// (stepDeg 0 = the stops alone). Built before any sweeping, because a D2/D3 sweep drives the
+// engine itself and would lose a pinned swing left half done across it.
+function movePath(stepDeg) {
+  const stops = [{ ...state.opStart }];
+  for (let i = 0; i < state.moves.length; i++) { replayMovesTo(i+1); stops.push({ ...state.op }); }
+  const path = [{ pose: stops[0], label: 'start', stop: true }];
+  for (let i = 0; i < state.moves.length; i++) {
+    const mv = state.moves[i];
+    if (stepDeg) {
+      const G = Engine.getG();
+      G.pieces[0].x = state.me.x; G.pieces[0].y = state.me.y; G.pieces[0].rot = state.me.rot;
+      G.pieces[1].x = stops[i].x; G.pieces[1].y = stops[i].y; G.pieces[1].rot = stops[i].rot;
+      Engine.setActive(1); Engine.pinFoot(mv.pivotIdx);
+      const stepRad = stepDeg*Math.PI/180;
+      let guard = 0;
+      for (let k = 1; guard < 3000; k++) {
+        const next = k*stepRad;
+        if (next >= mv.targetRad - 1e-9 || Engine.getG().atLimit) break;
+        while (!Engine.getG().atLimit && Math.abs(Engine.getG().netRad) < next - 1e-9 && guard++ < 3000)
+          Engine.applySwing(mv.dir*Math.min(3*Math.PI/180, next - Math.abs(Engine.getG().netRad)));
+        const g = Engine.getG();
+        path.push({ pose: { x: g.pieces[1].x, y: g.pieces[1].y, rot: g.pieces[1].rot }, stop: false,
+                    label: `move ${i+1} — ${Math.round(Math.abs(g.netRad)*180/Math.PI)}°` });
+      }
+    }
+    path.push({ pose: stops[i+1], label: `after move ${i+1}`, stop: true });
+  }
+  state.op = { ...stops[stops.length - 1] };
+  return { stops, path };
 }
 function syncMoveList() {
   $('moveList').innerHTML = state.moves.map((mv, i) =>
@@ -1647,7 +1695,7 @@ function updateEstimate(force) {
     updateRotEstimate();
     return;
   }
-  const frames = 1 + state.moves.length;
+  const frames = moveFrameCount();
   // Cells are independent, so N workers really do divide the wall clock by N here -- there is no
   // shared work between them to serialise on. Calibration is measured on the main thread, so the
   // per-cell cost it reports is the right thing to divide.
@@ -1926,24 +1974,29 @@ async function animateThroughMoves() {
   captureReset();
   beginRun();
   const savedOp = { ...state.op };
-  const frames = [{ ...state.opStart }];
-  for (let i = 0; i < state.moves.length; i++) { replayMovesTo(i+1); frames.push({ ...state.op }); }
+  const stepDeg = moveStepDeg();
+  const { stops, path } = movePath(stepDeg);
   // canvas.toBlob copies the bitmap when it is called, so each pending PNG is the picture as it
   // stood at that moment even though the encode finishes later.
   const shots = [];
   const shoot = (label, holdMs) => shots.push({ label, holdMs, blob: canvasToPng(panels[0].canvas) });
-  for (let f = 0; f < frames.length && mode === 'running'; f++) {
-    if (f > 0) {
-      setPhase(`Playing move ${f} of ${state.moves.length}…`);
-      await animateSwing(state.moves[f-1], frames[f-1], frames[f], () => shoot(`move ${f} — swinging`, 0));
+  let moveNo = 0;
+  for (let k = 0; k < path.length && mode === 'running'; k++) {
+    const entry = path[k];
+    // Stops only: nothing is swept mid-swing, so play the swing itself between the maps.
+    if (!stepDeg && k > 0) {
+      moveNo++;
+      setPhase(`Playing move ${moveNo} of ${state.moves.length}…`);
+      await animateSwing(state.moves[moveNo-1], stops[moveNo-1], stops[moveNo], () => shoot(`move ${moveNo} — swinging`, 0));
+      if (mode !== 'running') break;
     }
-    state.op = { ...frames[f] };
-    setPhase(`Sweeping position ${f+1} of ${frames.length}…`);
+    state.op = { ...entry.pose };
+    setPhase(`${entry.label} — sweeping frame ${k+1} of ${path.length}…`);
     activePanels().forEach(resetPanelSweep);
     await runPanelsToCompletion();
     if (mode !== 'running') break;
     activePanels().forEach(finishPanel);        // capture the same picture a finished run shows
-    shoot(f === 0 ? 'start' : `after move ${f}`, STOP_HOLD_MS);
+    shoot(entry.label, entry.stop ? STOP_HOLD_MS : 0);
   }
   if (mode !== 'running') { state.op = savedOp; enterSetup(); return; }
   mode = 'done'; setPhase('');
