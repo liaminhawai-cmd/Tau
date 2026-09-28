@@ -52,8 +52,15 @@ for %%F in ("%IN%") do (set "NAME=%%~nF" & set "EXT=%%~xF" & set "DIR=%%~dpF")
 rem Keep a copy in clips\ so the video, its skeletons and renders stay together.
 if /i not "%DIR%"=="%CLIPS%\" copy /y "%IN%" "%CLIPS%\%NAME%%EXT%" >nul
 echo.
+echo Only need part of the video? Give times like 1:23 (or press Enter for all of it).
+set "T0=" & set "T1=" & set "RANGE="
+set /p "T0=Start at: "
+set /p "T1=End at:   "
+if defined T0 set "RANGE=--start %T0%"
+if defined T1 set "RANGE=%RANGE% --end %T1%"
+echo.
 echo Detecting fighters in %NAME%%EXT% ...
-"%PY%" "%TOOLS%\detect.py" "%CLIPS%\%NAME%%EXT%" || goto fail
+"%PY%" "%TOOLS%\detect.py" "%CLIPS%\%NAME%%EXT%" %RANGE% || goto fail
 echo.
 echo Done. In the editor, open:
 echo   %CLIPS%\%NAME%%EXT%
