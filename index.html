@@ -723,9 +723,16 @@ if (window.TAU_DESKTOP) {
 <div id="bootSplash" aria-hidden="true">
     <div id="bootStage"><div id="bootShake">
         <svg width="240" height="240" viewBox="0 0 240 240" style="left:0;top:0">
+            <!-- The real board to scale (edge 112 = 66.667 board units): rings at 0.8 and 0.6 of the
+                 edge, and the two side arches -- the inner ring's radius, centred ON the rim. -->
+            <defs><clipPath id="bootDisc"><circle cx="120" cy="120" r="112"/></clipPath></defs>
             <circle cx="120" cy="120" r="112" fill="#c9ad7a"/>
-            <circle cx="120" cy="120" r="89.6" fill="#d8c294" stroke="#4a3622" stroke-width="1.2"/>
-            <circle cx="120" cy="120" r="67.2" fill="#e6d3a8" stroke="#4a3622" stroke-width="1.2"/>
+            <circle cx="120" cy="120" r="89.6" fill="#d8c294"/>
+            <circle cx="120" cy="120" r="67.2" fill="#e6d3a8"/>
+            <g clip-path="url(#bootDisc)" fill="rgba(110,72,24,.2)" stroke="#4a3622" stroke-width="1.2">
+                <circle cx="8" cy="120" r="67.2"/><circle cx="232" cy="120" r="67.2"/></g>
+            <g fill="none" stroke="#4a3622" stroke-width="1.2">
+                <circle cx="120" cy="120" r="89.6"/><circle cx="120" cy="120" r="67.2"/></g>
         </svg>
         <div id="bootHit"><svg width="40" height="40" viewBox="-20 -20 40 40" style="left:-20px;top:-20px"><circle r="15" fill="none" stroke="#fff3d0" stroke-width="3"/></svg></div>
         <div id="bootRed"><svg width="80" height="80" viewBox="-40 -40 80 80" style="left:-40px;top:-40px">
