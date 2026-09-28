@@ -96,12 +96,29 @@ if (window.TAU_DESKTOP) {
     #splitHandle:hover, #splitHandle:focus-visible, #splitHandle.dragging { opacity:0.95; }
     #splitHandle:focus { outline:none; }
     #splitHandle::before { content:''; background:#9aa4ad; border-radius:2px; display:block; }
-    /* Landscape: a vertical grip on a vertical seam, dragged left/right. */
-    #splitHandle.vert { width:18px; cursor:col-resize; }
-    #splitHandle.vert::before { width:3px; height:42px; }
+    /* Landscape: a vertical grip on a vertical seam, dragged left/right. It used to be a 3px bar
+       at 22% opacity, and players simply never found it -- so it is a real pill with arrows now,
+       visible at rest, that breathes until it has been used once (same rule as the corner knob). */
+    #splitHandle.vert, #splitHandle.horz { opacity:.9; }
+    #splitHandle.vert:hover, #splitHandle.horz:hover, #splitHandle.vert.dragging, #splitHandle.horz.dragging { opacity:1; }
+    #splitHandle.vert::before, #splitHandle.horz::before { background:#2a3038; border:1px solid rgba(230,236,242,.38);
+        border-radius:11px; box-shadow:0 2px 10px rgba(0,0,0,.55); transition:transform .15s, border-color .15s; }
+    #splitHandle.vert::after, #splitHandle.horz::after { position:absolute; font-size:13px; line-height:1;
+        color:#d7dee5; pointer-events:none; letter-spacing:1px; }
+    #splitHandle.vert { width:24px; cursor:col-resize; }
+    #splitHandle.vert::before { width:20px; height:58px; }
+    #splitHandle.vert::after { content:'\2039\203A'; font-size:17px; font-weight:700; }
     /* Portrait: the seam is horizontal, so the grip and its drag axis turn with it. */
-    #splitHandle.horz { height:18px; cursor:row-resize; }
-    #splitHandle.horz::before { width:42px; height:3px; }
+    #splitHandle.horz { height:24px; cursor:row-resize; }
+    #splitHandle.horz::before { width:58px; height:20px; }
+    #splitHandle.horz::after { content:'\2039\203A'; font-size:17px; font-weight:700; transform:rotate(90deg); }
+    #splitHandle.vert:hover::before, #splitHandle.vert.dragging::before { transform:scale(1.12); border-color:rgba(217,183,123,.9); }
+    #splitHandle.horz:hover::before, #splitHandle.horz.dragging::before { transform:scale(1.12); border-color:rgba(217,183,123,.9); }
+    #splitHandle.vert.unused::before, #splitHandle.horz.unused::before { animation:splitPillHint 2.1s ease-in-out infinite; }
+    @keyframes splitPillHint {
+        0%,100% { box-shadow:0 2px 10px rgba(0,0,0,.55); }
+        50%     { box-shadow:0 2px 10px rgba(0,0,0,.55), 0 0 0 6px rgba(217,183,123,.28); } }
+    @media (prefers-reduced-motion: reduce) { #splitHandle.vert.unused::before, #splitHandle.horz.unused::before { animation:none; } }
     /* Corner layout (desktop): a knob on the board's rim, dragged along the diagonal. It carries a
        real disc rather than a bar because there is no seam here to hint that anything is draggable —
        the handle IS the whole affordance, so it has to look like one at rest, not only on hover. */
@@ -653,6 +670,78 @@ if (window.TAU_DESKTOP) {
 </style>
 </head>
 <body>
+<!-- Boot splash: covers the first seconds while three.js and the game script parse and the menu demo
+     simulates its first endgame -- without it the menu appeared as an empty black box, then the logo
+     and the 3D view popped in and every button jumped down. One big swing throw, on a loop.
+     Built from HTML boxes animated by CSS transform/opacity only, which the browser runs on its
+     compositor: the swing keeps moving even while the main thread is busy parsing the heavy
+     scripts below it, which is exactly when a requestAnimationFrame loop would freeze.
+     Faded by tauBootDone() once the demo is actually playing (see demoStartTail). -->
+<style>
+    #bootSplash { position:fixed; inset:0; z-index:9999; background:#15181c; display:flex; flex-direction:column;
+                  align-items:center; justify-content:center; transition:opacity .45s ease; }
+    #bootSplash.gone { opacity:0; pointer-events:none; }
+    #bootStage { position:relative; width:240px; height:240px; animation:bootLoop 2.8s linear infinite; }
+    #bootStage > div { position:absolute; width:0; height:0; }
+    #bootStage svg { position:absolute; overflow:visible; }
+    /* The blue piece's box has its origin ON the pinned foot, so rotating the box is the swing. */
+    #bootBlue, .bootGhost { left:100px; top:130px; transform-origin:0 0; animation:bootSwing 2.8s infinite; }
+    .bootGhost { opacity:.28; } .bootGhost.g2 { opacity:.13; }
+    .bootGhost { animation-delay:.045s; } .bootGhost.g2 { animation-delay:.09s; }
+    #bootRed { left:171px; top:130px; animation:bootFly 2.8s infinite; }
+    #bootHit { left:145px; top:130px; animation:bootHit 2.8s infinite; }
+    @media (min-width:600px) and (min-height:500px) { #bootStage { transform:scale(1.35); margin:40px 0; } }
+    #bootHint { margin-top:22px; font:12px Arial,sans-serif; letter-spacing:5px; color:#6d7680;
+                animation:bootHint 1.4s ease-in-out infinite alternate; }
+    @keyframes bootLoop  { 0% { opacity:0; } 6% { opacity:1; } 86% { opacity:1; } 100% { opacity:0; } }
+    @keyframes bootSwing {
+        0%, 12% { transform:rotate(0deg); animation-timing-function:cubic-bezier(.55,0,.85,.45); }
+        46%     { transform:rotate(210deg); animation-timing-function:cubic-bezier(.2,.6,.4,1); }
+        54%, 100% { transform:rotate(236deg); } }
+    @keyframes bootFly {
+        0%, 46% { transform:translate(0,0) rotate(0deg) scale(1); opacity:1; animation-timing-function:cubic-bezier(.15,.7,.35,1); }
+        60%     { opacity:1; }
+        72%, 100% { transform:translate(128px,26px) rotate(320deg) scale(.55); opacity:0; } }
+    @keyframes bootHit {
+        0%, 45% { transform:scale(.2); opacity:0; }
+        47%     { transform:scale(.5); opacity:.9; }
+        60%, 100% { transform:scale(1.9); opacity:0; } }
+    @keyframes bootHint { from { opacity:.35; } to { opacity:.9; } }
+    @media (prefers-reduced-motion: reduce) {
+        #bootStage, #bootBlue, .bootGhost, #bootRed, #bootHit, #bootHint { animation:none; }
+        .bootGhost, #bootHit { display:none; } }
+</style>
+<div id="bootSplash" aria-hidden="true">
+    <div id="bootStage">
+        <svg width="240" height="240" viewBox="0 0 240 240" style="left:0;top:0">
+            <circle cx="120" cy="120" r="112" fill="#c9ad7a"/>
+            <circle cx="120" cy="120" r="89.6" fill="#d8c294" stroke="#4a3622" stroke-width="1.2"/>
+            <circle cx="120" cy="120" r="67.2" fill="#e6d3a8" stroke="#4a3622" stroke-width="1.2"/>
+        </svg>
+        <div id="bootHit"><svg width="40" height="40" viewBox="-20 -20 40 40" style="left:-20px;top:-20px"><circle r="15" fill="none" stroke="#fff3d0" stroke-width="3"/></svg></div>
+        <div id="bootRed"><svg width="80" height="80" viewBox="-40 -40 80 80" style="left:-40px;top:-40px">
+            <g stroke="#f06464" stroke-width="4" stroke-linecap="round"><line x1="0" y1="0" x2="-26" y2="0"/><line x1="0" y1="0" x2="13" y2="22.5"/><line x1="0" y1="0" x2="13" y2="-22.5"/></g>
+            <g fill="#f06464"><circle cx="-26" cy="0" r="5"/><circle cx="13" cy="22.5" r="5"/><circle cx="13" cy="-22.5" r="5"/><circle r="3.5"/></g></svg></div>
+        <div class="bootGhost g2"><svg width="120" height="120" viewBox="-60 -60 120 120" style="left:-60px;top:-60px"><use href="#bootTripod"/></svg></div>
+        <div class="bootGhost"><svg width="120" height="120" viewBox="-60 -60 120 120" style="left:-60px;top:-60px"><use href="#bootTripod"/></svg></div>
+        <div id="bootBlue"><svg width="120" height="120" viewBox="-60 -60 120 120" style="left:-60px;top:-60px">
+            <g id="bootTripod"><g stroke="#6b9cf5" stroke-width="4" stroke-linecap="round"><line x1="-26" y1="0" x2="0" y2="0"/><line x1="-26" y1="0" x2="-39" y2="22.5"/><line x1="-26" y1="0" x2="-39" y2="-22.5"/></g>
+            <g fill="#6b9cf5"><circle cx="-39" cy="22.5" r="5"/><circle cx="-39" cy="-22.5" r="5"/><circle cx="-26" cy="0" r="3.5"/></g></g>
+            <circle r="5" fill="#6b9cf5"/><circle r="8.5" fill="none" stroke="#6b9cf5" stroke-width="1.6" opacity=".7"/></svg></div>
+    </div>
+    <div id="bootHint">LOADING</div>
+</div>
+<script>
+// Fades the splash once the menu is really showing something (or a direct link skipped the menu).
+// Idempotent; the hard deadline means a failed demo can never leave the page covered.
+window.tauBootDone = function () {
+    const s = document.getElementById('bootSplash');
+    if (!s || s.classList.contains('gone')) return;
+    s.classList.add('gone');
+    setTimeout(() => s.remove(), 600);
+};
+setTimeout(window.tauBootDone, 15000);
+</script>
 <button id="boardQuickToggle" title="Switch board style" aria-label="Switch board style"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.4"/><path d="M12 2.6v2.6M12 18.8v2.6M2.6 12h2.6M18.8 12h2.6M5.4 5.4l1.8 1.8M16.8 16.8l1.8 1.8M18.6 5.4l-1.8 1.8M7.2 16.8l-1.8 1.8"/></svg></button>
 <button id="settingsToggle" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m9.5 3-.5 2-2 1.2-2-.6-2.5 4.3L4 11.3v2.4l-1.5 1.4L5 19.4l2-.6 2 1.2.5 2h5l.5-2 2-1.2 2 .6 2.5-4.3-1.5-1.4v-2.4l1.5-1.4L19 5.6l-2 .6L15 5l-.5-2z"/></svg></button>
 <button id="soundToggle" title="Sound volume" aria-label="Sound volume"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h4l5 4V6l-5 4H4z"/><path d="M16 9.5c1.4 1.4 1.4 3.6 0 5M18.5 7c2.8 2.8 2.8 7.2 0 10"/></svg></button>
@@ -6113,6 +6202,7 @@ async function demoStartTail() {
     demoQueue = sim.queue;
     demoDraw();
     demoAdvanceQueue();
+    if (window.tauBootDone) tauBootDone();
 }
 // While the demo runs, the SAME #view3d canvas/renderer normally used for real play is
 // reparented into the menu (WebGL context survives a DOM move) so the idle screen shows the
@@ -6150,7 +6240,7 @@ function demoStart() {
     demoDraw();
     demoStartTail();
 }
-function demoStop() { demoOn=false; demoAnim=null; demoQueue=null; demoGen++; clearTimeout(demoTimer); }
+function demoStop() { if (window.tauBootDone) tauBootDone(); demoOn=false; demoAnim=null; demoQueue=null; demoGen++; clearTimeout(demoTimer); }
 
 // ---------- Menu: mode buttons are always visible; sign-in is opt-in, not a gate ----------
 // Built via DOM methods (not innerHTML) since the displayed name can be an arbitrary
@@ -10822,6 +10912,7 @@ function fallReportImpact(t, fall, speed, x, y, z, MAT) {
     if (fall.shatterOk && !fall.shattered && speed > SHATTER_SPEED
         && (typeof currentAcoustics === 'function' ? currentAcoustics().piece : '') === 'glass') {
         playShatterSound(Math.min(1, 0.45 + speed/200));
+        addCamShake(0.9);
         shatterPiece(t, fall, speed);
         fall.shattered = true; fall.landed = true; fall.resting = true;
         fall.V.set(0,0,0); fall.W.set(0,0,0);
@@ -10834,6 +10925,9 @@ function fallReportImpact(t, fall, speed, x, y, z, MAT) {
     if (fall.lastSound === undefined || fall.downT - fall.lastSound > 0.09) {
         fall.lastSound = fall.downT;
         playLandingSound(Math.min(1, 0.3 + speed/170));
+        // Scaled off measured landings: a piece thrown off the board strikes at ~25-30, the clatter
+        // after it at ~5 -- so the first hit is a thud of a few pixels and the rest barely register.
+        addCamShake(Math.min(1.2, speed/35) * camShakeBoardScale());
     }
     fall.landed = true;
 }
@@ -11322,8 +11416,45 @@ function updateFootCue3D() {
 // The desktop layer may draw the frame itself (glass pieces get a two-pass render there so one is
 // seen through the other); otherwise the plain render.
 function renderFrame3D() {
-    if (window.tauDesktop && window.tauDesktop.renderFrame && window.tauDesktop.renderFrame()) return;
-    renderer.render(scene,camera);
+    // The shake is an offset laid on the camera for this one render and taken straight off again,
+    // so nothing that steers the camera (the auto frame, the loss cam, OrbitControls) ever sees it.
+    const off = camShakeOffset();
+    if (off) camera.position.add(off);
+    try {
+        if (window.tauDesktop && window.tauDesktop.renderFrame && window.tauDesktop.renderFrame()) return;
+        renderer.render(scene,camera);
+    } finally { if (off) camera.position.sub(off); }
+}
+// ---------- Impact shake ----------
+// A thrown piece hitting the floor jolts the view: a short, fast-decaying shudder whose size is the
+// impact's, scaled by what it lands on -- a thud on wood, more on the sumo clay, and on Colossus
+// (stone giants onto sand) a proper building-came-down shake. Off for anyone who asked for less
+// motion, in the OS or in the desktop settings.
+let camShake = 0, camShakeT = 0, camShakeLast = 0;
+const camShakeVec = typeof THREE !== 'undefined' ? new THREE.Vector3() : null;
+function camShakeBoardScale() {
+    const a = typeof currentAcoustics === 'function' ? currentAcoustics() : {};
+    return a.surface === 'sand' ? 2.2 : a.surface === 'clay' ? 1.4 : 1;
+}
+function addCamShake(amount) {
+    if (!(amount > 0) || !camShakeVec) return;
+    if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (window.tauDesktop && window.tauDesktop.reducedMotion) return;
+    camShake = Math.min(2.4, Math.max(camShake, amount));
+}
+function camShakeOffset() {
+    const now = performance.now();
+    const dt = Math.min(0.1, Math.max(0, (now - (camShakeLast || now)) / 1000));
+    camShakeLast = now;
+    if (camShake < 0.01) { camShake = 0; return null; }
+    camShakeT += dt;
+    const amp = camShake * 1.5;   // board units (the playing surface is ~67 in radius)
+    const t = camShakeT;
+    camShakeVec.set(Math.sin(t*57) + 0.5*Math.sin(t*131 + 1.3),
+                    0.7*Math.sin(t*49 + 2.1) + 0.35*Math.sin(t*113),
+                    Math.sin(t*63 + 0.7) + 0.5*Math.sin(t*97 + 2.9)).multiplyScalar(amp);
+    camShake *= Math.exp(-dt * 6.5);
+    return camShakeVec;
 }
 
 // ---------- The 2D/3D split ----------
@@ -11437,12 +11568,13 @@ function layoutSplitHandle() {
     const stacked = vw.classList.contains('stacked');
     h.classList.remove('corner');
     h.classList.toggle('vert', !stacked); h.classList.toggle('horz', stacked);
+    h.classList.toggle('unused', !splitUsed);
     const rv = vw.getBoundingClientRect(), r2 = canvas.getBoundingClientRect(), r3 = cv3.getBoundingClientRect();
     if (!stacked) {                                   // 2D left, 3D right
-        h.style.left = ((r2.right + r3.left)/2 - rv.left - 9) + 'px';
+        h.style.left = ((r2.right + r3.left)/2 - rv.left - 12) + 'px';
         h.style.top = '0px'; h.style.height = rv.height + 'px'; h.style.width = '';
     } else {                                          // 3D on top (#views.stacked reorders it), 2D below
-        h.style.top = ((r3.bottom + r2.top)/2 - rv.top - 9) + 'px';
+        h.style.top = ((r3.bottom + r2.top)/2 - rv.top - 12) + 'px';
         h.style.left = '0px'; h.style.width = rv.width + 'px'; h.style.height = '';
     }
 }

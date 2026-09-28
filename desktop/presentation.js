@@ -3253,6 +3253,7 @@
     debugFrame(ms){ noteFrame(ms); },   // feed the frame-rate watcher a measured frame
     debugDetectQuality(){ return detectQuality(); },   // what this device would be started on now
     resize:layout, updateCamera, orbitCamera, tick:pollInput, applyMaterials, showResult, fallTimeScale, fallFloorY, fallGravity, renderFrame,
+    get reducedMotion(){return !!settings.reducedMotion;},   // the impact shake stays off too
     get quality(){return settings.quality;},   // read-only: the picker is the way to change it
     get qualityPicked(){return settings.qualityPicked;},   // false while the device guess is still in charge
     get rayTrace(){return settings.rayTrace;},
