@@ -1839,17 +1839,21 @@
   // never downloads it. Anything that throws anywhere along the way — load, init, scene build,
   // sample — puts the rasteriser back for the session and says so.
   const PT_SRC = 'vendor/pathtracer/pathtracer.global.js';
-  const PT_SAMPLE_CAP = 256;
+  // Screenshot mode (scripts/steam-shots sets window.TAU_SHOT before the page loads): nobody is
+  // playing, so the limits that keep a live match responsive are lifted -- trace every pixel, take
+  // more samples, and never give up on a slow frame. Absent in every real build.
+  const PT_SHOT = (typeof window !== 'undefined' && window.TAU_SHOT) || null;
+  const PT_SAMPLE_CAP = (PT_SHOT && PT_SHOT.samples) || 256;
   const PT_STILL_FRAMES = 2;
   // A path tracer asks the GPU for orders of magnitude more work than the rasteriser, and a card
   // that cannot keep up does not fail -- it just takes a second or more per frame, which from the
   // outside is a frozen game. So the tracer is watched, and a machine it is too slow on is told so
   // and put back on the rasteriser rather than left grinding. Three ways it can be too slow: the
   // scene build (one synchronous BVH pass), a single sample, or a run of heavy frames.
-  const PT_SLOW_BUILD = 2600;    // ms to build the traced scene, once per world change
-  const PT_SLOW_FRAME = 420;     // ms a traced frame takes before it reads as a stutter
+  const PT_SLOW_BUILD = PT_SHOT ? Infinity : 2600;    // ms to build the traced scene, once per world change
+  const PT_SLOW_FRAME = PT_SHOT ? Infinity : 420;     // ms a traced frame takes before it reads as a stutter
   const PT_SLOW_STRIKES = 6;     // consecutive heavy frames -- one hitch is not a verdict
-  const PT_TRACE_PIXELS = 1.2e6; // traced pixels per frame; above this the frame is traced smaller
+  const PT_TRACE_PIXELS = (PT_SHOT && PT_SHOT.pixels) || 1.2e6; // traced pixels per frame; above this the frame is traced smaller
   let ptSlow = 0, ptFrameAt = 0, ptWarm = 0;
   // How much light the traced scene gets, against what the rasteriser is given. The tracer carries
   // light between surfaces and the rasteriser does not, so handed the same room and the same key

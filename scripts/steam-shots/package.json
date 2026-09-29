@@ -1,0 +1,9 @@
+{
+  "name": "tau-steam-shots",
+  "private": true,
+  "description": "Renders Tau's Steam screenshots and store art on this machine's GPU (path traced). See STEAM-SHOTS.bat.",
+  "type": "module",
+  "dependencies": {
+    "playwright-core": "1.56.1"
+  }
+}
