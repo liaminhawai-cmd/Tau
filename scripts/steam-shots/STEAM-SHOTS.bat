@@ -64,12 +64,44 @@ if not exist node_modules\playwright-core (
   call npm install --no-audit --no-fund
 )
 
+rem Double-clicked with no options: ask. Options typed after the name (a shortcut, a command line)
+rem skip the questions entirely.
+set "OPTS=%*"
+if "%~1"=="" (
+  echo.
+  echo   How should it render?
+  echo     1  Ray traced ^(Ultra^) -- best lighting, slowest. Works on any modern card, a GTX 1080 included.
+  echo     2  High -- exactly the in-game look, much quicker
+  set "Q=1"
+  set /p "Q=  Pick 1 or 2 [1]: "
+  echo.
+  echo   What should it make?
+  echo     1  Everything ^(screenshots + store capsules and library art^)
+  echo     2  Just the gameplay screenshots
+  echo     3  Just the store capsules and library art
+  set "W=1"
+  set /p "W=  Pick 1, 2 or 3 [1]: "
+  echo.
+  echo   Screenshot size?
+  echo     1  4K ^(3840x2160^) -- sharpest
+  echo     2  1080p ^(1920x1080^) -- about four times quicker
+  set "R=1"
+  set /p "R=  Pick 1 or 2 [1]: "
+  set "OPTS="
+  if "!Q!"=="2" set "OPTS=!OPTS! --raster"
+  if "!W!"=="2" set "OPTS=!OPTS! --only shots"
+  if "!W!"=="3" set "OPTS=!OPTS! --only art"
+  if "!R!"=="2" set "OPTS=!OPTS! --scale 1"
+  echo.
+  echo   Running with:!OPTS!
+)
+
 echo.
 echo   An Edge or Chrome window will open and play through the boards. Leave it alone while it works:
 echo   each image waits until the ray tracer has finished refining it. Expect roughly 15-40 minutes
 echo   depending on the graphics card. Close this window to stop.
 echo.
-node shots.mjs %*
+node shots.mjs !OPTS!
 echo.
 if exist output explorer output
 pause
