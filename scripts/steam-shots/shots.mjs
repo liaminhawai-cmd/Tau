@@ -6,7 +6,8 @@
 //   node shots.mjs --only art       just the key art and the composed capsules
 //   node shots.mjs --samples 512    more path-tracing samples per image (default 384; slower, cleaner)
 //   node shots.mjs --boards sumo,noir   screenshots of these boards only
-//   node shots.mjs --raster         skip ray tracing (the High raster tier) -- for a GPU that cannot trace
+//   node shots.mjs --raster         skip ray tracing (the High raster tier) -- quicker, and what most players see
+//   node shots.mjs --scale 1        screenshots at 1920x1080 instead of the default 2x (3840x2160, sharper)
 //
 // It drives the Edge or Chrome already installed here (no browser download), in a visible window so
 // you can watch it, and serves the game from this checkout on a private localhost port.
@@ -24,7 +25,9 @@ const arg = (k, d) => { const i = argv.indexOf('--' + k); return i >= 0 ? (argv[
 const ONLY = arg('only', 'all');
 const SAMPLES = +arg('samples', 384);
 const RASTER = argv.includes('--raster');
-const TIMEOUT_S = +arg('timeout', 240);
+const TIMEOUT_S = +arg('timeout', 600);
+const SCALE = +arg('scale', 2);   // screenshots render at 1920x1080 x SCALE: 2 = 4K, crisper edges and detail
+const REPORT = [];
 
 // ---------- what to shoot ----------
 const POSES = { a: [[-14, 10, 0.4], [16, -6, 3.3]], b: [[-22, -8, -0.5], [-4, -14, 2.6]], c: [[6, 14, 1.2], [20, 4, 4.4]],
@@ -71,8 +74,8 @@ fs.mkdirSync(path.join(OUT, 'screenshots'), { recursive: true });
 fs.mkdirSync(path.join(OUT, 'store'), { recursive: true });
 fs.mkdirSync(path.join(OUT, 'library'), { recursive: true });
 
-async function openGame(W, H) {
-  const ctx = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: 1, serviceWorkers: 'block' });
+async function openGame(W, H, dpr = 1) {
+  const ctx = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: dpr, serviceWorkers: 'block' });
   const p = await ctx.newPage();
   await p.addInitScript(({ samples, pixels, raster }) => {
     window.TAU_SHOT = { samples, pixels };
@@ -81,8 +84,9 @@ async function openGame(W, H) {
       s.quality = raster ? 'high' : 'ultra'; s.qualityPicked = true; s.rayTrace = !raster; s.reducedMotion = true;
       localStorage.setItem(k, JSON.stringify(s));
     } catch (_) {}
-  }, { samples: SAMPLES, pixels: W * H + 1, raster: RASTER });
+  }, { samples: SAMPLES, pixels: W * H * dpr * dpr + 1, raster: RASTER });
   await p.goto(BASE + 'index.html?steam=1&premium=1');
+  if (!REPORT.gpu) { REPORT.gpu = await p.evaluate(() => { try { const g = document.createElement('canvas').getContext('webgl2'); const e = g.getExtension('WEBGL_debug_renderer_info'); return e ? g.getParameter(e.UNMASKED_RENDERER_WEBGL) : 'unknown'; } catch (_) { return 'unknown'; } }); console.log('GPU: ' + REPORT.gpu); REPORT.push('GPU: ' + REPORT.gpu); }
   await p.waitForFunction(() => window.tauDesktop && typeof startGame === 'function', null, { timeout: 60000 });
   await p.waitForTimeout(4000);
   // Pin the camera, when asked, at the last moment before every frame is drawn: the game's own
@@ -129,7 +133,7 @@ const t0 = Date.now();
 // ---------- gameplay screenshots (UI included: this is what the game looks like) ----------
 if (ONLY === 'all' || ONLY === 'shots') {
   const want = arg('boards', null); const list = want ? SHOTS.filter(([b]) => want.split(',').includes(b)) : SHOTS;
-  const { p, ctx } = await openGame(1920, 1080);
+  const { p, ctx } = await openGame(1920, 1080, SCALE);
   for (const [board, pose] of list) {
     await setScene(p, board, POSES[pose]);
     await p.waitForTimeout(6000);   // let the game's own camera settle on the new position
@@ -139,6 +143,7 @@ if (ONLY === 'all' || ONLY === 'shots') {
     const file = path.join(OUT, 'screenshots', `tau-${board}.png`);
     await p.screenshot({ path: file, timeout: 0 });
     console.log(`  screenshot ${board}  (${how})                    `);
+    REPORT.push(`screenshot ${board}: ${how}`);
   }
   await ctx.close();
 }
@@ -157,6 +162,7 @@ if (ONLY === 'all' || ONLY === 'art') {
     await p.screenshot({ path: file, timeout: 0 });
     raws[A.name] = 'data:image/png;base64,' + fs.readFileSync(file).toString('base64');
     console.log(`  key art ${A.name} ${A.W}x${A.H}  (${how})                    `);
+    REPORT.push(`key art ${A.name}: ${how}`);
     await ctx.close();
   }
   // Compose in a plain page with a 2D canvas: logo with a soft shadow, scaled down 2x for crispness.
@@ -193,4 +199,6 @@ if (ONLY === 'all' || ONLY === 'art') {
 }
 
 await browser.close(); server.close();
+fs.writeFileSync(path.join(OUT, 'report.txt'), [`Tau steam-shots  ${new Date().toISOString()}`,
+  `mode: ${RASTER ? 'raster (High)' : 'ray traced (Ultra), target ' + SAMPLES + ' samples'}, screenshots at ${1920 * SCALE}x${1080 * SCALE}`, '', ...REPORT, ''].join('\n'));
 console.log(`\nDone in ${Math.round((Date.now() - t0) / 60000)} min. Everything is in:\n  ${OUT}`);
