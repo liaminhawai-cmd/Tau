@@ -44,3 +44,5 @@ zpd-pool.json
 # every shape trains and validates on an identical, non-moving set. Duplicated rows that already
 # live in nn/data -- never worth committing, and re-made by nn/freeze-arch-data.js when needed.
 data-arch-frozen/
+
+marketing/*.zip
