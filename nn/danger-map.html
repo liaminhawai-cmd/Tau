@@ -1437,10 +1437,28 @@ function syncBundleG() {
   G.pieces[1].x = state.op.x; G.pieces[1].y = state.op.y; G.pieces[1].rot = state.op.rot;
   Engine.setActive(1);
 }
+// Every replay of an opponent swing on this page -- the pin slider's reach and ghost, the committed
+// stop, each per-degree animation frame, the swing tween -- steps ONE shared grid, finer than the
+// engine's own substep (CFG.substepDeg), so every applySwing call is exactly one physics substep and
+// lands on the same angles whoever is asking. The crossing rule is only checked at substep ends, so
+// chunking one swing two ways can get two verdicts: 3deg calls are 8 substeps of 0.375deg, 1deg
+// calls are 3 of 0.333deg, and in about one random move in 350 they disagree. That is what froze a
+// per-degree animation 4deg into a 60deg move (the one-crossing limit fired) while its stop, replayed
+// in 3deg calls, went the whole way -- the map jumped the other 56deg in a single frame.
+const SWING_GRID_RAD = 0.25*Math.PI/180;
+// Advance the pinned swing along that grid to |netRad| = toRad, or until the engine stops it. It only
+// ever pauses ON a grid angle (or on toRad), so a later call carries on down exactly the same path.
+function swingTo(dir, toRad) {
+  for (let guard = 0; guard < 20000; guard++) {
+    const g = Engine.getG(), net = Math.abs(g.netRad);
+    if (g.atLimit || net >= toRad - 1e-9) return;
+    const next = (Math.floor(net/SWING_GRID_RAD + 1e-6) + 1)*SWING_GRID_RAD;
+    Engine.applySwing(dir*(Math.min(next, toRad) - net));
+  }
+}
 function sweepMaxReach(pivotIdx, dir) {
   syncBundleG(); Engine.pinFoot(pivotIdx);
-  let guard = 0;
-  while (!Engine.getG().atLimit && guard++ < 3000) Engine.applySwing(dir*3*Math.PI/180);
+  swingTo(dir, 720*Math.PI/180);
   return Math.abs(Engine.getG().netRad)*180/Math.PI;
 }
 function startPin(pivotIdx) {
@@ -1455,9 +1473,7 @@ function startPin(pivotIdx) {
 function previewMove() {
   syncBundleG(); Engine.pinFoot(pinnedMove.pivotIdx);
   const targetRad = Math.abs(pinnedMove.targetDeg)*Math.PI/180, dir = pinnedMove.targetDeg < 0 ? -1 : 1;
-  let guard = 0;
-  while (!Engine.getG().atLimit && Math.abs(Engine.getG().netRad) < targetRad && guard++ < 3000)
-    Engine.applySwing(dir*Math.min(3*Math.PI/180, targetRad - Math.abs(Engine.getG().netRad)));
+  swingTo(dir, targetRad);
   const g2 = Engine.getG();
   return { x: g2.pieces[1].x, y: g2.pieces[1].y, rot: g2.pieces[1].rot, netRad: g2.netRad };
 }
@@ -1500,9 +1516,7 @@ function replayMovesTo(n) {
   for (let i = 0; i < n; i++) {
     const mv = state.moves[i];
     Engine.pinFoot(mv.pivotIdx);
-    let guard = 0;
-    while (!Engine.getG().atLimit && Math.abs(Engine.getG().netRad) < mv.targetRad && guard++ < 3000)
-      Engine.applySwing(mv.dir*Math.min(3*Math.PI/180, mv.targetRad - Math.abs(Engine.getG().netRad)));
+    swingTo(mv.dir, mv.targetRad);
   }
   const g2 = Engine.getG();
   state.op = { x: g2.pieces[1].x, y: g2.pieces[1].y, rot: g2.pieces[1].rot };
@@ -1514,32 +1528,32 @@ function moveFrameCount() {
   return 1 + state.moves.reduce((a, mv) => a + Math.max(1, Math.ceil(mv.targetRad*180/Math.PI/step - 1e-9)), 0);
 }
 // Every opponent pose the animation sweeps, in order: the start, then each move stepped through
-// the real engine stepDeg at a time, each move ending on exactly the stop replayMovesTo gives it
-// (stepDeg 0 = the stops alone). Built before any sweeping, because a D2/D3 sweep drives the
-// engine itself and would lose a pinned swing left half done across it.
+// the real engine stepDeg at a time (stepDeg 0 = the stops alone). ONE continuous pass, the same one
+// replayMovesTo makes, so each stop is literally where that move's own frames arrive -- if the
+// engine ends a swing early, its frames and its stop end there together instead of the stop
+// jumping on ahead. Built before any sweeping, because a D2/D3 sweep drives the engine itself and
+// would lose a pinned swing left half done across it.
 function movePath(stepDeg) {
-  const stops = [{ ...state.opStart }];
-  for (let i = 0; i < state.moves.length; i++) { replayMovesTo(i+1); stops.push({ ...state.op }); }
+  const G = Engine.getG();
+  G.pieces[0].x = state.me.x; G.pieces[0].y = state.me.y; G.pieces[0].rot = state.me.rot;
+  G.pieces[1].x = state.opStart.x; G.pieces[1].y = state.opStart.y; G.pieces[1].rot = state.opStart.rot;
+  Engine.setActive(1);
+  const opPose = () => { const p = Engine.getG().pieces[1]; return { x: p.x, y: p.y, rot: p.rot }; };
+  const stops = [opPose()];
   const path = [{ pose: stops[0], label: 'start', stop: true }];
   for (let i = 0; i < state.moves.length; i++) {
     const mv = state.moves[i];
-    if (stepDeg) {
-      const G = Engine.getG();
-      G.pieces[0].x = state.me.x; G.pieces[0].y = state.me.y; G.pieces[0].rot = state.me.rot;
-      G.pieces[1].x = stops[i].x; G.pieces[1].y = stops[i].y; G.pieces[1].rot = stops[i].rot;
-      Engine.setActive(1); Engine.pinFoot(mv.pivotIdx);
-      const stepRad = stepDeg*Math.PI/180;
-      let guard = 0;
-      for (let k = 1; guard < 3000; k++) {
-        const next = k*stepRad;
-        if (next >= mv.targetRad - 1e-9 || Engine.getG().atLimit) break;
-        while (!Engine.getG().atLimit && Math.abs(Engine.getG().netRad) < next - 1e-9 && guard++ < 3000)
-          Engine.applySwing(mv.dir*Math.min(3*Math.PI/180, next - Math.abs(Engine.getG().netRad)));
-        const g = Engine.getG();
-        path.push({ pose: { x: g.pieces[1].x, y: g.pieces[1].y, rot: g.pieces[1].rot }, stop: false,
-                    label: `move ${i+1} — ${Math.round(Math.abs(g.netRad)*180/Math.PI)}°` });
-      }
+    Engine.pinFoot(mv.pivotIdx);
+    for (let k = 1; stepDeg; k++) {
+      const at = k*stepDeg*Math.PI/180;
+      if (at >= mv.targetRad - 1e-9) break;
+      swingTo(mv.dir, at);
+      const net = Math.abs(Engine.getG().netRad);
+      if (net < at - 1e-9) break;                 // the engine ended the swing short of this degree
+      path.push({ pose: opPose(), stop: false, label: `move ${i+1} — ${Math.round(net*180/Math.PI)}°` });
     }
+    swingTo(mv.dir, mv.targetRad);
+    stops.push(opPose());
     path.push({ pose: stops[i+1], label: `after move ${i+1}`, stop: true });
   }
   state.op = { ...stops[stops.length - 1] };
@@ -2405,27 +2419,31 @@ function animateSwing(mv, fromPose, toPose, onFrame) {
     G.pieces[0].x = state.me.x; G.pieces[0].y = state.me.y; G.pieces[0].rot = state.me.rot;
     G.pieces[1].x = fromPose.x; G.pieces[1].y = fromPose.y; G.pieces[1].rot = fromPose.rot;
     Engine.setActive(1); Engine.pinFoot(mv.pivotIdx);
-    // A move's PHYSICAL step size stays whatever the engine needs for accuracy, but the ANIMATION
-    // step is 1deg a frame, so every swing turns at the same steady speed and each captured frame
-    // is one degree on from the last. (It used to be a flat 25 frames per swing, which crammed a
-    // 68deg turn into 2.7deg jumps next to a 38deg turn's 1.5deg ones -- the big turn read as
-    // skipping degrees.) A small swing still gets a floor of ~25 frames (~400ms at 60fps) instead
-    // of finishing in 2-3 frames and reading as a jump cut.
+    // The swing plays about 1deg a frame, so every swing turns at the same steady speed and each
+    // captured frame is one degree on from the last. (It used to be a flat 25 frames per swing,
+    // which crammed a 68deg turn into 2.7deg jumps next to a 38deg turn's 1.5deg ones -- the big
+    // turn read as skipping degrees.) A small swing still takes ~25 frames (~400ms at 60fps) rather
+    // than reading as a jump cut. Each frame's angle is snapped onto the swing grid, so the tween
+    // walks the very path its stop was replayed along; a tiny swing whose next grid angle hasn't
+    // come up yet just holds still for that frame instead of drawing (and capturing) a repeat.
     const MIN_FRAMES = 25;
-    const stepRad = Math.min(Math.PI/180, Math.max(mv.targetRad/MIN_FRAMES, 0.05*Math.PI/180));
+    const frames = Math.max(MIN_FRAMES, Math.ceil(mv.targetRad*180/Math.PI - 1e-9));
+    let k = 0;
     function step() {
       if (mode !== 'running') { resolve(); return; }
       if (globalPaused) { requestAnimationFrame(step); return; }
-      const g2 = Engine.getG();
-      if (g2.atLimit || Math.abs(g2.netRad) >= mv.targetRad - 1e-6) {
-        state.op = { x: g2.pieces[1].x, y: g2.pieces[1].y, rot: g2.pieces[1].rot };
-        resolve(); return;
+      k++;
+      const at = k >= frames ? mv.targetRad
+        : Math.floor(k*mv.targetRad/frames/SWING_GRID_RAD + 1e-6)*SWING_GRID_RAD;
+      const before = Engine.getG().netRad;
+      swingTo(mv.dir, at);
+      const g = Engine.getG();
+      state.op = { x: g.pieces[1].x, y: g.pieces[1].y, rot: g.pieces[1].rot };
+      if (g.netRad !== before) {
+        drawStaticBackground(panels[0].ctx); drawBoardLines(panels[0].ctx); drawStagePieces(panels[0].ctx);
+        if (onFrame) onFrame();
       }
-      Engine.applySwing(mv.dir*Math.min(stepRad, mv.targetRad - Math.abs(g2.netRad)));
-      const g3 = Engine.getG();
-      state.op = { x: g3.pieces[1].x, y: g3.pieces[1].y, rot: g3.pieces[1].rot };
-      drawStaticBackground(panels[0].ctx); drawBoardLines(panels[0].ctx); drawStagePieces(panels[0].ctx);
-      if (onFrame) onFrame();
+      if (k >= frames || g.atLimit) { resolve(); return; }
       requestAnimationFrame(step);
     }
     step();

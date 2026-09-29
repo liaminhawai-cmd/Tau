@@ -1,1 +1,5 @@
 .venv/
+# Danger-map "Save frames" zips (every frame as a full-size PNG) run past 100 MB -- GitHub's per-file
+# limit -- and one committed here blocks every push the trainer makes until it's cut back out of
+# history. The GIF of the same animation is the copy to share.
+*.zip
