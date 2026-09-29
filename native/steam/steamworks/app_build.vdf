@@ -1,18 +1,26 @@
-// SteamPipe app build script for Tau.
-// Fill in the real app/depot ids from partner.steamgames.com, then upload with:
-//   steamcmd +login <builder_account> +run_app_build ../steamworks/app_build.vdf +quit
-// (run from the SteamPipe "builder" directory, or adjust the relative paths)
+// SteamPipe app build script for Tau (App ID 5353480).
+//
+// The three depot ids below are Steam's usual numbering (app id + 1, +2, +3). CHECK them against
+// partner.steamgames.com > Tau > SteamPipe > Depots and change any that differ; a depot has to
+// exist there (and be in Tau's package) before a build can upload into it.
+//
+// Upload from a folder laid out like ../dist/ (see native/README.md > Shipping):
+//   dist/win-unpacked/   dist/linux-unpacked/   dist/mac/Tau.app/
+//   steamcmd +login <builder_account> +run_app_build <this file> +quit
+// SetLive is left empty on purpose: a build is put on a branch by hand on the Builds page, so an
+// upload can never change what players get by itself.
 "AppBuild"
 {
-	"AppID" "YOUR_APP_ID"
+	"AppID" "5353480"
 	"Desc" "Tau desktop build"
 	"BuildOutput" "./steampipe_output/"
 	"ContentRoot" "../dist/"
+	"SetLive" ""
 
 	"Depots"
 	{
-		// Windows depot — contents of dist/win-unpacked
-		"YOUR_WIN_DEPOT_ID"
+		// Windows -- launch option: Tau.exe
+		"5353481"
 		{
 			"FileMapping"
 			{
@@ -22,12 +30,23 @@
 			}
 		}
 
-		// Linux depot — contents of dist/linux-unpacked
-		"YOUR_LINUX_DEPOT_ID"
+		// Linux -- launch option: Tau
+		"5353482"
 		{
 			"FileMapping"
 			{
 				"LocalPath" "./linux-unpacked/*"
+				"DepotPath" "."
+				"Recursive" "1"
+			}
+		}
+
+		// macOS -- launch option: Tau.app
+		"5353483"
+		{
+			"FileMapping"
+			{
+				"LocalPath" "./mac/*"
 				"DepotPath" "."
 				"Recursive" "1"
 			}

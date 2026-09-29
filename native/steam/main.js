@@ -13,7 +13,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 // One place to change the app id: steam_appid.txt (also what the Steam API itself reads in dev).
-// 480 is Valve's public test app (Spacewar) — replace with the real id from partner.steamgames.com.
+// 5353480 is Tau on Steamworks; 480 is Valve's public test app (Spacewar), kept as the fallback.
 let STEAM_APP_ID = 480;
 try {
   STEAM_APP_ID = parseInt(fs.readFileSync(path.join(__dirname, 'steam_appid.txt'), 'utf8'), 10) || 480;
@@ -40,10 +40,15 @@ try {
   // Module not installed on this platform — non-Steam build.
 }
 if (steamworks) {
-  // A packaged Steam build launched from outside Steam should bounce through the client (so
-  // overlay/DRM/ownership work). Never do this on the shared test app id or in dev, where it
-  // would launch Valve's Spacewar instead of us.
-  if (app.isPackaged && STEAM_APP_ID !== 480) {
+  // A packaged Steam build launched from outside Steam CAN bounce through the client (so
+  // overlay/ownership work) -- but it is opt-in: TAU_STEAM_RESTART=1, or a `steam_restart` file next
+  // to steam_appid.txt. The CI builds carry the real app id and are run straight from a download for
+  // testing; a bounce there would throw the tester into the Steam client instead of the game (or
+  // nothing at all, on a machine that does not own the app yet). It is no DRM either way -- it is
+  // trivially bypassed -- so nothing is lost by leaving it off. Never on the test id or in dev.
+  const restartWanted = process.env.TAU_STEAM_RESTART === '1'
+    || fs.existsSync(path.join(__dirname, 'steam_restart'));
+  if (app.isPackaged && STEAM_APP_ID !== 480 && restartWanted) {
     try {
       if (steamworks.restartAppIfNecessary(STEAM_APP_ID)) app.quit();
     } catch {}

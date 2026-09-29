@@ -628,8 +628,10 @@ pages use through `window.tauSteam` (see `steam/preload.js`):
   through Steam when started from outside it (`restartAppIfNecessary`);
   disabled on test id 480 and in dev so it never bounces you into Spacewar.
 
-`steam_appid.txt` holds 480 (Valve's test app) — replace it with the real
-app id; `main.js` reads it, so it's the only place to change. Steam Cloud
+`steam_appid.txt` holds Tau's real app id, 5353480 (480 is Valve's test app, `main.js`'s
+fallback); `main.js` reads it, so it's the only place to change. The bounce-through-Steam
+relaunch described above is opt-in (`TAU_STEAM_RESTART=1`, or an empty `steam_restart` file
+beside `steam_appid.txt`) so the CI builds still run straight from a download. Steam Cloud
 needs no code: configure Auto-Cloud on the partner site if wanted (game
 progress currently lives in localStorage/Supabase).
 
@@ -637,7 +639,9 @@ progress currently lives in localStorage/Supabase).
 [partner.steamgames.com](https://partner.steamgames.com), fill the ids into
 `steam/steamworks/app_build.vdf`, then upload with
 `steamcmd +login <builder> +run_app_build .../app_build.vdf +quit`.
-Launch options: `Tau.exe` (Windows) / `Tau` (Linux) / `Tau.app` (macOS).
+Launch options: `Tau.exe` (Windows) / `Tau` (Linux) / `Tau.app` (macOS). The Linux and macOS
+depots must be uploaded from a machine that keeps the executable bit (Linux/macOS, or CI) -- a
+Windows checkout of those files loses it.
 The backlog's premium skins (`docs/handover/05`) slot into this build later.
 
 The Controls sheet was redrawn at a readable size: it takes a wider box than the
