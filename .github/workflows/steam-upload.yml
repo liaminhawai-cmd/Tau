@@ -1,0 +1,91 @@
+name: Steam upload
+
+# Manual only. Takes a finished "Native builds" run, lays its Windows / Linux / macOS output out as
+# Steam depots and uploads them with SteamPipe. It does NOT put anything live: the build lands on
+# the Builds page of Steamworks, where you choose which branch (if any) it goes on.
+#
+# One-time setup (Settings > Secrets and variables > Actions):
+#   STEAM_USERNAME    a dedicated Steamworks "builder" account (Users & Permissions > Add builder
+#                     account; give it the "Edit App Metadata" and "Publish App Changes To Steam"
+#                     permissions on Tau only)
+#   STEAM_CONFIG_VDF  that account's Steam Guard login, as base64 of its config.vdf -- see
+#                     https://github.com/game-ci/steam-deploy#configuration for the steps
+#
+# Depot ids are the app's own numbering (5353480 + 1, 2, 3): 5353481 Windows, 5353482 Linux,
+# 5353483 macOS. They must exist in Steamworks (SteamPipe > Depots) and be in Tau's package.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Native builds run to upload (blank = the latest successful run on main)"
+        required: false
+        default: ""
+      description:
+        description: "Build description shown in Steamworks"
+        required: false
+        default: "Tau desktop build"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pick the build
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id="${{ inputs.run_id }}"
+          if [ -z "$id" ]; then
+            id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow native-builds.yml --branch main \
+                   --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          fi
+          [ -n "$id" ] || { echo "no successful Native builds run found"; exit 1; }
+          echo "Uploading the output of run $id"
+          echo "run_id=$id" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tau-steam-windows
+          path: stage/win
+          run-id: ${{ steps.pick.outputs.run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: tau-depot-linux
+          path: dl/linux
+          run-id: ${{ steps.pick.outputs.run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: tau-depot-macos
+          path: dl/macos
+          run-id: ${{ steps.pick.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Lay out the depots
+        run: |
+          mkdir -p stage/linux stage/mac
+          tar -xzf dl/linux/tau-depot-linux.tgz -C stage/linux --strip-components=1   # linux-unpacked/* -> stage/linux/
+          tar -xzf dl/macos/tau-depot-macos.tgz -C stage/mac                          # Tau.app -> stage/mac/Tau.app
+          # Fail here, loudly, rather than ship a build Steam cannot launch.
+          test -f stage/win/Tau.exe                     || { echo "Windows depot has no Tau.exe"; exit 1; }
+          test -x stage/linux/Tau                       || { echo "Linux depot has no executable Tau"; exit 1; }
+          test -x stage/mac/Tau.app/Contents/MacOS/Tau  || { echo "macOS depot has no executable Tau.app"; exit 1; }
+          du -sh stage/win stage/linux stage/mac
+
+      - name: Upload to Steam
+        uses: game-ci/steam-deploy@v3
+        with:
+          username: ${{ secrets.STEAM_USERNAME }}
+          configVdf: ${{ secrets.STEAM_CONFIG_VDF }}
+          appId: 5353480
+          buildDescription: ${{ inputs.description }} (run ${{ steps.pick.outputs.run_id }})
+          rootPath: stage
+          depot1Path: win
+          depot2Path: linux
+          depot3Path: mac

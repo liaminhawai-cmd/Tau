@@ -139,3 +139,22 @@ jobs:
         with:
           name: tau-steam-${{ matrix.label }}
           path: ${{ matrix.out }}
+      # The zip above is what people download to try a build, but a zip drops the executable bit and
+      # (on macOS) the framework symlinks -- fatal for a Steam depot. A tar keeps both; the manual
+      # "Steam upload" workflow unpacks these. Windows needs neither.
+      - name: Depot archive (keeps executable bits and symlinks)
+        if: matrix.label != 'windows'
+        shell: bash
+        run: |
+          if [ "${{ matrix.label }}" = linux ]; then
+            tar -czf "$GITHUB_WORKSPACE/tau-depot-linux.tgz" -C native/steam/dist linux-unpacked
+          else
+            cd native/steam/dist/mac*/ && tar -czf "$GITHUB_WORKSPACE/tau-depot-macos.tgz" Tau.app
+          fi
+      - name: Upload depot archive
+        if: matrix.label != 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tau-depot-${{ matrix.label }}
+          path: tau-depot-${{ matrix.label }}.tgz
+          retention-days: 14
