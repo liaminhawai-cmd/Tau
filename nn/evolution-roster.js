@@ -40,7 +40,18 @@ const CULL_EVERY_GAMES=100;
 // they are ordinary faces, and the population retires or the cull takes them on real evidence.
 const PROTECT_GAMES=15;
 const POPULATION_FILES=['.mutant-pop.json','.dual-pop.json'];
-function protectedModels(dir){const out=new Set();for(const f of POPULATION_FILES){try{const p=JSON.parse(fs.readFileSync(path.join(dir,'models',f),'utf8'));for(const m of (p&&p.active)||[])if(m&&m.file)out.add(path.basename(String(m.file),'.json'));}catch(_){}}return out;}
+function populationNames(dir,f){const out=new Set();try{const p=JSON.parse(fs.readFileSync(path.join(dir,'models',f),'utf8'));for(const m of (p&&p.active)||[])if(m&&m.file)out.add(path.basename(String(m.file),'.json'));}catch(_){}return out;}
+function protectedModels(dir){const out=new Set();for(const f of POPULATION_FILES)for(const n of populationNames(dir,f))out.add(n);return out;}
+// Mint members (.mutant-pop.json) are judged on their BEST face (run.js retires one whose best case
+// is below the population median), so their other faces are free to go: a member keeps a seat, not
+// every seat. dual-050 held dual-050@D1 at -210 on 440 games only because every face of a member
+// was cull-immune, while its D2 face sat at the population median. So once a mint member's face has
+// PROTECT_GAMES games it is an ordinary face -- except the member's own best seated face, the one
+// run.js judges it on, which is never culled (so a member always keeps a seat, and the cull cannot
+// swap a member's strong face out for a weak one and hand run.js a worse reading). Dual-population trunks (.dual-pop.json) stay fully protected: their retirement and the
+// bare-vs-+policy fusion ablation both read EVERY face of the trunk, and a culled face drops out of
+// the summary those readings come from.
+function mintMembers(dir){return populationNames(dir,'.mutant-pop.json');}
 const ELO_TEMP=400;
 const D3_SHARE=.04;
 const ALIASES=new Set(['best.json','value.json','scratch.json','wide.json','ultra.json','deep.json','l15_value.json','policy-joint-base.json']);
@@ -117,8 +128,12 @@ function reconcile(s,entries,protect=new Set()){ensurePools(s);const available={
   // is retired as confidently weak" for weeks with not one member in the rated field. Reinstate
   // their retired faces and give each member its D1 seat, ceiling or not -- these six-and-six are
   // the whole point of the league, and the elastic cull drains the rest toward TARGET_FACES anyway.
-  for(const e of entries){if(!protect.has(e.name))continue;let seated=false;for(let d=1;d<=4;d++){const p=s.facePools[depthKey(d)];for(const id of candidateFaces(e,d)){if(elasticRetired(p,id))delete p.retired[id];if((p.active||[]).includes(id))seated=true;}}
-    if(!seated)for(let d=1;d<=4;d++){const ids=candidateFaces(e,d);if(!ids.length)continue;for(const id of ids){s.facePools[depthKey(d)].active.push(id);live.add(id);}break;}}
+  // Only a member with NO seat is repaired: a seated mint member may have lost a weak face to the
+  // cull on purpose (see mintMembers), and clearing that marker would forget the verdict.
+  for(const e of entries){if(!protect.has(e.name))continue;let seated=false;for(let d=1;d<=4&&!seated;d++)for(const id of candidateFaces(e,d))if((s.facePools[depthKey(d)].active||[]).includes(id)){seated=true;break;}
+    if(seated)continue;
+    for(let d=1;d<=4;d++){const p=s.facePools[depthKey(d)];for(const id of candidateFaces(e,d))if(elasticRetired(p,id))delete p.retired[id];}
+    for(let d=1;d<=4;d++){const ids=candidateFaces(e,d);if(!ids.length)continue;for(const id of ids){s.facePools[depthKey(d)].active.push(id);live.add(id);}break;}}
   for(const e of entries){let known=false;for(let d=1;d<=4&&!known;d++)for(const id of candidateFaces(e,d))if(live.has(id)||elasticRetired(s.facePools[depthKey(d)],id)){known=true;break;}if(!known)pending.push(e);}
   pending.sort((a,b)=>rank(b.name)-rank(a.name)||modelSerial(b.name)-modelSerial(a.name)||a.name.localeCompare(b.name));
   let admitted=0;for(const e of pending){if(live.size>=ADMIT_CEILING)break;for(let d=1;d<=4;d++){const ids=candidateFaces(e,d);if(!ids.length)continue;for(const id of ids){s.facePools[depthKey(d)].active.push(id);live.add(id);}admitted++;break;}}
@@ -262,7 +277,13 @@ function cullKey(r){const matches=Math.max(1,(+r.games||0)/2),hi=+r.eloHi;
 // `skip` holds the faces this pass has just put back. Without it the cull could retire a face in the
 // same call that reinstated it -- and the one-shot marker meant it then never came back. A
 // reinstated face gets a checkpoint to actually play before it is judged again.
-function eligibleByDepth(s,population,protect=new Set(),skip=null){const pop=Number.isFinite(population)?population:activeFaceSet(s).size;const out={D1:[],D2:[],D3:[],D4:[]};for(let d=1;d<=4;d++){const k=depthKey(d),need=cullMinGames(k,pop);for(const id of s.facePools[k].active||[]){if(skip&&skip.has(id))continue;const r=faceReading(s,id);if(!r||(+r.games||0)<need||!Number.isFinite(+r.eloHi))continue;const x=splitFaceId(id);if(x&&protect.has(x.name))continue;/* population members leave through run.js's own retirement, never the elastic cull (a cull would be undone by the next sync anyway) */out[k].push({id,r,depth:d,key:k});}out[k].sort((a,b)=>cullKey(a.r)-cullKey(b.r)||+a.r.elo-+b.r.elo);}return out;}
+// Each model's best SEATED face, picked the way run.js picks a member's reading (highest eloLo, then
+// Elo). Recomputed after every single cull, so it always names a face that is still seated.
+function bestSeatByModel(s){const best=new Map(),lo=r=>Number.isFinite(+r.eloLo)?+r.eloLo:-Infinity;for(const id of activeFaceSet(s)){const x=splitFaceId(id),r=faceReading(s,id);if(!x||!r)continue;const b=best.get(x.name);if(!b||lo(r)>lo(b.r)||(lo(r)===lo(b.r)&&+r.elo>+b.r.elo))best.set(x.name,{id,r});}return new Map([...best].map(([n,b])=>[n,b.id]));}
+function eligibleByDepth(s,population,protect=new Set(),skip=null,mint=new Set()){const pop=Number.isFinite(population)?population:activeFaceSet(s).size,bestSeat=bestSeatByModel(s);const out={D1:[],D2:[],D3:[],D4:[]};for(let d=1;d<=4;d++){const k=depthKey(d),need=cullMinGames(k,pop);for(const id of s.facePools[k].active||[]){if(skip&&skip.has(id))continue;const r=faceReading(s,id);if(!r||(+r.games||0)<need||!Number.isFinite(+r.eloHi))continue;const x=splitFaceId(id);
+      /* population members leave through run.js's own retirement; a mint member's spare faces are ordinary once measured (see mintMembers) */
+      if(x&&protect.has(x.name)&&!(mint.has(x.name)&&(+r.games||0)>=PROTECT_GAMES&&bestSeat.has(x.name)&&bestSeat.get(x.name)!==id))continue;
+      out[k].push({id,r,depth:d,key:k});}out[k].sort((a,b)=>cullKey(a.r)-cullKey(b.r)||+a.r.elo-+b.r.elo);}return out;}
 // Cull pressure follows MEASURED compute, not assumed depth cost. The rating store keeps an
 // EWMA of ms-per-game for every face it has actually run (elorank-legacy.js), so the old 1:3:9:27
 // becomes an emergent default rather than a constant -- and a policy face that genuinely saves
@@ -370,8 +391,8 @@ function cull(dir){const s=sync(dir),recs=faceRecords(dir);
   if(reinstated.length){const known=new Set();for(let d=1;d<=4;d++){const q=s.facePools[depthKey(d)];for(const id of q.active||[])known.add(id);for(const id of Object.keys(q.retired||{}))known.add(id);}
     s.reinstatedOnce=[...once].filter(id=>known.has(id));saveState(dir,s);}
   if(s.gamesSinceCull<CULL_EVERY_GAMES)return{culled:[],birth:null,admitted:[],reinstated,state:s};
-  const mc=measuredCosts(dir),protect=protectedModels(dir),justBack=new Set(reinstated);
-  const checkpoints=Math.floor(s.gamesSinceCull/CULL_EVERY_GAMES),culled=[],admitted=[];for(let q=0;q<checkpoints;q++){const population=activeFaceSet(s).size,e0=eligibleByDepth(s,population,protect,justBack),seen=e0.D1.length+e0.D2.length+e0.D3.length+e0.D4.length,want=Math.min(stochasticCount(expectedCulls(population)),Math.floor(seen/2));for(let i=0;i<want;i++){const e=eligibleByDepth(s,population,protect,justBack),k=chooseDepth(e,mc);if(!k)break;const v=e[k][0],p=s.facePools[k],now=new Date().toISOString();p.active=p.active.filter(id=>id!==v.id);p.retired[v.id]={at:now,reason:'elastic cull',eloHi:v.r.eloHi,elo:v.r.elo,games:+v.r.games||0,population};culled.push({type:'face',name:v.id,face:v.id,depth:v.depth,replacedBy:null,result:'elastic-cull'});}admitted.push(...admitFrontier(s,stableModelEntries(dir),mc));s.gamesSinceCull=Math.max(0,s.gamesSinceCull-CULL_EVERY_GAMES);}if(culled.length||admitted.length||reinstated.length)s.lastEvent={at:new Date().toISOString(),culled:culled.map(x=>x.face),admitted,reinstated,result:'elastic-checkpoint'};saveState(dir,s);return{culled,birth:null,admitted,reinstated,state:s};}
+  const mc=measuredCosts(dir),protect=protectedModels(dir),mint=mintMembers(dir),justBack=new Set(reinstated);
+  const checkpoints=Math.floor(s.gamesSinceCull/CULL_EVERY_GAMES),culled=[],admitted=[];for(let q=0;q<checkpoints;q++){const population=activeFaceSet(s).size,e0=eligibleByDepth(s,population,protect,justBack,mint),seen=e0.D1.length+e0.D2.length+e0.D3.length+e0.D4.length,want=Math.min(stochasticCount(expectedCulls(population)),Math.floor(seen/2));for(let i=0;i<want;i++){const e=eligibleByDepth(s,population,protect,justBack,mint),k=chooseDepth(e,mc);if(!k)break;const v=e[k][0],p=s.facePools[k],now=new Date().toISOString();p.active=p.active.filter(id=>id!==v.id);p.retired[v.id]={at:now,reason:'elastic cull',eloHi:v.r.eloHi,elo:v.r.elo,games:+v.r.games||0,population};culled.push({type:'face',name:v.id,face:v.id,depth:v.depth,replacedBy:null,result:'elastic-cull'});}admitted.push(...admitFrontier(s,stableModelEntries(dir),mc));s.gamesSinceCull=Math.max(0,s.gamesSinceCull-CULL_EVERY_GAMES);}if(culled.length||admitted.length||reinstated.length)s.lastEvent={at:new Date().toISOString(),culled:culled.map(x=>x.face),admitted,reinstated,result:'elastic-checkpoint'};saveState(dir,s);return{culled,birth:null,admitted,reinstated,state:s};}
 function noteBirth(dir,birth){if(birth&&birth.outPath&&fs.existsSync(birth.outPath))sync(dir);}
 function status(dir){const s=sync(dir),pop=activeFaceSet(s).size,faces={};for(let d=1;d<=4;d++){const k=depthKey(d),p=s.facePools[k];faces[k]={seats:(p.active||[]).length,trial:p.trial?1:0,waiting:(p.waiting||[]).length,deferred:0,retired:Object.keys(p.retired||{}).length,capacity:null};}return{models:activeModelNames(dir).length,ladders:s.ladderActive.length,gamesSinceCull:s.gamesSinceCull,faces,targetFaces:TARGET_FACES,population:pop,admitCeiling:ADMIT_CEILING,cullMinGames:Object.fromEntries([1,2,3,4].map(d=>[depthKey(d),cullMinGames(depthKey(d),pop)])),heldModels:+(s.queueCompaction&&s.queueCompaction.heldModels)||0};}
 function restoreDepthSpecialists(){return[];}function retireBadD4(){return[];}
