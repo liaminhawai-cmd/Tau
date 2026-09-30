@@ -177,6 +177,7 @@ canvas.board{cursor:crosshair}
         <div class="field">
           <label>Spin step <small id="rotFrames">360 frames</small></label>
           <select id="rotStep">
+            <option value="0.5">0.5° — 720 frames</option>
             <option value="1" selected>1° — 360 frames</option>
             <option value="2">2° — 180 frames</option>
             <option value="5">5° — 72 frames</option>
@@ -285,6 +286,7 @@ canvas.board{cursor:crosshair}
         <div class="field" style="margin-top:10px">
           <label>Animate through moves: map every</label>
           <select id="moveStep">
+            <option value="0.5">0.5° — a full map at every half degree of each swing</option>
             <option value="1" selected>1° — a full map at every degree of each swing</option>
             <option value="2">2°</option>
             <option value="5">5°</option>
@@ -1521,6 +1523,9 @@ function replayMovesTo(n) {
   const g2 = Engine.getG();
   state.op = { x: g2.pieces[1].x, y: g2.pieces[1].y, rot: g2.pieces[1].rot };
 }
+// Degrees as a label: whole numbers stay whole, half-degree steps show their .5 (so 0.5° frames
+// don't all round to the same name).
+function degLabel(deg) { return String(Math.round(deg*10)/10); }
 function moveStepDeg() { return +$('moveStep').value; }
 function moveFrameCount() {
   const step = moveStepDeg();
@@ -1550,7 +1555,7 @@ function movePath(stepDeg) {
       swingTo(mv.dir, at);
       const net = Math.abs(Engine.getG().netRad);
       if (net < at - 1e-9) break;                 // the engine ended the swing short of this degree
-      path.push({ pose: opPose(), stop: false, label: `move ${i+1} — ${Math.round(net*180/Math.PI)}°` });
+      path.push({ pose: opPose(), stop: false, label: `move ${i+1} — ${degLabel(net*180/Math.PI)}°` });
     }
     swingTo(mv.dir, mv.targetRad);
     stops.push(opPose());
@@ -2089,15 +2094,18 @@ async function animateThroughRotations() {
     // Only interpolate the turn when the steps are coarse enough for it to read as motion. At a
     // degree a step the sweeps themselves are the animation, and 20 tween frames between each
     // would be most of the wall clock spent not computing anything.
-    if (stepDeg >= 5) { setPhase(`Turning to ${Math.round(deg)}°…`); await spinMeTo(target); }
+    if (stepDeg >= 5) { setPhase(`Turning to ${degLabel(deg)}°…`); await spinMeTo(target); }
     else { state.me.rot = target; syncPoseInputs(); }
     if (mode !== 'running') break;
-    setPhase(`${Math.round(deg)}° — sweeping frame ${i+1} of ${steps}…`);
+    setPhase(`${degLabel(deg)}° — sweeping frame ${i+1} of ${steps}…`);
     activePanels().forEach(resetPanelSweep);
     await runPanelsToCompletion();
     if (mode !== 'running') break;
     activePanels().forEach(finishPanel);        // capture the same picture a finished run shows
-    frames.push({ label: `${Math.round(deg)}°`, slug: `${String(Math.round(deg)).padStart(3, '0')}deg`,
+    // Whole degrees keep the plain 000deg name; a half degree becomes 000p5deg, which still sorts
+    // between 000deg and 001deg in the zip.
+    const whole = Math.floor(deg + 1e-9), tenth = Math.round((deg - whole)*10);
+    frames.push({ label: `${degLabel(deg)}°`, slug: `${String(whole).padStart(3, '0')}${tenth ? 'p' + tenth : ''}deg`,
                   blob: await canvasToPng(panels[0].canvas) });
   }
   if (mode !== 'running') { state.me.rot = savedRot; syncPoseInputs(); enterSetup(); return; }
