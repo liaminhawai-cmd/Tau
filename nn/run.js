@@ -1979,12 +1979,24 @@ async function runPoolCycle() {
     if (!rated.length) { log(`pool cycle ${num} — nothing rated yet, keeping best.json`); return; }
     // One face per model. Use the same conservative 90% lower bound as the global medals:
     // the model's strongest supported depth is its actual playing configuration for the gate.
-    const byModel = {};
-    for (const r of rated) {
-      const k = path.basename(r.model, '.json');
-      if (!byModel[k] || (r.eloLo ?? -Infinity) > (byModel[k].eloLo ?? -Infinity) ||
-          (r.eloLo === byModel[k].eloLo && r.elo > byModel[k].elo)) byModel[k] = r;
-    }
+    const bestFace = rows => {
+      const out = {};
+      for (const r of rows) {
+        const k = path.basename(r.model, '.json');
+        if (!out[k] || (r.eloLo ?? -Infinity) > (out[k].eloLo ?? -Infinity) ||
+            (r.eloLo === out[k].eloLo && r.elo > out[k].elo)) out[k] = r;
+      }
+      return out;
+    };
+    const byModel = bestFace(rated);
+    // The mint population is judged on the SAME one-face-per-model reading, but duals included: a
+    // mint can be a dual net (mint-plan.js's 'dual' mode), and byModel leaves every dual out because
+    // it exists to feed the best.json gate. Reading members from byModel made each dual member
+    // unratable, and an unrated member is never retired -- so once five of the six slots held dual
+    // mints, the population sat at 6/6 with "training none" cycle after cycle, and since members
+    // are also exempt from the elastic cull, their weakest faces (dual-050@D1 at -210 on 440 games)
+    // kept a league seat and kept losing.
+    const memberRating = bestFace(allRated);
     // The variant lineage's champion marker, updated with THIS cycle's own placement results (if a
     // lineage step ran this cycle and its checkpoint got enough games to be in byModel already).
     // Same clear-margin bar as the promotion gate just below, for the same reason: a coinflip-close
@@ -2119,7 +2131,7 @@ async function runPoolCycle() {
     // of several rated identities instead of the single mutant that happened to be trained today.
     if (mutantPop && mutantPop.active.length) {
       const rated = mutantPop.active
-        .map(m => ({ m, r: byModel[path.basename(m.file, '.json')] }))
+        .map(m => ({ m, r: memberRating[path.basename(m.file, '.json')] }))
         .filter(x => x.r);
       // The control is the best rated SCRATCH still standing at the champion shape -- a fresh net at
       // the shape being defended. Both sides of this comparison are now standing members with games
