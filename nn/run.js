@@ -1010,11 +1010,15 @@ function scheduleDualRetirement(pop, ratings, num) {
   const mid = Math.floor(rankValues.length/2);
   const median = rankValues.length % 2 ? rankValues[mid] : (rankValues[mid - 1] + rankValues[mid])/2;
   const bottomN = Math.max(1, Math.ceil(measured.length*dualBottomFrac));
-  const bottomCutoff = rankValues[bottomN - 1];
+  // The quartile line is the rank of the first entrant ABOVE the bottom quartile. It used to be the
+  // worst-in-quartile's own rank, and with four entrants that made the test "optimistic end at or
+  // below its own midpoint": unreachable. Nothing was ever confidently weak, every last-of-family
+  // loser was re-bred from itself, and the fourth seat random-walked for 77 replacements.
+  const bottomCutoff = rankValues[Math.min(bottomN, rankValues.length - 1)];
   const bottom = measured.slice().sort((a, b) => a.r.rank - b.r.rank).slice(0, bottomN);
-  // "CI in the bottom 25%" means even the OPTIMISTIC endpoint does not clear the quartile cutoff.
+  // "CI in the bottom 25%" means even the OPTIMISTIC endpoint does not reach the quartile line.
   // Merely overlapping the bottom quartile would punish wide intervals for being under-measured.
-  const confident = bottom.filter(x => x.r.rankHi <= bottomCutoff);
+  const confident = bottom.filter(x => x.r.rankHi < bottomCutoff);
   if (!confident.length && Math.random() >= dualRetireChance) {
     log(`pool cycle ${num} — dual population: no retirement this cycle (exploration draw)`);
     return null;
@@ -1029,7 +1033,7 @@ function scheduleDualRetirement(pop, ratings, num) {
   const familyConfidentlyWeak = family.every(m => {
     const r = ratings[m.file];
     return r && r.rankedIdentities >= 2 && r.games >= dualRetireGames &&
-           Number.isFinite(r.rankHi) && r.rankHi <= bottomCutoff;
+           Number.isFinite(r.rankHi) && r.rankHi < bottomCutoff;
   });
   const preserveFamily = family.length === 1 && !familyConfidentlyWeak;
   const survivors = pop.active.filter(m => m.file !== victim.file);
