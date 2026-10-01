@@ -1,5 +1,10 @@
 # Crossing and stopping certificate for the shared reply
 
+2 October extension: [the completed adaptive cover](ARM1-EXPANDED-COVER.md)
+reuses this crossing result on 8°–8.1°, with final-throw and ko bounds checked
+in each of its 32 cells. The local-family numbers in this original packet
+continue to refer to 8°–8.01°.
+
 2 October 2026 (Australia/Sydney). **The prescribed reply passes the crossing
 and stopping rules in the specified real-arithmetic model.** It spends one
 crossing, never needs the corner exception, remains on the board through

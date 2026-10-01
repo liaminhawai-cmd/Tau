@@ -1,5 +1,11 @@
 # Brief 6: single-reply proof attempt
 
+2 October extension: [the continuous cover now reaches 8.1°](ARM1-EXPANDED-COVER.md).
+Thirty-two adjoining cells cover every defender angle from 8° to 8.1° in the
+specified real model, with the shared reply legal and a lower throw margin
+above 3.252u. The interval is nominally ten times wider than the first local
+result. Whole-arm coverage and floating-engine correspondence remain open.
+
 2 October continuation: [crossing and stopping](ARM1-CROSSING.md) certifies the
 shared 123-substep attacker path against the pinned crossing function. Combined
 with the local contact enclosure, it gives a legal winning reply for the

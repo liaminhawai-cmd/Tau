@@ -1,0 +1,2465 @@
+{
+  "scope": "Continuous real contact-model cover for the prescribed shared attacker path. Rule and ko composition is checked separately; no floating-engine correspondence.",
+  "domainDeg": [
+    8.0,
+    8.1
+  ],
+  "sourceHashes": {
+    "reply_jet.py": "50d0fef1c70e399135d141946e1f77cf91ebf0383fb098f3142d5d4e00bb7955",
+    "reply_zonotope.py": "4373def79b28e1737e85f87a009695400c8c8f874b11868fc3dc55aa5aacca60",
+    "free_motion.py": "e09d7a3588b27e8bb9b9290f7869c49be6e3918d72baa87e460f76471796bb28",
+    "interval_core.py": "d4bd8c71cc6dfc6a6892557d1274e9234bb1719da0a8c207a11e3b49e6e1d821",
+    "arm1_prefix.py": "93f8e626a3fe66d24bbdccae2b821172965461baa2fb6f0b18d21a493306358b"
+  },
+  "seedArtifact": "arm1-local-reply-cover.json",
+  "seedArtifactSha256": "9f5289c247657d8fa66f84d67d196bc1b0e0951cb038466805737ea593eff7e4",
+  "seedLeaves": 1,
+  "leaves": [
+    {
+      "defenderDomainDeg": [
+        8.0,
+        8.01
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.94105611199685,
+          31.946908681407397
+        ],
+        [
+          70.4287474851884,
+          70.4335896712271
+        ],
+        [
+          68.40971291407872,
+          68.41475956918501
+        ]
+      ],
+      "finalMarginLower": 3.2617474851883794,
+      "lastBox": [
+        [
+          -30.30572554958434,
+          -30.304528737753873
+        ],
+        [
+          -45.84770898233579,
+          -45.84702529698255
+        ],
+        [
+          1.0504713213293788,
+          1.0506137173317265
+        ]
+      ],
+      "counts": {
+        "contactMaps": 214,
+        "closestUnions": 20,
+        "clampSwitches": 1,
+        "positiveSwitches": 136
+      },
+      "propagationSha256": "fe1d92496049a5c3eb683e7580052ac692e1c9c63cc4047816dc0354458dfe1d"
+    },
+    {
+      "defenderDomainDeg": [
+        8.01,
+        8.02
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.940735238280006,
+          31.946914224658684
+        ],
+        [
+          70.42728724802697,
+          70.43238785730534
+        ],
+        [
+          68.4111516098482,
+          68.41648001393972
+        ]
+      ],
+      "finalMarginLower": 3.260287248026955,
+      "lastBox": [
+        [
+          -30.30667772333408,
+          -30.305413788397207
+        ],
+        [
+          -45.847208055438585,
+          -45.84648551804375
+        ],
+        [
+          1.0503573437705978,
+          1.0505076587497202
+        ]
+      ],
+      "counts": {
+        "contactMaps": 223,
+        "positiveSwitches": 144,
+        "closestUnions": 20,
+        "segmentBranches": 1
+      },
+      "propagationSha256": "8dbfcb217da446331e301a8cd1c4efe1866796b77c0f1771809419ee4fe04d26"
+    },
+    {
+      "defenderDomainDeg": [
+        8.02,
+        8.03
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.940571701980776,
+          31.946763482624224
+        ],
+        [
+          70.42598989579136,
+          70.43109474921066
+        ],
+        [
+          68.41272215445218,
+          68.41806185222276
+        ]
+      ],
+      "finalMarginLower": 3.2589898957913443,
+      "lastBox": [
+        [
+          -30.307595740190738,
+          -30.30632925880283
+        ],
+        [
+          -45.84668944845535,
+          -45.845965218088054
+        ],
+        [
+          1.0502473905478587,
+          1.0503980150721226
+        ]
+      ],
+      "counts": {
+        "contactMaps": 223,
+        "positiveSwitches": 143,
+        "closestUnions": 20
+      },
+      "propagationSha256": "77e2b712db2f6682d35d9ed514d3b5dff022859633626d109f4e6244a63cd352"
+    },
+    {
+      "defenderDomainDeg": [
+        8.03,
+        8.04
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.9403605864486,
+          31.946660876233608
+        ],
+        [
+          70.42464389404216,
+          70.42983084737807
+        ],
+        [
+          68.41425053375852,
+          68.41968408080582
+        ]
+      ],
+      "finalMarginLower": 3.2576438940421464,
+      "lastBox": [
+        [
+          -30.308523190003495,
+          -30.30723445313723
+        ],
+        [
+          -45.84617660277456,
+          -45.84543931704212
+        ],
+        [
+          1.050136322712744,
+          1.0502895786518642
+        ]
+      ],
+      "counts": {
+        "contactMaps": 223,
+        "positiveSwitches": 143,
+        "closestUnions": 20
+      },
+      "propagationSha256": "79f03a2922ba4fbcb845a9d69a228cb42bf9da36ab5fd150a3e8127255630cc1"
+    },
+    {
+      "defenderDomainDeg": [
+        8.04,
+        8.05
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.940136084730547,
+          31.946572191417868
+        ],
+        [
+          70.4232841755871,
+          70.4285755654488
+        ],
+        [
+          68.41576633686998,
+          68.42131731410953
+        ]
+      ],
+      "finalMarginLower": 3.256284175587083,
+      "lastBox": [
+        [
+          -30.30945304696403,
+          -30.308136515860376
+        ],
+        [
+          -45.84566542326893,
+          -45.84491184324852
+        ],
+        [
+          1.0500249620395847,
+          1.0501815135132546
+        ]
+      ],
+      "counts": {
+        "contactMaps": 223,
+        "positiveSwitches": 143,
+        "closestUnions": 20
+      },
+      "propagationSha256": "71b66dbb0931948172c41992d18d2a343785a4ddf511093166be2f56cf114acf"
+    },
+    {
+      "defenderDomainDeg": [
+        8.05,
+        8.055
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.941820034077466,
+          31.944653772968035
+        ],
+        [
+          70.4241607108101,
+          70.42652702983881
+        ],
+        [
+          68.41849983080711,
+          68.4209436921032
+        ]
+      ],
+      "finalMarginLower": 3.257160710810083,
+      "lastBox": [
+        [
+          -30.30977028603627,
+          -30.309192255006465
+        ],
+        [
+          -45.84506392223021,
+          -45.84473469142678
+        ],
+        [
+          1.0499864968977215,
+          1.0500555190007932
+        ]
+      ],
+      "counts": {
+        "contactMaps": 178,
+        "positiveSwitches": 98,
+        "closestUnions": 20
+      },
+      "propagationSha256": "6484d958034856476e5d6406a7ca6f169823e36f3b75b00a7776f265e7e0cfb0"
+    },
+    {
+      "defenderDomainDeg": [
+        8.055,
+        8.06
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.941714507948323,
+          31.944603121172158
+        ],
+        [
+          70.42348777103312,
+          70.42589588262004
+        ],
+        [
+          68.41926273206224,
+          68.42175398252647
+        ]
+      ],
+      "finalMarginLower": 3.256487771033107,
+      "lastBox": [
+        [
+          -30.310233549908038,
+          -30.30964432184926
+        ],
+        [
+          -45.84480754711826,
+          -45.844471858923335
+        ],
+        [
+          1.0499310075392,
+          1.0500013645638677
+        ]
+      ],
+      "counts": {
+        "contactMaps": 178,
+        "positiveSwitches": 98,
+        "closestUnions": 20
+      },
+      "propagationSha256": "f3c37a70d80d9076ab1594accab970561a3ae485277b610cf07db8493f295e4f"
+    },
+    {
+      "defenderDomainDeg": [
+        8.06,
+        8.0625
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.94231478564475,
+          31.94388580560937
+        ],
+        [
+          70.4236786056002,
+          70.42501681045671
+        ],
+        [
+          68.42042068808684,
+          68.42177555227656
+        ]
+      ],
+      "finalMarginLower": 3.2566786056001855,
+      "lastBox": [
+        [
+          -30.310442179492814,
+          -30.310122011243937
+        ],
+        [
+          -45.84453603796076,
+          -45.84435401196233
+        ],
+        [
+          1.0499059376801547,
+          1.0499442216579489
+        ]
+      ],
+      "counts": {
+        "contactMaps": 124,
+        "positiveSwitches": 44,
+        "closestUnions": 20
+      },
+      "propagationSha256": "78c57ffd6237d82e9a7233fcd92492e6e18b1bcd5435d809daebaf5a0d40492f"
+    },
+    {
+      "defenderDomainDeg": [
+        8.0625,
+        8.065000000000001
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.942263654943506,
+          31.943858950299692
+        ],
+        [
+          70.4233438132898,
+          70.42470038842441
+        ],
+        [
+          68.42080334773004,
+          68.4221791651278
+        ]
+      ],
+      "finalMarginLower": 3.256343813289788,
+      "lastBox": [
+        [
+          -30.310673409398092,
+          -30.31034829414483
+        ],
+        [
+          -45.84440766665257,
+          -45.84422280661924
+        ],
+        [
+          1.0498782395084225,
+          1.0499171146441615
+        ]
+      ],
+      "counts": {
+        "contactMaps": 124,
+        "positiveSwitches": 44,
+        "closestUnions": 20
+      },
+      "propagationSha256": "42ab2019b746060b1569312c445d1e85bc31e64804162a1b1aaa2552b0c56eb2"
+    },
+    {
+      "defenderDomainDeg": [
+        8.065000000000001,
+        8.06625
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.94252621242693,
+          31.94353792593648
+        ],
+        [
+          70.4234007686692,
+          70.42428343204527
+        ],
+        [
+          68.42134980552602,
+          68.42222233209094
+        ]
+      ],
+      "finalMarginLower": 3.2564007686691805,
+      "lastBox": [
+        [
+          -30.310785434622446,
+          -30.310579365993135
+        ],
+        [
+          -45.84427645364059,
+          -45.844159345449725
+        ],
+        [
+          1.0498647975081508,
+          1.0498894569095858
+        ]
+      ],
+      "counts": {
+        "contactMaps": 97,
+        "positiveSwitches": 17,
+        "closestUnions": 20
+      },
+      "propagationSha256": "c632e5197d25c5c6ada56f7e9a9a1fc4ee45fd52baf15cc80673c7a8b0f02413"
+    },
+    {
+      "defenderDomainDeg": [
+        8.06625,
+        8.0675
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.942730038268444,
+          31.943296623792314
+        ],
+        [
+          70.42347361323795,
+          70.42399495998605
+        ],
+        [
+          68.42173075826376,
+          68.42221939094837
+        ]
+      ],
+      "finalMarginLower": 3.256473613237929,
+      "lastBox": [
+        [
+          -30.310850067184983,
+          -30.310734698254738
+        ],
+        [
+          -45.844188253126106,
+          -45.844122731481065
+        ],
+        [
+          1.0498570462484733,
+          1.049870858353811
+        ]
+      ],
+      "counts": {
+        "contactMaps": 88,
+        "positiveSwitches": 8,
+        "closestUnions": 19
+      },
+      "propagationSha256": "8f58e1e09fdf974ae8ab10a8149d4d3983775e2d526aa420090172d3880649e7"
+    },
+    {
+      "defenderDomainDeg": [
+        8.0675,
+        8.068750000000001
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.942710592680832,
+          31.943277149662535
+        ],
+        [
+          70.42331262686311,
+          70.42383331316789
+        ],
+        [
+          68.42192708550485,
+          68.42241569648301
+        ]
+      ],
+      "finalMarginLower": 3.256312626863092,
+      "lastBox": [
+        [
+          -30.310964301522073,
+          -30.310848939101934
+        ],
+        [
+          -45.84412342834834,
+          -45.84405790791466
+        ],
+        [
+          1.0498433618949607,
+          1.0498571732871116
+        ]
+      ],
+      "counts": {
+        "contactMaps": 88,
+        "positiveSwitches": 8,
+        "closestUnions": 19
+      },
+      "propagationSha256": "97e24dd7465deced69a5ec3f72d485e8ac39b2911664a8ffd308a0bf389f8d17"
+    },
+    {
+      "defenderDomainDeg": [
+        8.068750000000001,
+        8.07
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.942691151369367,
+          31.943257679804343
+        ],
+        [
+          70.42315164540065,
+          70.4236716745646
+        ],
+        [
+          68.42212339935898,
+          68.42261198862525
+        ]
+      ],
+      "finalMarginLower": 3.2561516454006347,
+      "lastBox": [
+        [
+          -30.311078529543664,
+          -30.31096317363454
+        ],
+        [
+          -45.844058604686055,
+          -45.8439930854647
+        ],
+        [
+          1.049829678233076,
+          1.0498434889119357
+        ]
+      ],
+      "counts": {
+        "contactMaps": 88,
+        "positiveSwitches": 8,
+        "closestUnions": 19
+      },
+      "propagationSha256": "07cf059d960e785358a11ea271cead78ade206502af398bf7785a9b2226d55d0"
+    },
+    {
+      "defenderDomainDeg": [
+        8.07,
+        8.07125
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.942671717006466,
+          31.943238211544287
+        ],
+        [
+          70.42299067158916,
+          70.42351004256685
+        ],
+        [
+          68.42231970212828,
+          68.42280826507377
+        ]
+      ],
+      "finalMarginLower": 3.2559906715891453,
+      "lastBox": [
+        [
+          -30.311192750683237,
+          -30.311077402418956
+        ],
+        [
+          -45.84399378181756,
+          -45.84392826445365
+        ],
+        [
+          1.0498159953272612,
+          1.0498298051638644
+        ]
+      ],
+      "counts": {
+        "contactMaps": 88,
+        "positiveSwitches": 8,
+        "closestUnions": 19
+      },
+      "propagationSha256": "a21ff6b6439fe922a40579421b1a5ac259e47e484879270362a6b77972516532"
+    },
+    {
+      "defenderDomainDeg": [
+        8.07125,
+        8.0725
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.94265228424332,
+          31.943218750230265
+        ],
+        [
+          70.4228296999508,
+          70.42334842039531
+        ],
+        [
+          68.42251598920659,
+          68.42300453043583
+        ]
+      ],
+      "finalMarginLower": 3.25582969995078,
+      "lastBox": [
+        [
+          -30.311306966074458,
+          -30.31119162432162
+        ],
+        [
+          -45.84392896038785,
+          -45.843863444237265
+        ],
+        [
+          1.0498023130486032,
+          1.049816122171812
+        ]
+      ],
+      "counts": {
+        "contactMaps": 88,
+        "positiveSwitches": 8,
+        "closestUnions": 19
+      },
+      "propagationSha256": "a82ea07c7ecc134596047bac60419e09c63428af5ff487f8e14faf64c45040f3"
+    },
+    {
+      "defenderDomainDeg": [
+        8.0725,
+        8.07375
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.94263285575419,
+          31.943199293187018
+        ],
+        [
+          70.42266873322589,
+          70.42318680643938
+        ],
+        [
+          68.4227122628978,
+          68.42320078240816
+        ]
+      ],
+      "finalMarginLower": 3.2556687332258742,
+      "lastBox": [
+        [
+          -30.31142117515018,
+          -30.311305839909544
+        ],
+        [
+          -45.84386414007473,
+          -45.84379862513856
+        ],
+        [
+          1.049788631461577,
+          1.049802439871329
+        ]
+      ],
+      "counts": {
+        "contactMaps": 88,
+        "positiveSwitches": 8,
+        "closestUnions": 19
+      },
+      "propagationSha256": "81cea95ec3a1877c7ec2ce29f09a7be8c5662f3f2aad3c3ccea120a468811a14"
+    },
+    {
+      "defenderDomainDeg": [
+        8.07375,
+        8.075
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.942613431537225,
+          31.943179840415397
+        ],
+        [
+          70.42250777141375,
+          70.42302520070014
+        ],
+        [
+          68.42290852320185,
+          68.42339702099183
+        ]
+      ],
+      "finalMarginLower": 3.255507771413732,
+      "lastBox": [
+        [
+          -30.311535377910808,
+          -30.31142004918234
+        ],
+        [
+          -45.84379932087897,
+          -45.84373380715746
+        ],
+        [
+          1.0497749505661642,
+          1.0497887582624448
+        ]
+      ],
+      "counts": {
+        "contactMaps": 88,
+        "positiveSwitches": 8,
+        "closestUnions": 19
+      },
+      "propagationSha256": "45ade365004674a753620b91da6cb84ce9c3c85ac8d7fc385f3156c46f9cbdbb"
+    },
+    {
+      "defenderDomainDeg": [
+        8.075,
+        8.07625
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.942594011572265,
+          31.943160391934654
+        ],
+        [
+          70.42234681449477,
+          70.42286360318948
+        ],
+        [
+          68.42310477010133,
+          68.42359324620496
+        ]
+      ],
+      "finalMarginLower": 3.255346814494757,
+      "lastBox": [
+        [
+          -30.311649574360384,
+          -30.311534252135974
+        ],
+        [
+          -45.84373450280329,
+          -45.843668990292116
+        ],
+        [
+          1.049761270361891,
+          1.0497750773456451
+        ]
+      ],
+      "counts": {
+        "contactMaps": 88,
+        "positiveSwitches": 8,
+        "closestUnions": 19
+      },
+      "propagationSha256": "7192b1296dbdd2e1273a0452ea70cbb0ff088f1b885de958522198e240c8009f"
+    },
+    {
+      "defenderDomainDeg": [
+        8.07625,
+        8.0775
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.942574595900663,
+          31.94314094770242
+        ],
+        [
+          70.42218586251236,
+          70.42270201388247
+        ],
+        [
+          68.4233010036335,
+          68.42378945801127
+        ]
+      ],
+      "finalMarginLower": 3.255185862512348,
+      "lastBox": [
+        [
+          -30.311763764490227,
+          -30.31164844877907
+        ],
+        [
+          -45.84366968584299,
+          -45.84360417454793
+        ],
+        [
+          1.0497475908497789,
+          1.0497613971199256
+        ]
+      ],
+      "counts": {
+        "contactMaps": 88,
+        "positiveSwitches": 8,
+        "closestUnions": 19
+      },
+      "propagationSha256": "7e4b93710ca1b13eca0657e29fa98bb1b27e7315d9da82ef456a0d2e437a544f"
+    },
+    {
+      "defenderDomainDeg": [
+        8.0775,
+        8.07875
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.942555184500755,
+          31.943121507739402
+        ],
+        [
+          70.42202491544545,
+          70.42254043279199
+        ],
+        [
+          68.4234972237808,
+          68.42398565642917
+        ]
+      ],
+      "finalMarginLower": 3.2550249154454316,
+      "lastBox": [
+        [
+          -30.31187794830473,
+          -30.311762639107183
+        ],
+        [
+          -45.84360487000111,
+          -45.84353935992268
+        ],
+        [
+          1.0497339120293256,
+          1.049747717585804
+        ]
+      ],
+      "counts": {
+        "contactMaps": 88,
+        "positiveSwitches": 8,
+        "closestUnions": 19
+      },
+      "propagationSha256": "86a8aa54d4b667e151124ae3720bbea51612c0159b0fbeb36385c20fe37cd0b2"
+    },
+    {
+      "defenderDomainDeg": [
+        8.07875,
+        8.08
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.942535777371827,
+          31.943102072045328
+        ],
+        [
+          70.42186397329439,
+          70.42237885991827
+        ],
+        [
+          68.42369343054257,
+          68.42418184146
+        ]
+      ],
+      "finalMarginLower": 3.2548639732943765,
+      "lastBox": [
+        [
+          -30.31199212580397,
+          -30.311876823120304
+        ],
+        [
+          -45.84354005527805,
+          -45.843474546416694
+        ],
+        [
+          1.0497202339005294,
+          1.049734038743289
+        ]
+      ],
+      "counts": {
+        "contactMaps": 88,
+        "positiveSwitches": 8,
+        "closestUnions": 19
+      },
+      "propagationSha256": "c8589792b668407619e572098d4d4d92b3d53bb47d814d40f69188e918fd375c"
+    },
+    {
+      "defenderDomainDeg": [
+        8.08,
+        8.08125
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.942516374513772,
+          31.943082640619355
+        ],
+        [
+          70.42170303606015,
+          70.42221729526119
+        ],
+        [
+          68.4238896239199,
+          68.4243780131039
+        ]
+      ],
+      "finalMarginLower": 3.254703036060135,
+      "lastBox": [
+        [
+          -30.312106296987768,
+          -30.31199100081854
+        ],
+        [
+          -45.84347524167404,
+          -45.84340973403056
+        ],
+        [
+          1.049706556463404,
+          1.0497203605923857
+        ]
+      ],
+      "counts": {
+        "contactMaps": 88,
+        "positiveSwitches": 8,
+        "closestUnions": 19
+      },
+      "propagationSha256": "bcccfc86afe4648e2171a0130a79e12b5288d3144db9bea393cdc715fed9e137"
+    },
+    {
+      "defenderDomainDeg": [
+        8.08125,
+        8.0825
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.94249697592627,
+          31.943063213460835
+        ],
+        [
+          70.42154210374356,
+          70.42205573882087
+        ],
+        [
+          68.42408580391367,
+          68.42457417136026
+        ]
+      ],
+      "finalMarginLower": 3.2545421037435456,
+      "lastBox": [
+        [
+          -30.31222046185604,
+          -30.312105172201843
+        ],
+        [
+          -45.84341042918947,
+          -45.84334492276469
+        ],
+        [
+          1.0496928797179674,
+          1.0497066831331032
+        ]
+      ],
+      "counts": {
+        "contactMaps": 88,
+        "positiveSwitches": 8,
+        "closestUnions": 19
+      },
+      "propagationSha256": "d9c4ebdb62d822745a6acff1dc78c63e9de8ef9deff780d1605da22682dd9596"
+    },
+    {
+      "defenderDomainDeg": [
+        8.0825,
+        8.08375
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.94247758160796,
+          31.943043790570133
+        ],
+        [
+          70.42138117634423,
+          70.42189419059792
+        ],
+        [
+          68.42428197052298,
+          68.42477031623133
+        ]
+      ],
+      "finalMarginLower": 3.2543811763442103,
+      "lastBox": [
+        [
+          -30.312334620409096,
+          -30.312219337270058
+        ],
+        [
+          -45.84334561782495,
+          -45.84328011261917
+        ],
+        [
+          1.0496792036642002,
+          1.0496930063654537
+        ]
+      ],
+      "counts": {
+        "contactMaps": 88,
+        "positiveSwitches": 8,
+        "closestUnions": 19
+      },
+      "propagationSha256": "a56281c0c99eade32f14640404170226c564dcadb0e5867c4db18395ac67700c"
+    },
+    {
+      "defenderDomainDeg": [
+        8.08375,
+        8.085
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.94245819155987,
+          31.94302437194527
+        ],
+        [
+          70.42122025386432,
+          70.42173265059157
+        ],
+        [
+          68.42447812375005,
+          68.42496644771563
+        ]
+      ],
+      "finalMarginLower": 3.2542202538643035,
+      "lastBox": [
+        [
+          -30.312448772646505,
+          -30.3123334960235
+        ],
+        [
+          -45.84328080758053,
+          -45.843215303594775
+        ],
+        [
+          1.0496655283021465,
+          1.0496793302894205
+        ]
+      ],
+      "counts": {
+        "contactMaps": 88,
+        "positiveSwitches": 8,
+        "closestUnions": 19
+      },
+      "propagationSha256": "22777bb7903c769a7c9f081c172ed63b700b8e55808bd8d3b4b6d25b17f97160"
+    },
+    {
+      "defenderDomainDeg": [
+        8.085,
+        8.08625
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.94243880578007,
+          31.943004957587224
+        ],
+        [
+          70.42105933630302,
+          70.42157111880289
+        ],
+        [
+          68.424674263594,
+          68.4251625658147
+        ]
+      ],
+      "finalMarginLower": 3.254059336303001,
+      "lastBox": [
+        [
+          -30.31256291856859,
+          -30.312447648461816
+        ],
+        [
+          -45.84321599845686,
+          -45.84315049569164
+        ],
+        [
+          1.049651853631782,
+          1.0496656549050432
+        ]
+      ],
+      "counts": {
+        "contactMaps": 88,
+        "positiveSwitches": 8,
+        "closestUnions": 19
+      },
+      "propagationSha256": "84540fc0cdaae36e2d16a4b93508ef1e0a6a2b5455a0f3e257fed727b54cb7bd"
+    },
+    {
+      "defenderDomainDeg": [
+        8.08625,
+        8.0875
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.94241942426824,
+          31.942985547495297
+        ],
+        [
+          70.42089842366097,
+          70.42140959523194
+        ],
+        [
+          68.42487039005556,
+          68.42535867052925
+        ]
+      ],
+      "finalMarginLower": 3.253898423660956,
+      "lastBox": [
+        [
+          -30.312677058175357,
+          -30.31256179458499
+        ],
+        [
+          -45.84315119045446,
+          -45.843085688909994
+        ],
+        [
+          1.04963817965312,
+          1.0496519802123168
+        ]
+      ],
+      "counts": {
+        "contactMaps": 88,
+        "positiveSwitches": 8,
+        "closestUnions": 19
+      },
+      "propagationSha256": "748119d78adeb90e2098504a6b6152c6fe90364f7dce7bc8813e7f56bdcade68"
+    },
+    {
+      "defenderDomainDeg": [
+        8.0875,
+        8.09
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.942100103070207,
+          31.94324669746899
+        ],
+        [
+          70.42035991505642,
+          70.42134059151672
+        ],
+        [
+          68.42491420238032,
+          68.42590315785817
+        ]
+      ],
+      "finalMarginLower": 3.2533599150564068,
+      "lastBox": [
+        [
+          -30.31290740874433,
+          -30.312673850076187
+        ],
+        [
+          -45.84308764280354,
+          -45.84295481794142
+        ],
+        [
+          1.049610597213209,
+          1.0496385421015715
+        ]
+      ],
+      "counts": {
+        "contactMaps": 106,
+        "positiveSwitches": 26,
+        "closestUnions": 19
+      },
+      "propagationSha256": "6cd97394cc61bea350c0edadc796e3a127c0fe1f5cdfdf2ce81740f38ac7d871"
+    },
+    {
+      "defenderDomainDeg": [
+        8.09,
+        8.0925
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.942060373805482,
+          31.94320889470973
+        ],
+        [
+          70.4200371031632,
+          70.4210181864943
+        ],
+        [
+          68.42530551731323,
+          68.42629614479851
+        ]
+      ],
+      "finalMarginLower": 3.2530371031631797,
+      "lastBox": [
+        [
+          -30.31313585433339,
+          -30.312901900227935
+        ],
+        [
+          -45.84295815061752,
+          -45.84282509398885
+        ],
+        [
+          1.0495832293018572,
+          1.0496112209627846
+        ]
+      ],
+      "counts": {
+        "contactMaps": 115,
+        "positiveSwitches": 35,
+        "closestUnions": 19
+      },
+      "propagationSha256": "1455b1dafeda252954c367662487529cc834135e37a2bf38a73f1c7e775498dd"
+    },
+    {
+      "defenderDomainDeg": [
+        8.0925,
+        8.094999999999999
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.94202169059812,
+          31.94317008002206
+        ],
+        [
+          70.41971536489994,
+          70.42069519878356
+        ],
+        [
+          68.4256976654746,
+          68.42668819133443
+        ]
+      ],
+      "finalMarginLower": 3.252715364899927,
+      "lastBox": [
+        [
+          -30.313364062080975,
+          -30.31313013763098
+        ],
+        [
+          -45.84282854365843,
+          -45.842695493833176
+        ],
+        [
+          1.0495558891843235,
+          1.0495838775720105
+        ]
+      ],
+      "counts": {
+        "contactMaps": 115,
+        "positiveSwitches": 35,
+        "closestUnions": 19
+      },
+      "propagationSha256": "f48f601c986c73bd67ba2d7201a0914a88cbe5461f6bd9f130474fcd97a91437"
+    },
+    {
+      "defenderDomainDeg": [
+        8.094999999999999,
+        8.0975
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.941983195502814,
+          31.94313111132731
+        ],
+        [
+          70.41939382148718,
+          70.4203721416222
+        ],
+        [
+          68.4260899075949,
+          68.42708003692411
+        ]
+      ],
+      "finalMarginLower": 3.25239382148716,
+      "lastBox": [
+        [
+          -30.313592209330885,
+          -30.313358385044538
+        ],
+        [
+          -45.842698921343434,
+          -45.8425659180046
+        ],
+        [
+          1.0495285559925958,
+          1.0495565327850074
+        ]
+      ],
+      "counts": {
+        "contactMaps": 115,
+        "positiveSwitches": 35,
+        "closestUnions": 19
+      },
+      "propagationSha256": "38115daacd3301cf0bafe1127ade3f38f3dba732ae65b0db3f978586af484276"
+    },
+    {
+      "defenderDomainDeg": [
+        8.0975,
+        8.1
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.94194441477074,
+          31.943092462377965
+        ],
+        [
+          70.4190719877885,
+          70.42004929839746
+        ],
+        [
+          68.42648183526964,
+          68.42747208987412
+        ]
+      ],
+      "finalMarginLower": 3.2520719877884825,
+      "lastBox": [
+        [
+          -30.313820393721524,
+          -30.31358654476747
+        ],
+        [
+          -45.842569338637794,
+          -45.8424363115796
+        ],
+        [
+          1.0495012182069918,
+          1.0495291981290595
+        ]
+      ],
+      "counts": {
+        "contactMaps": 115,
+        "positiveSwitches": 35,
+        "closestUnions": 19
+      },
+      "propagationSha256": "9daedcf010e9b664685a2a70ec1c89c977206c4fee9fbcf906821ff6bd4e8701"
+    }
+  ],
+  "failedAttempts": [
+    {
+      "defenderDomainDeg": [
+        8.05,
+        8.06
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 6,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          27.621501049786858,
+          30.342629069538976
+        ],
+        [
+          65.96618378399855,
+          68.3826532556592
+        ],
+        [
+          64.74702518198647,
+          67.27235167374954
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.863015208181736,
+          -27.85374109789128
+        ],
+        [
+          -44.41213608838962,
+          -42.861316647765555
+        ],
+        [
+          1.0220901258933663,
+          1.0492017565183227
+        ]
+      ],
+      "counts": {
+        "contactMaps": 73,
+        "positiveSwitches": 67,
+        "closestUnions": 47,
+        "segmentBranches": 13
+      },
+      "propagationSha256": "475e0864d440b38f2a30a56957478451790e88a064210a2eb54985b79b1be6e0"
+    },
+    {
+      "defenderDomainDeg": [
+        8.06,
+        8.065000000000001
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 5,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          28.249068385160978,
+          29.655696155041795
+        ],
+        [
+          66.57462384005986,
+          67.84626911435419
+        ],
+        [
+          65.33206873588982,
+          66.6255077708757
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.638199583671067,
+          -28.052916931555806
+        ],
+        [
+          -44.017725199798804,
+          -43.201273667678535
+        ],
+        [
+          1.0293876556983563,
+          1.0418938544992753
+        ]
+      ],
+      "counts": {
+        "contactMaps": 72,
+        "positiveSwitches": 65,
+        "closestUnions": 46,
+        "segmentBranches": 13
+      },
+      "propagationSha256": "53358d98bc2af15c7eab005294436375a0bd3781713357e58d7be52c4437463b"
+    },
+    {
+      "defenderDomainDeg": [
+        8.06,
+        8.07
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 5,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          27.453960350661536,
+          30.512746442751403
+        ],
+        [
+          65.79981032564724,
+          68.51052039082244
+        ],
+        [
+          64.59620525580814,
+          67.43265147734564
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.918757234375445,
+          -27.79817499831484
+        ],
+        [
+          -44.49855099123511,
+          -42.77850405562311
+        ],
+        [
+          1.019836946268482,
+          1.0511532645342547
+        ]
+      ],
+      "counts": {
+        "contactMaps": 81,
+        "positiveSwitches": 74,
+        "closestUnions": 46,
+        "segmentBranches": 13
+      },
+      "propagationSha256": "7edf48b1d73b94ce99a8125da59906dfc82706158dd5f2c70e53b4f0379053f3"
+    },
+    {
+      "defenderDomainDeg": [
+        8.065000000000001,
+        8.0675
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 5,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          28.28566339363325,
+          29.61424808114116
+        ],
+        [
+          66.60956082862913,
+          67.81260702171592
+        ],
+        [
+          65.3669349269899,
+          66.58753859038059
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.623464467779154,
+          -28.065219998723425
+        ],
+        [
+          -43.99358570657482,
+          -43.22139209565853
+        ],
+        [
+          1.029748888768343,
+          1.0414380369377438
+        ]
+      ],
+      "counts": {
+        "contactMaps": 72,
+        "positiveSwitches": 65,
+        "closestUnions": 46,
+        "segmentBranches": 13
+      },
+      "propagationSha256": "c7055704b0434ca46614dcdce870574189dc5b43a35b621dc1eaac352ff3cb2e"
+    },
+    {
+      "defenderDomainDeg": [
+        8.065000000000001,
+        8.07
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 5,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          28.091280481612184,
+          29.82911527687284
+        ],
+        [
+          66.41959207396175,
+          67.98178303649988
+        ],
+        [
+          65.18754709565657,
+          66.79017179362891
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.697719385854757,
+          -27.999448948701893
+        ],
+        [
+          -44.118441727702226,
+          -43.115806604430894
+        ],
+        [
+          1.0275149331565854,
+          1.0435625871517735
+        ]
+      ],
+      "counts": {
+        "contactMaps": 72,
+        "positiveSwitches": 65,
+        "closestUnions": 46,
+        "segmentBranches": 13
+      },
+      "propagationSha256": "1380ac9836d5e51440cd50261539a61e784e1719977314d176b096ceaa5c97de"
+    },
+    {
+      "defenderDomainDeg": [
+        8.0675,
+        8.07
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 5,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          28.225478764643018,
+          29.681051167314557
+        ],
+        [
+          66.55025481011243,
+          67.86504878752977
+        ],
+        [
+          65.31202096086639,
+          66.65116128930447
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.646856452801863,
+          -28.04434981432677
+        ],
+        [
+          -44.03298451857245,
+          -43.188502821931735
+        ],
+        [
+          1.029040965393384,
+          1.042048158060053
+        ]
+      ],
+      "counts": {
+        "contactMaps": 72,
+        "positiveSwitches": 65,
+        "closestUnions": 46,
+        "segmentBranches": 13
+      },
+      "propagationSha256": "9b39e886192178d70849095100a28e90c2c04822ca59962d0ee6764370fed672"
+    },
+    {
+      "defenderDomainDeg": [
+        8.07,
+        8.0725
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 5,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          28.144078255878263,
+          29.770696194186726
+        ],
+        [
+          66.47030905351359,
+          67.93512481939064
+        ],
+        [
+          65.23741652276875,
+          66.7362968520936
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.677592036220272,
+          -28.01682087227174
+        ],
+        [
+          -44.085164459319905,
+          -43.14434726009899
+        ],
+        [
+          1.028076346916463,
+          1.04290928051591
+        ]
+      ],
+      "counts": {
+        "contactMaps": 72,
+        "positiveSwitches": 65,
+        "closestUnions": 46,
+        "segmentBranches": 13
+      },
+      "propagationSha256": "3e56bca94f67d56e518dbf6afec8f0c82be96bd58ba71478bc1162a9badaaff9"
+    },
+    {
+      "defenderDomainDeg": [
+        8.07,
+        8.075
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 5,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          27.84402877042224,
+          30.096637806765134
+        ],
+        [
+          66.17787769239759,
+          68.1885622508347
+        ],
+        [
+          64.95963804711899,
+          67.04367126666992
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.785193430719943,
+          -27.91998076031126
+        ],
+        [
+          -44.270345758505535,
+          -42.983473819626745
+        ],
+        [
+          1.024510094461032,
+          1.0463471682930774
+        ]
+      ],
+      "counts": {
+        "contactMaps": 72,
+        "positiveSwitches": 65,
+        "closestUnions": 46,
+        "segmentBranches": 13
+      },
+      "propagationSha256": "44ad0465e92c26e6ffb2b880956990793fbc757e6ead23cc2756bb74c06d70bf"
+    },
+    {
+      "defenderDomainDeg": [
+        8.07,
+        8.08
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 4,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          28.3632437337566,
+          29.517389912860764
+        ],
+        [
+          66.68220428404072,
+          67.73145448281024
+        ],
+        [
+          65.44272863385297,
+          66.4958790482644
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.58918780804647,
+          -28.09064168790493
+        ],
+        [
+          -43.92653286494359,
+          -43.271484408836166
+        ],
+        [
+          1.0303433172567482,
+          1.040657776669656
+        ]
+      ],
+      "counts": {
+        "contactMaps": 80,
+        "positiveSwitches": 71,
+        "closestUnions": 45,
+        "segmentBranches": 12
+      },
+      "propagationSha256": "4b82ac43d355ecd5c12c4a0bce6a9c5108909bca70fd9d798dd4b74ff126890b"
+    },
+    {
+      "defenderDomainDeg": [
+        8.0725,
+        8.075
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 5,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          28.067303611702133,
+          29.85448920043842
+        ],
+        [
+          66.39491831018275,
+          68.00029325697606
+        ],
+        [
+          65.16705428356138,
+          66.81589107910831
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.705912970080742,
+          -27.99118984483673
+        ],
+        [
+          -44.13345149970062,
+          -43.10294076579745
+        ],
+        [
+          1.0271537291710116,
+          1.0437326930664608
+        ]
+      ],
+      "counts": {
+        "contactMaps": 72,
+        "positiveSwitches": 65,
+        "closestUnions": 46,
+        "segmentBranches": 13
+      },
+      "propagationSha256": "1c17d3428f1a1285877fef16fbd2a4bb7b125c70c93620558c168f4b403fb933"
+    },
+    {
+      "defenderDomainDeg": [
+        8.075,
+        8.0775
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 5,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          27.97991670779856,
+          29.949259500507807
+        ],
+        [
+          66.309232563039,
+          68.07360114922001
+        ],
+        [
+          65.08682266178596,
+          66.90580939869966
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.73730718072739,
+          -27.962641054978327
+        ],
+        [
+          -44.18736888767105,
+          -43.05624165210208
+        ],
+        [
+          1.0260873885251696,
+          1.0446986209420432
+        ]
+      ],
+      "counts": {
+        "contactMaps": 72,
+        "positiveSwitches": 65,
+        "closestUnions": 46,
+        "segmentBranches": 13
+      },
+      "propagationSha256": "85682a6093f56f2e8095295fe6d7472f1afda10561d4d3dd9746d3e03bae0e8b"
+    },
+    {
+      "defenderDomainDeg": [
+        8.075,
+        8.08
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 5,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          27.529503128514445,
+          30.43108369027944
+        ],
+        [
+          65.87091790874662,
+          68.4445790355227
+        ],
+        [
+          64.66930993036635,
+          67.35984760224697
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.891038868061504,
+          -27.82199418113016
+        ],
+        [
+          -44.4550073157729,
+          -42.81804422694479
+        ],
+        [
+          1.0205871922117866,
+          1.0500511769549752
+        ]
+      ],
+      "counts": {
+        "contactMaps": 72,
+        "positiveSwitches": 65,
+        "closestUnions": 46,
+        "segmentBranches": 13
+      },
+      "propagationSha256": "c81db48c23b7c0af083c90058eec3c79fbc4c17bc1b3df388873cac97ced0869"
+    },
+    {
+      "defenderDomainDeg": [
+        8.0775,
+        8.08
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 5,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          27.857420747803097,
+          30.081417370906447
+        ],
+        [
+          66.18957059434739,
+          68.17536605303665
+        ],
+        [
+          64.97380796660644,
+          67.03113286910724
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.77987217477158,
+          -27.923877194793636
+        ],
+        [
+          -44.26210220605562,
+          -42.99085407381855
+        ],
+        [
+          1.0245837102805813,
+          1.0460937247426503
+        ]
+      ],
+      "counts": {
+        "contactMaps": 72,
+        "positiveSwitches": 65,
+        "closestUnions": 46,
+        "segmentBranches": 13
+      },
+      "propagationSha256": "d27da219b966508b92913d3441bbaa9ee036608602b4391c23992ef1341518ad"
+    },
+    {
+      "defenderDomainDeg": [
+        8.08,
+        8.0825
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 5,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          27.72778813381743,
+          30.219917860073426
+        ],
+        [
+          66.0629372516889,
+          68.28164694486902
+        ],
+        [
+          64.85425950140655,
+          67.16223824021432
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.824143434229157,
+          -27.88307461624636
+        ],
+        [
+          -44.33928115054169,
+          -42.92227551533748
+        ],
+        [
+          1.0229770744476723,
+          1.0475946840108075
+        ]
+      ],
+      "counts": {
+        "contactMaps": 72,
+        "positiveSwitches": 65,
+        "closestUnions": 46,
+        "segmentBranches": 13
+      },
+      "propagationSha256": "b7556e0319333f6cda1a2ed206ae662521994755b567435d575ac1c65364065f"
+    },
+    {
+      "defenderDomainDeg": [
+        8.08,
+        8.085
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 4,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          28.44667608344597,
+          29.42125150555383
+        ],
+        [
+          66.76236662092207,
+          67.65263728636059
+        ],
+        [
+          65.52158552438326,
+          66.40761753998392
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.553395097142353,
+          -28.12031176946554
+        ],
+        [
+          -43.86954015545366,
+          -43.31763531173816
+        ],
+        [
+          1.0311486012435493,
+          1.0396742716376097
+        ]
+      ],
+      "counts": {
+        "contactMaps": 71,
+        "positiveSwitches": 62,
+        "closestUnions": 45,
+        "segmentBranches": 12
+      },
+      "propagationSha256": "7ca9387c7f1b06e274d248e6c00643cf8e77f89582b2d44101e3322c3e0016b7"
+    },
+    {
+      "defenderDomainDeg": [
+        8.08,
+        8.09
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 4,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          28.200804750989278,
+          29.697531284232323
+        ],
+        [
+          66.52133944504766,
+          67.87215432097437
+        ],
+        [
+          65.2955374783606,
+          66.6682875285484
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.65226213388298,
+          -28.033962195289728
+        ],
+        [
+          -44.03274259914011,
+          -43.183128565423345
+        ],
+        [
+          1.0283825467419483,
+          1.0422583003510537
+        ]
+      ],
+      "counts": {
+        "contactMaps": 80,
+        "positiveSwitches": 71,
+        "closestUnions": 45,
+        "segmentBranches": 12
+      },
+      "propagationSha256": "d5f36908b10e139ea32ab256ff0841fe18c07318f85529bf989f47144ed6a98c"
+    },
+    {
+      "defenderDomainDeg": [
+        8.0825,
+        8.085
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 5,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          27.573229814124826,
+          30.383917039528846
+        ],
+        [
+          65.9120487965267,
+          68.40702027795675
+        ],
+        [
+          64.71167023005516,
+          67.31720733580632
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.875937008432853,
+          -27.83499034767448
+        ],
+        [
+          -44.429363924235915,
+          -42.84132341358209
+        ],
+        [
+          1.0210394051253349,
+          1.0494246908047187
+        ]
+      ],
+      "counts": {
+        "contactMaps": 72,
+        "positiveSwitches": 65,
+        "closestUnions": 46,
+        "segmentBranches": 13
+      },
+      "propagationSha256": "baf2144c399a7d2a175d8e32f52ba358ce76260f18428f43f5439491e9d73f0f"
+    },
+    {
+      "defenderDomainDeg": [
+        8.085,
+        8.0875
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 4,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          28.473342897648145,
+          29.390039346591262
+        ],
+        [
+          66.78777885449011,
+          67.62658724821299
+        ],
+        [
+          65.54706895540544,
+          66.37940112510086
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.54136314944131,
+          -28.130045023263378
+        ],
+        [
+          -43.85104969044306,
+          -43.33238869631586
+        ],
+        [
+          1.0313832877357034,
+          1.0393442480482735
+        ]
+      ],
+      "counts": {
+        "contactMaps": 71,
+        "positiveSwitches": 62,
+        "closestUnions": 45,
+        "segmentBranches": 12
+      },
+      "propagationSha256": "2e666ee3593acb99980ddded581976e92975a450d9e9a60760c7223614fc8dc2"
+    },
+    {
+      "defenderDomainDeg": [
+        8.085,
+        8.09
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 4,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          28.40725856870751,
+          29.465682048706068
+        ],
+        [
+          66.7226204327223,
+          67.68738637079169
+        ],
+        [
+          65.48678172843255,
+          66.45078180423053
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.569798033554196,
+          -28.105492933891323
+        ],
+        [
+          -43.896448710312924,
+          -43.29607384223651
+        ],
+        [
+          1.030657320498666,
+          1.0399990608458913
+        ]
+      ],
+      "counts": {
+        "contactMaps": 71,
+        "positiveSwitches": 62,
+        "closestUnions": 45,
+        "segmentBranches": 12
+      },
+      "propagationSha256": "964ef5f91d13b67f134ed77e302aa1e3adf71eacaabf3b813921c6a177d1d65e"
+    },
+    {
+      "defenderDomainDeg": [
+        8.09,
+        8.094999999999999
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 4,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          28.348075583218158,
+          29.532157780333538
+        ],
+        [
+          66.66360189353175,
+          67.7395322824967
+        ],
+        [
+          65.4336708182954,
+          66.51474685141672
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.593793510651004,
+          -28.08403829992438
+        ],
+        [
+          -43.9363106248586,
+          -43.26368542891304
+        ],
+        [
+          1.0299416705258444,
+          1.0405401020300131
+        ]
+      ],
+      "counts": {
+        "contactMaps": 71,
+        "positiveSwitches": 62,
+        "closestUnions": 45,
+        "segmentBranches": 12
+      },
+      "propagationSha256": "639f8f2cd3f5ed6b3c0f56909572be0b05a56576cac4c3c26129d893f8dbd45e"
+    },
+    {
+      "defenderDomainDeg": [
+        8.09,
+        8.1
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 4,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          27.926003873653087,
+          29.996514424933736
+        ],
+        [
+          66.25138795697428,
+          68.10349966255436
+        ],
+        [
+          65.04384399091052,
+          66.95269649664503
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.751855750044715,
+          -27.943479409560492
+        ],
+        [
+          -44.20404183809196,
+          -43.03572298986638
+        ],
+        [
+          1.025023706386042,
+          1.04523370339525
+        ]
+      ],
+      "counts": {
+        "contactMaps": 80,
+        "positiveSwitches": 72,
+        "closestUnions": 45,
+        "segmentBranches": 12
+      },
+      "propagationSha256": "770ad62a9a42e69da7ede5496876571ae24e61fac09561d67445c4e61dbcf658"
+    },
+    {
+      "defenderDomainDeg": [
+        8.094999999999999,
+        8.1
+      ],
+      "completedSubsteps": 96,
+      "failure": {
+        "step": 97,
+        "iteration": 4,
+        "reason": "horizontal-floor branch unresolved"
+      },
+      "finalFootRadii": [
+        [
+          28.279680945607442,
+          29.60832386634254
+        ],
+        [
+          66.59570337261108,
+          67.79898002103657
+        ],
+        [
+          65.37190399882698,
+          66.58792108977583
+        ]
+      ],
+      "finalMarginLower": null,
+      "lastBox": [
+        [
+          -28.62054016404778,
+          -28.06003172804131
+        ],
+        [
+          -43.98158208466043,
+          -43.226334795253536
+        ],
+        [
+          1.0291106512817536,
+          1.041194736030457
+        ]
+      ],
+      "counts": {
+        "contactMaps": 71,
+        "positiveSwitches": 62,
+        "closestUnions": 45,
+        "segmentBranches": 12
+      },
+      "propagationSha256": "6e8a600466d3d5341db09e0a8da2a8f3d04bcb4b8013db1926d1102c868a97b2"
+    }
+  ],
+  "unresolved": [],
+  "pending": [],
+  "complete": true,
+  "minimumWidth": 1e-06,
+  "attempts": 53,
+  "attemptLimit": 64,
+  "workers": 4,
+  "coordinatorSha256": "e18e0815cb18df246c3ba5098dcaba46b98a7dda48ecff08a850c393b0f3f6ec",
+  "marginLower": 3.2520719877884825,
+  "seconds": 533.5800765980002
+}

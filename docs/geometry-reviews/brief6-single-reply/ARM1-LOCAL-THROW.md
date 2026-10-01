@@ -1,5 +1,9 @@
 # A continuous local throw on defender arm (1,−)
 
+2 October extension: [the adaptive cover](ARM1-EXPANDED-COVER.md) now reaches
+8.1° using 32 adjoining cells and the same enclosure kernel. The original
+8°–8.01° result and its artifacts below are retained unchanged.
+
 2 October update: [the crossing and stopping certificate](ARM1-CROSSING.md)
 now validates the shared response path and, for this local family, excludes a
 ko violation from the enclosed displacement. This closes the rule-legality
