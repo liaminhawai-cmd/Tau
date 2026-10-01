@@ -2027,7 +2027,6 @@ async function runPoolCycle() {
 
     const ranked = Object.values(byModel).sort((a, b) => b.elo - a.elo);
     const incumbentName = path.basename(ckpt, '.json');
-    const incumbentDepth = byModel[incumbentName]?.depth || 1;
     const line = ranked.slice(0, 5)
       .map(r => `${path.basename(r.model, '.json')} ${Math.round(r.elo)}`).join(', ');
     log(`pool cycle ${num} — ratings: ${line}`);
@@ -2049,6 +2048,14 @@ async function runPoolCycle() {
         return fs.readFileSync(p).equals(bestBytes);
       } catch (e) { return false; }
     };
+    // The champion defends with its strongest rated face, read through its byte twins. A checkpoint
+    // is a fresh copy of whatever was promoted, so its own file has at most a D1 face rated when it
+    // first defends, while the model it was copied from is rated deeper: ckpt-612, byte-identical to
+    // resume-521, defended at D1 (28-32 on 30 members where the same weights went 48-12 at D2), every
+    // D2 candidate cleared it, and best.json flip-flopped 611-614 on search depth alone.
+    const incTwin = ranked.filter(r => isBestTwin(livePath(r)) || path.basename(r.model, '.json') === incumbentName)
+      .sort((a, b) => (b.eloLo ?? -Infinity) - (a.eloLo ?? -Infinity))[0];
+    const incumbentDepth = incTwin?.depth || 1;
     const mutantFiles = new Set(((mutantPop && mutantPop.active) || []).map(m => path.join(dir, 'models', m.file)));
     const dualFiles = new Set(dualRun.focus);
     const fresh = focus.filter(p => p !== ckpt && !dualFiles.has(p) && !mutantFiles.has(p) &&
