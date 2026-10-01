@@ -1,0 +1,55 @@
+{
+  "scope": "Pinned source crossing replay over certified real-geometry predicates, with finite floating-engine consistency checks.",
+  "node": "v24.19.0",
+  "engineNode": "v24.19.0",
+  "sourcePin": "ce0e61d1e7482e3d1252aadadf97bd4269f71e29",
+  "crossingFunctionSha256": "79ed8d815bb174f2bb72f492887eaa01065acddc0c355510b7ad48cb44245cdd",
+  "artifacts": {
+    "arm1-crossing.json": "54ff69a92d1598a23af2f18aae30add56799b7411285f2ebf9eed344fc388544",
+    "arm1-crossing-engine.json": "8d659bdcc69bb0fe25530a7cc277eab34151aaef150707b5a7cd59fd06fd122c",
+    "check_arm1_crossing.js": "bf107efb71092dab2b9f8de6d8256c31ae9f3830eada761894405342d5df8991",
+    "check_arm1_crossing.py": "ae48638876e62b719d01f84f32ccd6f61b19beaf1aabccc8dcd411f2adc91002"
+  },
+  "acceptedSubsteps": 123,
+  "finalCrossings": 1,
+  "sourceQueryCounts": {
+    "nearQueries": 982,
+    "sideQueries": 1,
+    "cornerQueries": 0,
+    "pendingDistanceQueries": 0
+  },
+  "engineStatesMatched": 123,
+  "engineNearSetsMatched": 124,
+  "engineSidePredicatesMatched": 1476,
+  "observedFootCoordinatesContained": 756,
+  "sourceRejectionControlsPassed": 2,
+  "transitions": [
+    {
+      "step": 36,
+      "betaDeg": 13.5,
+      "near": [
+        [],
+        [
+          "r1"
+        ],
+        []
+      ],
+      "crossings": 1,
+      "episodeCharged": true
+    },
+    {
+      "step": 44,
+      "betaDeg": 16.5,
+      "near": [
+        [],
+        [],
+        []
+      ],
+      "crossings": 1,
+      "episodeCharged": false
+    }
+  ],
+  "minimumRadialGuardMargin": 0.00021470746397722615,
+  "finalThrowMarginFromPoseBox": 3.261747485188365,
+  "koHubDisplacementLower": 6.995410503470216
+}

@@ -1,5 +1,10 @@
 # Defender arm (1,−): first response enclosure
 
+2 October update: [the crossing certificate](ARM1-CROSSING.md) validates the
+shared attacker path, and closes minimum-move and ko stopping obligations for
+the 8°–8.01° local contact enclosure. Statements below about the then-open
+crossing obligation describe the 28 September packet.
+
 1 October update: [the next enclosure](ARM1-LOCAL-THROW.md) completes the
 prescribed real-model response for a nonzero 8°–8.01° band. The failed box runs
 below remain part of the development record; they are no longer the furthest

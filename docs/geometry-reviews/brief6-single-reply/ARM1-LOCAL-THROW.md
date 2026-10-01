@@ -1,5 +1,12 @@
 # A continuous local throw on defender arm (1,−)
 
+2 October update: [the crossing and stopping certificate](ARM1-CROSSING.md)
+now validates the shared response path and, for this local family, excludes a
+ko violation from the enclosed displacement. This closes the rule-legality
+obligation left open below in the specified real model. The full-arm cover and
+floating-engine correspondence remain open. The original contact result and
+its artifacts below are unchanged.
+
 1 October 2026. **The contact enclosure now completes a nonzero interval.**
 It covers all defender angles from 8° to the stored binary64 value of 8.01°,
 through the entire prescribed response. The previous box propagation stopped

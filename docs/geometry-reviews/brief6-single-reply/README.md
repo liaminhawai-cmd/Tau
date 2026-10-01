@@ -1,9 +1,15 @@
 # Brief 6: single-reply proof attempt
 
+2 October continuation: [crossing and stopping](ARM1-CROSSING.md) certifies the
+shared 123-substep attacker path against the pinned crossing function. Combined
+with the local contact enclosure, it gives a legal winning reply for the
+8°–8.01° real-model family, including the ko rule. The whole arm, the other
+defender arms and floating-engine correspondence remain open.
+
 1 October continuation: [a continuous local throw](ARM1-LOCAL-THROW.md) carries
 every defender angle in the 8°–8.01° band on arm (1,−) through the full prescribed
-real-model response, with a final lower throw margin above 3.261u. The full arm,
-crossing legality and floating-engine correspondence remain open.
+real-model response, with a final lower throw margin above 3.261u. The crossing
+and stopping obligation left open by that packet is addressed above.
 
 28 September continuation: [defender arm (1,−)](ARM1-PROGRESS.md) adds a
 continuous no-contact reply prefix, a full-path attacker rim bound, a certified
