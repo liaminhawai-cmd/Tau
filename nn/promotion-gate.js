@@ -228,31 +228,17 @@ function orderPanelPool(incumbentName, depth, pool, keepUnknown = 0.25) {
   }
   return out;
 }
-// MATCHED DEPTH: each candidate is compared with the incumbent searching at the candidate's own
-// depth, so the incumbent plays the panel once per depth the candidates bring. The gate used to pit
-// each side's strongest rated face against the other, and a freshly copied checkpoint has only a
-// D1 face rated: ckpt-612, byte-identical to resume-521, went 28-32 at D1 where those same weights
-// went 48-12 at D2 on the same 30 members. Every D2 candidate then cleared it, and best.json
-// flip-flopped (611 resume-521, 612 ckpt-602, 613 resume-521, 614 resume-532) on search depth
-// alone. Promotion picks WEIGHTS; holding depth fixed is what makes the paired difference measure
-// them. run.js also floors each candidate's depth at the champion's own best rated depth, so a net
-// rated only at D1 is judged where the champion is actually strong. matchDepth: false restores the
-// old single incumbentDepth comparison.
 async function runPanelGate(opts) {
-  const { incumbent, candidates, panel, lanes = 4, depth = 1, incumbentDepth = depth, matchDepth = true,
-    cachePath = PANEL_CACHE, dataPrefix = null, log = console.log } = opts;
+  const { incumbent, candidates, panel, lanes = 4, depth = 1, incumbentDepth = depth, cachePath = PANEL_CACHE,
+    dataPrefix = null, log = console.log } = opts;
   const cands = [...new Map(candidates.map(c => {
     const p = typeof c === 'string' ? c : c.path;
     return [p, { path: p, depth: typeof c === 'string' ? depth : c.depth }];
   })).values()].filter(c => c.path && fs.existsSync(c.path) && c.path !== incumbent);
   if (!cands.length || !fs.existsSync(incumbent) || !panel || !panel.length) return { results: [], played: 0 };
   const cache = readCache(cachePath), kw = komiWinValue();
-  const incName = path.basename(incumbent, '.json');
-  const incDepthFor = c => matchDepth ? c.depth : incumbentDepth;
-  const incDepths = [...new Set(cands.map(incDepthFor))].sort((a, b) => a - b);
-  const incPlayers = incDepths.map(d => ({ name: incName, path: incumbent, depth: d, inc: true }));
-  const candPlayers = cands.map(c => ({ name: path.basename(c.path, '.json'), ...c, inc: false }));
-  const players = [...incPlayers, ...candPlayers];
+  const players = [{ name: path.basename(incumbent, '.json'), path: incumbent, depth: incumbentDepth, inc: true },
+                   ...cands.map(c => ({ name: path.basename(c.path, '.json'), ...c, inc: false }))];
   const jobs = [];
   players.forEach((pl, pi) => panel.forEach((member, mi) => {
     const key = `${pl.name}@D${pl.depth}|${member.id}`;
@@ -260,9 +246,8 @@ async function runPanelGate(opts) {
     jobs.push({ name: pl.name, path: pl.path, depth: pl.depth, member, key,
                 saveData: dataPrefix ? `${dataPrefix}-${String(pi).padStart(2, '0')}-${String(mi).padStart(2, '0')}.jsonl` : null });
   }));
-  log(`gate: ${cands.length} candidate(s) vs ${incName} over a ${panel.length}-member panel ` +
-      `(incumbent at D${incDepths.join('+D')}${matchDepth ? ', matched to each candidate' : ''}; ` +
-      `candidates ${candPlayers.map(p => `${p.name}@D${p.depth}`).join(', ')}): ` +
+  log(`gate: ${cands.length} candidate(s) vs ${path.basename(incumbent, '.json')} over a ${panel.length}-member panel ` +
+      `(incumbent D${incumbentDepth}; candidates ${players.slice(1).map(p => `${p.name}@D${p.depth}`).join(', ')}): ` +
       `${jobs.length} cell(s) to play (${players.length*panel.length - jobs.length} cached), ${Math.min(lanes, jobs.length) || 0} lane(s)`);
   let next = 0, played = 0;
   const lane = async () => {
@@ -274,17 +259,17 @@ async function runPanelGate(opts) {
     }
   };
   await Promise.all(Array.from({ length: Math.min(lanes, jobs.length) }, lane));
+  const incName = players[0].name;
   const results = [];
-  for (const pl of candPlayers) {
-    const incD = incDepthFor(pl);
+  for (const pl of players.slice(1)) {
     const fc = [], fi = [], tot = { games: 0, w: 0, l: 0, d: 0, komiW: 0, komiL: 0 }, inc = { games: 0, w: 0, l: 0, d: 0, komiW: 0, komiL: 0 };
     for (const member of panel) {
-      const c = cache[`${pl.name}@D${pl.depth}|${member.id}`], i = cache[`${incName}@D${incD}|${member.id}`];
+      const c = cache[`${pl.name}@D${pl.depth}|${member.id}`], i = cache[`${incName}@D${incumbentDepth}|${member.id}`];
       if (!c || !i) continue;   // a member both sides have played is a pair; anything else is dropped
       fc.push(cellFrac(c, kw)); fi.push(cellFrac(i, kw));
       for (const [t, x] of [[tot, c], [inc, i]]) { t.games += 2; t.w += x.w; t.l += x.l; t.d += x.d; t.komiW += x.komiW; t.komiL += x.komiL; }
     }
-    results.push({ name: pl.name, path: pl.path, depth: pl.depth, ...tot, incumbent: { name: incName, depth: incD, ...inc },
+    results.push({ name: pl.name, path: pl.path, depth: pl.depth, ...tot, incumbent: { name: incName, depth: incumbentDepth, ...inc },
                    scoreA: fc.reduce((a, b) => a + b, 0), scoreB: fi.reduce((a, b) => a + b, 0), rating: pairedElo(fc, fi) });
   }
   results.sort((a, b) => (b.rating.lo ?? -Infinity) - (a.rating.lo ?? -Infinity));
