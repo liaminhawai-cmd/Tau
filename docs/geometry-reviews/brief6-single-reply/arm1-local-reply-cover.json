@@ -1,0 +1,69 @@
+{
+  "scope": "Continuous real contact-model response cover under the prescribed 123-step attacker path. Crossing legality and floating-engine correspondence not certified.",
+  "domainDeg": [
+    8.0,
+    8.01
+  ],
+  "sourceHashes": {
+    "reply_jet.py": "50d0fef1c70e399135d141946e1f77cf91ebf0383fb098f3142d5d4e00bb7955",
+    "reply_zonotope.py": "4373def79b28e1737e85f87a009695400c8c8f874b11868fc3dc55aa5aacca60",
+    "free_motion.py": "e09d7a3588b27e8bb9b9290f7869c49be6e3918d72baa87e460f76471796bb28",
+    "interval_core.py": "d4bd8c71cc6dfc6a6892557d1274e9234bb1719da0a8c207a11e3b49e6e1d821",
+    "arm1_prefix.py": "93f8e626a3fe66d24bbdccae2b821172965461baa2fb6f0b18d21a493306358b"
+  },
+  "complete": true,
+  "leaves": [
+    {
+      "defenderDomainDeg": [
+        8.0,
+        8.01
+      ],
+      "completedSubsteps": 123,
+      "failure": null,
+      "finalFootRadii": [
+        [
+          31.94105611199685,
+          31.946908681407397
+        ],
+        [
+          70.4287474851884,
+          70.4335896712271
+        ],
+        [
+          68.40971291407872,
+          68.41475956918501
+        ]
+      ],
+      "finalMarginLower": 3.2617474851883794,
+      "lastBox": [
+        [
+          -30.30572554958434,
+          -30.304528737753873
+        ],
+        [
+          -45.84770898233579,
+          -45.84702529698255
+        ],
+        [
+          1.0504713213293788,
+          1.0506137173317265
+        ]
+      ],
+      "counts": {
+        "contactMaps": 214,
+        "closestUnions": 20,
+        "clampSwitches": 1,
+        "positiveSwitches": 136
+      },
+      "propagationSha256": "fe1d92496049a5c3eb683e7580052ac692e1c9c63cc4047816dc0354458dfe1d"
+    }
+  ],
+  "failedAttempts": [],
+  "unresolved": [],
+  "pending": [],
+  "minimumWidth": 1e-07,
+  "attemptLimit": 160,
+  "attempts": 1,
+  "marginLower": 3.2617474851883794,
+  "seconds": 67.97687983512878
+}

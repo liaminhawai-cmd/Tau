@@ -1,5 +1,10 @@
 # Brief 6: single-reply proof attempt
 
+1 October continuation: [a continuous local throw](ARM1-LOCAL-THROW.md) carries
+every defender angle in the 8°–8.01° band on arm (1,−) through the full prescribed
+real-model response, with a final lower throw margin above 3.261u. The full arm,
+crossing legality and floating-engine correspondence remain open.
+
 28 September continuation: [defender arm (1,−)](ARM1-PROGRESS.md) adds a
 continuous no-contact reply prefix, a full-path attacker rim bound, a certified
 contact witness, and an explicit failed attempt at complete contact propagation.

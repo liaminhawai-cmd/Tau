@@ -1,0 +1,59 @@
+{
+  "scope": "Unresolved larger domain; not a counterexample.",
+  "sourceHashes": {
+    "reply_jet.py": "50d0fef1c70e399135d141946e1f77cf91ebf0383fb098f3142d5d4e00bb7955",
+    "reply_zonotope.py": "4373def79b28e1737e85f87a009695400c8c8f874b11868fc3dc55aa5aacca60",
+    "free_motion.py": "e09d7a3588b27e8bb9b9290f7869c49be6e3918d72baa87e460f76471796bb28",
+    "interval_core.py": "d4bd8c71cc6dfc6a6892557d1274e9234bb1719da0a8c207a11e3b49e6e1d821",
+    "arm1_prefix.py": "93f8e626a3fe66d24bbdccae2b821172965461baa2fb6f0b18d21a493306358b"
+  },
+  "result": {
+    "defenderDomainDeg": [
+      8.0,
+      8.1
+    ],
+    "completedSubsteps": 71,
+    "failure": {
+      "step": 72,
+      "iteration": 6,
+      "reason": "zonotope halfwidth exceeded 1u exploration limit"
+    },
+    "finalFootRadii": [
+      [
+        24.349627729352818,
+        28.372114632600276
+      ],
+      [
+        63.137454758270124,
+        66.61673204624984
+      ],
+      [
+        61.22635220943967,
+        65.02634143931527
+      ]
+    ],
+    "finalMarginLower": null,
+    "lastBox": [
+      [
+        -27.95593300019083,
+        -26.68533404936606
+      ],
+      [
+        -42.308818515224715,
+        -39.93395956246397
+      ],
+      [
+        1.0262815348492897,
+        1.0683395808579381
+      ]
+    ],
+    "counts": {
+      "contactMaps": 157,
+      "positiveSwitches": 175,
+      "clampSwitches": 15,
+      "closestUnions": 7,
+      "segmentBranches": 2
+    },
+    "propagationSha256": "ed3bc32d68cf6cd1c91cea6a470bd09c7d07855f118028e15f85ee758464d715"
+  }
+}

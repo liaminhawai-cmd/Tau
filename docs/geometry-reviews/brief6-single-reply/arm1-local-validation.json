@@ -1,0 +1,17 @@
+{
+  "date": "2026-10-01",
+  "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+  "canonicalReplayPassed": true,
+  "rejectionControls": 3,
+  "exactRationalClipChecks": 303,
+  "smoothJetControls": 27,
+  "initialFamilyCoordinates": 15,
+  "correlatedGeneratorControls": 22,
+  "decimalCoordinateChecks": 1107,
+  "decimalFailures": 0,
+  "artifactSha256": {
+    "arm1-local-reply-cover.json": "9f5289c247657d8fa66f84d67d196bc1b0e0951cb038466805737ea593eff7e4",
+    "arm1-decimal-check.json": "a94963f5511fb0af6888a79b457e523b4ac7a535b205f172fc1c12cc7a8c4af3",
+    "arm1-wider-attempt.json": "17b9d0e1b65035a9d9917d30eb68ea1c76e8876c247adc04bb206c4b33fff5c4"
+  }
+}

@@ -1,5 +1,10 @@
 # Defender arm (1,−): first response enclosure
 
+1 October update: [the next enclosure](ARM1-LOCAL-THROW.md) completes the
+prescribed real-model response for a nonzero 8°–8.01° band. The failed box runs
+below remain part of the development record; they are no longer the furthest
+completed contact propagation.
+
 28 September 2026. **The complete one-arm winning-reply theorem remains open.**
 This packet adds two continuous geometric results, one contact witness, and a
 reproducible failed propagation experiment. None is a full lost-position proof.
