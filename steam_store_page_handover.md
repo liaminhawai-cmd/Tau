@@ -101,7 +101,8 @@ Read the exact sizes and rules on the tab itself. They change over time, and the
 
 - **Check what the tab asks for** and list every asset name with its required pixel size in your report.
 - Capsule art generally needs the game's title or logo on it, and Steam's guidance says not to put review quotes, awards or sale text on it.
-- **Upload only from the folder Liam names**, and only files whose pixel size matches exactly. If a file is the wrong size, don't upload it. Report it.
+- **Upload only from the folder Liam names**, and only files that meet the tab's size rules. Capsule and hero images must match the listed pixel size exactly. Screenshots only have a minimum size, so use the tab's stated minimum (generally 1920x1080 or larger, 16:9). If a file is the wrong size, don't upload it. Report it.
+- Liam's current screenshots are on his PC at `C:\tau\Tau-shots\scripts\steam-shots\output\screenshots` (tau-noir, tau-colossus, tau-alien, tau-marble, tau-sumo, all PNG). Upload those to the Screenshots section once he confirms the folder.
 - If there is no folder yet, upload nothing.
 
 ## Tab 6: Trailers
