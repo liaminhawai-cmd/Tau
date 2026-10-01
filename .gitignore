@@ -94,3 +94,6 @@ nn/data/batch-desktop-2b7iqhn-378.jsonl
 nn/data/batch-desktop-2b7iqhn-379.jsonl
 nn/elo-summary-desktop-2b7iqhn.json
 marketing/tau-danger-map-moves-best.json-111frames (1).zip
+
+# grow-train.py parse cache: parsed copies of nn/data, rebuilt on demand
+nn/grow-cache/
