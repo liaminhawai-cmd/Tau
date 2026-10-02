@@ -22,10 +22,12 @@ be exact identity layers, so it instead distils parent predictions on the traini
 for one complete pass before learning game outcomes. This costs extra time and makes
 it a practical experiment, rather than a perfectly controlled architecture benchmark.
 
-All jobs use one copied parent with its original modification time and one fixed list
-of stable corpus files. Files changed in the last two minutes are excluded to avoid
-reading the league's active append file. The suite stops if a listed file changes
-between jobs. New games arriving during the run are left for normal future training.
+All jobs use one copied parent with its original modification time and one copied snapshot
+of stable corpus files. The snapshot uses roughly another corpus-sized amount of disk
+space (about 4.5 GB for this run) and remains under the suite directory. Files changed in the last two minutes are excluded to avoid
+reading the league's active append file. Copies are checked for changes while being made; unstable files are skipped.
+Changes to the original data after copying cannot stop later jobs. Original creation
+timestamps are saved in the manifest so copying does not change the holdout split. New games arriving during the run are left for normal future training.
 Validation selection follows GROW-BEST: files created after the parent was written,
 with an explicit warning and newest-file fallback when there are too few. Each job
 keeps that selection identical because it uses the same parent and corpus list.

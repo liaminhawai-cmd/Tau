@@ -351,9 +351,13 @@ def main():
     old_weights = sum(len(w) for w in parent['W'])
 
     # ---- data: held-out = files created after the parent was written; the rest, in shards ----
+    original_created = {}
     if args.fileList:
         with open(args.fileList, encoding='utf-8') as fh:
             corpus = json.load(fh)
+        if isinstance(corpus, dict):
+            original_created = corpus['createdAt']
+            corpus = corpus['files']
     else:
         corpus = glob.glob(args.data)
     files = sorted(corpus, key=lambda p: (core.file_stamp(p), os.path.basename(p)))
@@ -367,10 +371,12 @@ def main():
             keep.append(p); tot += os.path.getsize(p)
         files = sorted(keep, key=lambda p: (core.file_stamp(p), os.path.basename(p)))
     parent_written = os.path.getmtime(args.parent)
-    newest_first = sorted(files, key=lambda p: created_at(p), reverse=True)
+    def data_created(path):
+        return original_created[path] if path in original_created else created_at(path)
+    newest_first = sorted(files, key=data_created, reverse=True)
     val_files, val_bytes, val_rule = [], 0, 'created after the parent was written'
     for p in newest_first:
-        if created_at(p) <= parent_written or val_bytes >= args.valMaxMB * (1 << 20):
+        if data_created(p) <= parent_written or val_bytes >= args.valMaxMB * (1 << 20):
             break
         val_files.append(p); val_bytes += os.path.getsize(p)
     cache_dir = None if args.noCache else args.cache

@@ -47,17 +47,48 @@ def main():
     os.makedirs(run)
     parent = os.path.join(run, 'best.json')
     shutil.copy2(args.parent, parent)  # preserves original mtime for the holdout rule
+    # Copy bytes, not hardlinks: retromine/league may append or replace source files.
+    # Keep original creation times separately, because Windows gives copied files new birth times.
+    data_dir = os.path.join(run, 'data')
+    os.makedirs(data_dir)
+    required = sum(os.path.getsize(path) for path in files)
+    if shutil.disk_usage(run).free < required + (512 << 20):
+        raise SystemExit(f'Corpus snapshot needs {required/(1<<30):.1f} GiB plus 512 MiB spare disk space; no jobs started.')
+    frozen, born = [], {}
+    print(f'Copying a stable corpus snapshot ({required/(1<<30):.1f} GiB extra disk space)...', flush=True)
+    for index, path in enumerate(files, 1):
+        target = os.path.join(data_dir, os.path.basename(path))
+        copied = False
+        for attempt in range(3):
+            try:
+                before = os.stat(path)
+                creation = getattr(before, 'st_birthtime', None)
+                if creation is None:
+                    creation = before.st_ctime if os.name == 'nt' else before.st_mtime
+                shutil.copy2(path, target)
+                after = os.stat(path)
+                if (before.st_size, before.st_mtime_ns) == (after.st_size, after.st_mtime_ns):
+                    frozen.append(target); born[target] = creation; copied = True
+                    break
+            except FileNotFoundError:
+                pass
+        if not copied:
+            if os.path.exists(target):
+                os.remove(target)
+            print('Skipping a file that kept changing: '+os.path.basename(path), flush=True)
+        if index % 1000 == 0:
+            print(f'Corpus snapshot: {index}/{len(files)} files', flush=True)
+    if not frozen:
+        raise SystemExit('No stable files could be copied; no jobs started.')
     manifest = os.path.join(run, 'files.json')
     with open(manifest, 'w', encoding='utf-8') as fh:
-        json.dump(files, fh)
-    stats = {path: (os.path.getsize(path), os.stat(path).st_mtime_ns) for path in files}
+        json.dump({'files': frozen, 'createdAt': born}, fh)
+    files = frozen
     if args.plainDepth <= len(parent_doc['sizes']) - 2:
         ap.error('plainDepth must exceed parent depth')
     print(f'Suite: {len(files)} stable files, one fixed parent, width {args.width}; plain depth {args.plainDepth}, residual depths {args.depth}.', flush=True)
-    print(f'Four jobs run SEQUENTIALLY. Logs and parent snapshot: {run}', flush=True)
+    print(f'Requested jobs run SEQUENTIALLY. Logs and parent snapshot: {run}', flush=True)
     for style in styles:
-        if any((os.path.getsize(path), os.stat(path).st_mtime_ns) != stat for path, stat in stats.items()):
-            raise SystemExit('A frozen corpus file changed. Stopping to avoid comparing different data; completed models remain in the pool.')
         cmd = [sys.executable, '-u', os.path.join(HERE, 'grow-train.py'), '--from', parent,
                '--deepStyle', style, '--width', str(args.width), '--depth', str(args.plainDepth if style == 'plain' else args.depth),
                '--batch', str(args.batch), '--fileList', manifest] + extra
