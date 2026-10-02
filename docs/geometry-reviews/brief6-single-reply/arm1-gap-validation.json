@@ -1,0 +1,199 @@
+{
+  "scope": "Continuous finite-union real-model enclosure, with shared source-rule legality and stopping/ko composition. No uniform floating-engine correspondence.",
+  "python": "3.12.14",
+  "complete": true,
+  "domainDeg": [
+    8.23744140625,
+    8.237442016601562
+  ],
+  "completedSubsteps": 123,
+  "forkEvents": 1,
+  "finalBranches": 3,
+  "minimumThrowMarginFromPoseBox": 3.234773589686412,
+  "minimumKoHubDisplacement": 6.915738738330239,
+  "initialDefenderRadii": [
+    [
+      25.166314678913547,
+      25.166315421131518
+    ],
+    [
+      64.21471882094383,
+      64.21471956253303
+    ],
+    [
+      61.4769504217612,
+      61.476951064042204
+    ]
+  ],
+  "branchBounds": [
+    {
+      "id": 1,
+      "footRadii": [
+        [
+          31.940621639285833,
+          31.9406219175411
+        ],
+        [
+          70.40374406665802,
+          70.40374435153248
+        ],
+        [
+          68.446329014866,
+          68.4463292550271
+        ]
+      ],
+      "throwMarginLower": 3.2367440666580047,
+      "koHubDisplacementLower": 6.9157938104425964
+    },
+    {
+      "id": 2,
+      "footRadii": [
+        [
+          31.94062163928683,
+          31.940621917540103
+        ],
+        [
+          70.40374406665903,
+          70.40374435153147
+        ],
+        [
+          68.44632901486685,
+          68.44632925502624
+        ]
+      ],
+      "throwMarginLower": 3.2367440666590137,
+      "koHubDisplacementLower": 6.91579381044276
+    },
+    {
+      "id": 3,
+      "footRadii": [
+        [
+          31.940389304956447,
+          31.940389582223176
+        ],
+        [
+          70.40177358968643,
+          70.40177387355016
+        ],
+        [
+          68.44871999264795,
+          68.44872023197303
+        ]
+      ],
+      "throwMarginLower": 3.234773589686412,
+      "koHubDisplacementLower": 6.915738738330239
+    }
+  ],
+  "canonicalPropagationSha256": "d133da373c5857c44f8c14c128bcb1570bd5bb19bf2d10c5e687ad0825452a5b",
+  "sourceHashes": {
+    "reply_jet.py": "50d0fef1c70e399135d141946e1f77cf91ebf0383fb098f3142d5d4e00bb7955",
+    "reply_zonotope.py": "4373def79b28e1737e85f87a009695400c8c8f874b11868fc3dc55aa5aacca60",
+    "free_motion.py": "e09d7a3588b27e8bb9b9290f7869c49be6e3918d72baa87e460f76471796bb28",
+    "interval_core.py": "d4bd8c71cc6dfc6a6892557d1274e9234bb1719da0a8c207a11e3b49e6e1d821",
+    "arm1_prefix.py": "93f8e626a3fe66d24bbdccae2b821172965461baa2fb6f0b18d21a493306358b",
+    "reply_branches.py": "88fbaa94a66b31368a54e2215972bc1d756b18bde1e92770ce72bab24ea0f842"
+  },
+  "artifactSha256": {
+    "arm1-gap-branches.json": "dfc2873a7ad6cdc490e0c5c2c7c99ca151017598b269b001984c5364d10498fe",
+    "arm1-crossing.json": "54ff69a92d1598a23af2f18aae30add56799b7411285f2ebf9eed344fc388544",
+    "arm1-crossing-validation.json": "8dceb5a9d5b7323e1768b3da2fc7c53703eaaba175f4d219ac5448fc62bce4f6",
+    "decimal_reply.py": "c2dc9a57be15e1b7fa8124bf69e153c08a1b2a7effe52bd900519e4d1e01fc46",
+    "check_reply_branches.py": "9ecec999b930ad9d76875eca49b599c0a356afae41d24ddbd8cb2dc19e88abf0"
+  },
+  "decimalPrecision": 80,
+  "decimalTrajectoryCases": 5,
+  "decimalCoordinateChecks": 1845,
+  "decimalFailures": 0,
+  "rejectionControlsPassed": 3,
+  "samples": [
+    {
+      "angle": 8.23744140625,
+      "coordinateChecks": 369,
+      "trajectorySha256": "7937ab41e70f11d8fa23b5e8d527637dcdf97fabc151b11628d7a46e63b61682",
+      "finalPose": [
+        "-30.326369065355672235383491001018108587047162656450536821768578187278606877419810",
+        "-45.835293714253181683933361971388076200031256728229385601999868106683743885411476",
+        "1.0479973952780763964985968579734114964675327382119361845792274540978753262069839"
+      ],
+      "matchingFinalBranchIds": [
+        3
+      ],
+      "contactCounts": {
+        "leg": 67,
+        "attackerHub": 13
+      }
+    },
+    {
+      "angle": 8.23744155883789,
+      "coordinateChecks": 369,
+      "trajectorySha256": "48a7f780a7dc6b03b82339f9d7d3acaab495defc847d804e12dfc8174dd4a548",
+      "finalPose": [
+        "-30.324975430839548175672395290660416692743127743882536576586322258102688155063292",
+        "-45.836088439517443868607416965979541410236270151376255515110217871744070862026175",
+        "1.0481644452519421581873490058379822447236502463218121861322144484472159366954451"
+      ],
+      "matchingFinalBranchIds": [
+        1,
+        2
+      ],
+      "contactCounts": {
+        "leg": 66,
+        "attackerHub": 12
+      }
+    },
+    {
+      "angle": 8.237441711425781,
+      "coordinateChecks": 369,
+      "trajectorySha256": "684dc1226c91dcf9544e96cb34c273c2d5f0c5fa112e621fe27303afe37887f9",
+      "finalPose": [
+        "-30.324975444829828448384315964429372468775428189362666218150581087103926536952415",
+        "-45.836088431541257048437623849174625508544612619170828955786155396175014990059918",
+        "1.0481644435750354955681121969588843291886492642050362994446874571932928298819094"
+      ],
+      "matchingFinalBranchIds": [
+        1,
+        2
+      ],
+      "contactCounts": {
+        "leg": 66,
+        "attackerHub": 12
+      }
+    },
+    {
+      "angle": 8.237441864013672,
+      "coordinateChecks": 369,
+      "trajectorySha256": "3a309a625d9fb1486d2d9be98964ca2ca86f9393952199294f310d9fadfcc5b7",
+      "finalPose": [
+        "-30.324975458820108630675671475393702199039269507538091392955923465624701136423183",
+        "-45.836088423565070242755021105950887868073057557429961090089785083811534537151190",
+        "1.0481644418981288428039841886596683503643492976246003761121151777452019315738124"
+      ],
+      "matchingFinalBranchIds": [
+        1,
+        2
+      ],
+      "contactCounts": {
+        "leg": 66,
+        "attackerHub": 12
+      }
+    },
+    {
+      "angle": 8.237442016601562,
+      "coordinateChecks": 369,
+      "trajectorySha256": "75de021cebf75edaced6de91e79a2eef5d28f080db2335c29e13f82dcad6d5c4",
+      "finalPose": [
+        "-30.324975472810388722546461789118673062606491533665571922304798842944885974138282",
+        "-45.836088415588883451559609421989212679112597701751359427422495223886719158350355",
+        "1.0481644402212221998949649949287013943175510583919356811957661041294696423876181"
+      ],
+      "matchingFinalBranchIds": [
+        1,
+        2
+      ],
+      "contactCounts": {
+        "leg": 66,
+        "attackerHub": 12
+      }
+    }
+  ]
+}

@@ -35,32 +35,36 @@ def checkpoint(out, filename):
     temp.replace(filename)
 
 
-def extend(filename, upper=8.1, workers=4, max_attempts=64, minimum_width=1e-6):
-    seed = json.loads(SEED.read_text())
+def extend(filename, upper=8.1, workers=4, max_attempts=64, minimum_width=1e-6,
+           seed_path=SEED, initial_step=.01):
+    assert workers > 0 and max_attempts > 0 and initial_step > 0
+    seed = json.loads(seed_path.read_text())
     structural(seed)
-    seed_hash = hashlib.sha256(SEED.read_bytes()).hexdigest()
+    seed_hash = hashlib.sha256(seed_path.read_bytes()).hexdigest()
     if filename.exists():
         out = json.loads(filename.read_text())
         assert out['sourceHashes'] == sources()
         assert out['seedArtifactSha256'] == seed_hash
         assert out['domainDeg'] == [seed['domainDeg'][0], upper]
         assert out['minimumWidth'] == minimum_width
+        assert out.get('initialStepDeg', .01) == initial_step
     else:
         assert upper > seed['domainDeg'][1]
         pending = []
         a = seed['domainDeg'][1]
         while a < upper:
-            b = min(upper, float(Decimal(str(a))+Decimal('0.01')))
+            b = min(upper, float(Decimal(str(a))+Decimal(str(initial_step))))
             assert a < b
             pending.append([a, b])
             a = b
         out = {
             'scope': 'Continuous real contact-model cover for the prescribed shared attacker path. Rule and ko composition is checked separately; no floating-engine correspondence.',
             'domainDeg': [seed['domainDeg'][0], upper], 'sourceHashes': sources(),
-            'seedArtifact': SEED.name, 'seedArtifactSha256': seed_hash,
+            'seedArtifact': seed_path.name, 'seedArtifactSha256': seed_hash,
             'seedLeaves': len(seed['leaves']), 'leaves': seed['leaves'],
             'failedAttempts': [], 'unresolved': [], 'pending': pending,
             'complete': False, 'minimumWidth': minimum_width, 'attempts': 0,
+            'initialStepDeg': initial_step, 'seconds': 0.,
         }
     out['attemptLimit'] = max_attempts
     out['workers'] = workers
@@ -112,7 +116,10 @@ if __name__ == '__main__':
     parser.add_argument('--upper', type=float, default=8.1)
     parser.add_argument('--workers', type=int, default=4)
     parser.add_argument('--attempts', type=int, default=64)
+    parser.add_argument('--seed', default=SEED.name, help='completed cover whose leaves are retained')
+    parser.add_argument('--step', type=float, default=.01, help='initial proposal width in degrees')
     args = parser.parse_args()
-    result = extend(HERE/args.output, args.upper, args.workers, args.attempts)
+    result = extend(HERE/args.output, args.upper, args.workers, args.attempts,
+                    seed_path=HERE/args.seed, initial_step=args.step)
     if not result['complete']:
         raise SystemExit(1)
