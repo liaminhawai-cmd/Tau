@@ -43,6 +43,10 @@ NOT replicated: --eloWeight (off by default in train.js and Wild Mint).
 """
 import argparse, glob, json, math, os, random, sys
 import tau_paths
+import importlib.util
+_topo_spec = importlib.util.spec_from_file_location("value_topology", os.path.join(os.path.dirname(__file__), "value-topology.py"))
+value_topology = importlib.util.module_from_spec(_topo_spec)
+_topo_spec.loader.exec_module(value_topology)
 from collections import defaultdict
 
 N_FEATURES = 94
@@ -542,13 +546,12 @@ def main():
             sys.exit(1)
         topology = {'kind': 'dense-memory-v1', 'memoryWidth': memory_width,
                     'residualScale': residual_scale}
+        if checkpoint_topology:
+            topology = dict(checkpoint_topology)
         # First hidden layer sees the feature vector. Each later hidden layer sees the complete
         # previous layer plus one memory packet from every layer before that. The value head sees
         # the final layer plus packets from all nine predecessors.
-        fan_ins = [in_dim]
-        for i in range(1, len(hidden)):
-            fan_ins.append(hidden[i - 1] + memory_width * (i - 1))
-        fan_ins.append(hidden[-1] + memory_width * (len(hidden) - 1))
+        fan_ins = value_topology.fan_ins_for(sizes, topology)
     else:
         fan_ins = sizes[:-1]
     linears = [nn.Linear(fan_ins[i], sizes[i + 1]) for i in range(len(sizes) - 1)]
@@ -568,30 +571,7 @@ def main():
         print(f"resumed weights from {args.resume}")
     # Plain exports tanh every layer. Dense-memory keeps a constant-width residual trunk and sends
     # the first k learned activations of every hidden layer to every layer in front.
-    if topology:
-        class DenseMemoryNet(nn.Module):
-            def __init__(self, layers, memory_width, residual_scale):
-                super().__init__()
-                self.layers = nn.ModuleList(layers)
-                self.memory_width = memory_width
-                self.residual_scale = residual_scale
-            def forward(self, x):
-                a, memories = x, []
-                for li, layer in enumerate(self.layers):
-                    a_in = a if li == 0 else torch.cat([a] + memories[:-1], dim=1)
-                    branch = torch.tanh(layer(a_in))
-                    residual = (self.residual_scale != 0 and 0 < li < len(self.layers) - 1
-                                and branch.shape[-1] == a.shape[-1])
-                    a = a + self.residual_scale * branch if residual else branch
-                    if li < len(self.layers) - 1:
-                        memories.append(a[:, :self.memory_width])
-                return a
-        model = DenseMemoryNet(linears, topology['memoryWidth'], topology['residualScale']).to(device)
-    else:
-        seq = []
-        for l in linears:
-            seq += [l, nn.Tanh()]
-        model = nn.Sequential(*seq).to(device)
+    model = value_topology.build_model(torch, nn, linears, topology, device)
 
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
     n = xtr.shape[0]
@@ -656,3 +636,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

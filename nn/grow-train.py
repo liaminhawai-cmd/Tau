@@ -212,44 +212,11 @@ def row_weights(sh, args, lookup, np):
 
 
 # ---------- models ----------
-def fan_ins_for(sizes, topology):
-    hidden = sizes[1:-1]
-    if not topology:
-        return sizes[:-1]
-    k = int(topology['memoryWidth'])
-    fi = [sizes[0]]
-    for i in range(1, len(hidden)):
-        fi.append(hidden[i - 1] + k * (i - 1))
-    fi.append(hidden[-1] + k * (len(hidden) - 1))
-    return fi
-
-
-def build_model(torch, nn, linears, topology, device):
-    """The same forward as torch-train-core.py (and net.js)."""
-    if topology:
-        class DenseMemoryNet(nn.Module):
-            def __init__(self, layers, memory_width, residual_scale):
-                super().__init__()
-                self.layers = nn.ModuleList(layers)
-                self.memory_width = memory_width
-                self.residual_scale = residual_scale
-
-            def forward(self, x):
-                a, memories = x, []
-                for li, layer in enumerate(self.layers):
-                    a_in = a if li == 0 else torch.cat([a] + memories[:-1], dim=1)
-                    branch = torch.tanh(layer(a_in))
-                    residual = (self.residual_scale != 0 and 0 < li < len(self.layers) - 1
-                                and branch.shape[-1] == a.shape[-1])
-                    a = a + self.residual_scale * branch if residual else branch
-                    if li < len(self.layers) - 1:
-                        memories.append(a[:, :self.memory_width])
-                return a
-        return DenseMemoryNet(linears, int(topology['memoryWidth']), float(topology['residualScale'])).to(device)
-    seq = []
-    for l in linears:
-        seq += [l, nn.Tanh()]
-    return nn.Sequential(*seq).to(device)
+_topo_spec = importlib.util.spec_from_file_location('value_topology', os.path.join(HERE, 'value-topology.py'))
+value_topology = importlib.util.module_from_spec(_topo_spec)
+_topo_spec.loader.exec_module(value_topology)
+fan_ins_for = value_topology.fan_ins_for
+build_model = value_topology.build_model
 
 
 def parent_linears(torch, nn, parent):
@@ -331,6 +298,10 @@ def write_model(doc, path):
 def main():
     ap = argparse.ArgumentParser(description='grow a value net wider and train it on every data file')
     ap.add_argument('--from', dest='parent', default=os.path.join(HERE, 'models', 'best.json'))
+    ap.add_argument('--deepStyle', choices=['plain', 'residual', 'bridges', 'wispy'])
+    ap.add_argument('--depth', type=int, default=22)
+    ap.add_argument('--distillPasses', type=int, default=1)
+    ap.add_argument('--fileList', help='frozen corpus manifest for an experiment suite')
     ap.add_argument('--width', type=int, default=640, help='new width of every hidden layer')
     ap.add_argument('--data', default=os.path.join(HERE, 'data', '*.jsonl'))
     ap.add_argument('--maxDataMB', type=float, default=0.0, help='only the newest N MB of data (0 = all)')
@@ -380,7 +351,12 @@ def main():
     old_weights = sum(len(w) for w in parent['W'])
 
     # ---- data: held-out = files created after the parent was written; the rest, in shards ----
-    files = sorted(glob.glob(args.data), key=lambda p: (core.file_stamp(p), os.path.basename(p)))
+    if args.fileList:
+        with open(args.fileList, encoding='utf-8') as fh:
+            corpus = json.load(fh)
+    else:
+        corpus = glob.glob(args.data)
+    files = sorted(corpus, key=lambda p: (core.file_stamp(p), os.path.basename(p)))
     if not files:
         raise SystemExit(f"no data files match {args.data}")
     if args.maxDataMB > 0:
@@ -439,19 +415,58 @@ def main():
     # ---- grow, and prove the grown net still IS the parent ----
     p_lin = parent_linears(torch, nn, parent)
     p_model = build_model(torch, nn, p_lin, topology, device)
-    linears, sizes = grow_linears(torch, nn, parent, args.width)
+    if args.deepStyle:
+        spec = importlib.util.spec_from_file_location('deep_architectures', os.path.join(HERE, 'deep-architectures.py'))
+        architecture = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(architecture)
+        linears, sizes, topology = architecture.make(torch, nn, sys.modules[__name__], parent, args.width, args.depth, args.deepStyle)
+    else:
+        linears, sizes = grow_linears(torch, nn, parent, args.width)
     model = build_model(torch, nn, linears, topology, device)
     with torch.no_grad():
         k = min(4096, xva.shape[0])
         drift = float((p_model(xva[:k]) - model(xva[:k])).abs().max())
     base_val, base_acc = evaluate(torch, p_model, xva, yva)
+    if args.deepStyle == 'plain':
+        if args.distillPasses < 1:
+            raise SystemExit('plain deep requires at least one distillation pass')
+        p_model.eval()
+        for parameter in p_model.parameters():
+            parameter.requires_grad_(False)
+        distill_opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
+        for distill_pass in range(args.distillPasses):
+            for si, shard in enumerate(shards, 1):
+                sh = assemble(shard, cache_dir, np)
+                if sh is None:
+                    continue
+                x = torch.from_numpy(sh['X'])  # keep the corpus on CPU; batch transfers only
+                del sh
+                total = 0.0
+                model.train()
+                for idx in torch.randperm(len(x)).split(args.batch):
+                    xb = x[idx].to(device)
+                    with torch.no_grad():
+                        target = p_model(xb)
+                    distill_opt.zero_grad()
+                    loss = ((model(xb) - target) ** 2).mean()
+                    if not torch.isfinite(loss):
+                        raise SystemExit('nonfinite distillation loss; nothing admitted')
+                    loss.backward(); distill_opt.step()
+                    total += loss.item() * len(idx)
+                log(f'distill {distill_pass+1}/{args.distillPasses} shard {si}/{len(shards)}: parent imitation mse {total/len(x):.6f}')
+                del x
+        vmse, _ = evaluate(torch, model, xva, yva)
+        log(f'plain depth after distillation: held-out mse {vmse:.5f} (parent {base_val:.5f}); exact inheritance is not claimed')
+        del distill_opt
     del p_model, p_lin
     new_weights = sum(l.weight.numel() + l.bias.numel() for l in linears)
     log(f"grew {parent_name} {parent['sizes'][1:-1]} -> {sizes[1:-1]}: {old_weights:,} -> {new_weights:,} weights "
         f"({new_weights / old_weights:.1f}x the compute per evaluation)")
     log(f"at birth: max |grown - parent| = {drift:.2e} on {k} held-out positions; parent held-out mse {base_val:.5f}, "
         f"sign-acc {base_acc * 100:.1f}%")
-    if drift > 1e-4:
+    if not math.isfinite(drift):
+        raise SystemExit('nonfinite birth predictions')
+    if drift > 1e-4 and args.deepStyle != 'plain':
         raise SystemExit('the grown net does not reproduce its parent -- refusing to train it')
     del parent
 
@@ -459,9 +474,10 @@ def main():
     if args.out:
         out = args.out
     else:
+        prefix = f'deep-{args.deepStyle}-w{args.width}-l{args.depth}' if args.deepStyle else f'grow-w{args.width}'
         taken = [int(m.group(1)) for f in os.listdir(models_dir)
-                 for m in [re.match(rf'grow-w{args.width}-(\d+)(?:\.partial)?\.json$', f)] if m]
-        out = os.path.join(models_dir, f"grow-w{args.width}-{max(taken, default=0) + 1:03d}.json")
+                 for m in [re.match(rf'{prefix}-(\d+)(?:\.partial)?\.json$', f)] if m]
+        out = os.path.join(models_dir, f"{prefix}-{max(taken, default=0) + 1:03d}.json")
     partial = out[:-5] + '.partial.json' if out.endswith('.json') else out + '.partial'
     name = os.path.basename(out)[:-5]
 
@@ -482,6 +498,10 @@ def main():
         doc['grownFrom'] = {'parent': parent_name, 'parentWeights': old_weights, 'width': args.width,
                             'parentHeldOutMse': round(base_val, 6), 'heldOutMse': round(best_val, 6),
                             'bestAt': best_at, 'at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
+        if args.deepStyle:
+            doc['deepExperiment'] = {'style': args.deepStyle, 'depth': args.depth, 'seed': args.seed,
+                                     'distillPasses': args.distillPasses if args.deepStyle == 'plain' else 0,
+                                     'birthDrift': drift, 'validationRule': val_rule}
         if parent_epochs is not None:
             doc['trainedEpochs'] = int(parent_epochs + round(passes))   # last key: live-ladder reads the tail
         mb = write_model(doc, tag)
@@ -495,6 +515,12 @@ def main():
             parent_epochs = int(m[-1]) if m else None
     except OSError:
         pass
+
+    if args.deepStyle:
+        best_val, _ = evaluate(torch, model, xva, yva)
+        best_at = 'distilled start' if args.deepStyle == 'plain' else 'inherited start'
+        best_state = {key: value.detach().clone() for key, value in model.state_dict().items()}
+        export(best_state, partial)
 
     # Train until the held-out score stops improving. A full round of shards with no new best means
     # the current rate is overshooting: go back to the best weights at half the rate and keep going.
@@ -510,19 +536,22 @@ def main():
                 if sh is None:
                     continue
                 w = row_weights(sh, args, lookup, np)
-                xtr = torch.from_numpy(sh['X']).to(device)
-                ytr = torch.from_numpy(sh['z']).view(-1, 1).to(device)
-                wtr = torch.from_numpy(w).view(-1, 1).to(device)
+                tensor_device = 'cpu' if args.deepStyle else device
+                xtr = torch.from_numpy(sh['X']).to(tensor_device)
+                ytr = torch.from_numpy(sh['z']).view(-1, 1).to(tensor_device)
+                wtr = torch.from_numpy(w).view(-1, 1).to(tensor_device)
                 n = xtr.shape[0]
                 del sh, w
                 tot = 0.0
                 model.train()
                 for _ in range(args.epochsPerShard):
-                    perm = torch.randperm(n, device=device)
+                    perm = torch.randperm(n, device=tensor_device)
                     for i in range(0, n, args.batch):
                         idx = perm[i:i + args.batch]
                         opt.zero_grad()
-                        loss = (wtr[idx] * (model(xtr[idx]) - ytr[idx]) ** 2).mean()
+                        loss = (wtr[idx].to(device) * (model(xtr[idx].to(device)) - ytr[idx].to(device)) ** 2).mean()
+                        if not torch.isfinite(loss):
+                            raise SystemExit('nonfinite training loss; best partial retained, nothing admitted')
                         loss.backward()
                         opt.step()
                         tot += loss.detach().item() * len(idx)
@@ -552,6 +581,7 @@ def main():
                         break
                     drops, since, lr = drops + 1, 0, lr / 2
                     model.load_state_dict(best_state)
+                    opt.state.clear()
                     model.train()
                     log(f"no better held-out score in a full round: back to the best weights ({best_at}), "
                         f"learning rate halved to {lr:.6f} (drop {drops}/{args.lrDrops})")
@@ -574,3 +604,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

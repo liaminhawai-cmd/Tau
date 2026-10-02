@@ -49,6 +49,31 @@ if (!bad) {
     if (doc.topology.kind !== 'dense-memory-v1') fail(`unknown topology ${doc.topology.kind}`);
     if (!(doc.topology.memoryWidth > 0))
       fail('dense-memory topology needs a positive memoryWidth');
+    const routes = doc.topology.memoryRoutes;
+    if (routes) {
+      if (!Array.isArray(routes) || routes.length !== doc.W.length) fail('bad memoryRoutes length');
+      else routes.forEach((edges, l) => {
+        const seen = new Set();
+        if (!Array.isArray(edges)) { fail(`layer ${l}: bad routes`); return; }
+        let extra = 0;
+        for (const edge of edges) {
+          if (!Array.isArray(edge) || edge.length !== 2) { fail('bad packet edge'); continue; }
+          const [source, width] = edge;
+          if (!Number.isInteger(source) || !Number.isInteger(width) || source < 0 || source >= l-1 ||
+              width < 1 || width > doc.sizes[source+1] || seen.has(source)) fail('invalid packet source/width');
+          seen.add(source); extra += width;
+        }
+        if (fanIns[l] !== doc.sizes[l] + extra) fail(`layer ${l}: routed fan-in mismatch`);
+      });
+    }
+    const residualLayers = doc.topology.residualLayers;
+    if (residualLayers) {
+      if (!Array.isArray(residualLayers) || new Set(residualLayers).size !== residualLayers.length)
+        fail('bad residualLayers');
+      else for (const l of residualLayers)
+        if (!Number.isInteger(l) || l <= 0 || l >= doc.W.length-1 || doc.sizes[l] !== doc.sizes[l+1])
+          fail('residual must join equal-width hidden layers');
+    }
     // residualScale 0 is legal and means "packets only, no residual trunk" -- the ablation that
     // separates the two mechanisms dense-memory has always shipped welded together.
     if (!Number.isFinite(+doc.topology.residualScale) || +doc.topology.residualScale < 0)
@@ -89,6 +114,9 @@ doc.__probe.forEach((p, i) => {
     return;
   }
   const got = net.value(p.x);
+  if (!Number.isFinite(got) || !Number.isFinite(p.y)) { fail(`probe ${i}: nonfinite value`); return; }
+  const forward = net.forward(p.x).out;
+  if (Math.abs(forward - got) > 1e-10) fail(`probe ${i}: forward/value disagree`);
   const d = Math.abs(got - p.y);
   if (d > worst) { worst = d; worstAt = i; }
 });
@@ -111,3 +139,4 @@ if (worst > TOL) {
 
 console.log('\nOK — this model computes the same values in net.js as it did in the exporter.');
 console.log('Safe to use:  node nn/arena.js --a nn:0:' + file + ' --b L11 --games 60 --depth 2');
+

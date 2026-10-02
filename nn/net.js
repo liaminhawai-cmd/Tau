@@ -2,6 +2,15 @@
 // tanh hidden layers, tanh output (value in [-1, 1]), MSE loss.
 'use strict';
 
+function packetRoutes(topology, l) {
+  if (!topology || l === 0) return [];
+  return topology.memoryRoutes ? topology.memoryRoutes[l]
+    : Array.from({length: l - 1}, (_, source) => [source, +topology.memoryWidth]);
+}
+function hasResidual(topology, l) {
+  return !topology.residualLayers || topology.residualLayers.includes(l);
+}
+
 class MLP {
   constructor(sizes, topology=null, fanIns=null) { // e.g. [16, 64, 64, 1]
     this.sizes = sizes;
@@ -18,6 +27,8 @@ class MLP {
       this.W.push(w);
       this.b.push(new Float64Array(n));
     }
+    this._packetRoutes = this.topology && this.topology.kind === 'dense-memory-v1'
+      ? this.W.map((_, l) => packetRoutes(this.topology, l)) : null;
     this._adam = null;
   }
   forward(x) {                  // returns { out, acts } (acts kept for backprop)
@@ -32,10 +43,10 @@ class MLP {
       if (dense && l > 0) {
         // The immediately previous layer is already present in full. Append the compact memory
         // packet from every EARLIER layer, so each packet reaches every layer in front exactly once.
-        const earlier = memories.slice(0, -1);
-        aIn = new Float64Array(a.length + earlier.length*memoryWidth);
+        const routes = this._packetRoutes[l];
+        aIn = new Float64Array(a.length + routes.reduce((n, route) => n + route[1], 0));
         aIn.set(a); let off = a.length;
-        for (const m of earlier) { aIn.set(m, off); off += memoryWidth; }
+        for (const [source, width] of routes) { aIn.set(memories[source].subarray(0, width), off); off += width; }
       }
       const nIn = this.fanIns[l], nOut = this.sizes[l+1];
       if (aIn.length !== nIn) throw new Error(`layer ${l} input ${aIn.length}, expected ${nIn}`);
@@ -45,7 +56,7 @@ class MLP {
       // residualScale 0 means NO residual path at all -- the layer behaves like a plain tanh layer
       // and still emits and reads packets. It cannot mean a + 0*branch, which would make the layer
       // output its own input and delete the network.
-      const residual = dense && residualScale !== 0 && l > 0 && l < this.W.length - 1 && a.length === nOut;
+      const residual = dense && residualScale !== 0 && l > 0 && l < this.W.length - 1 && a.length === nOut && hasResidual(this.topology, l);
       const z = new Float64Array(nOut), W = this.W[l], b = this.b[l];
       for (let j = 0; j < nOut; j++) {
         let s = b[j];
@@ -54,7 +65,7 @@ class MLP {
         z[j] = residual ? a[j] + residualScale*branch : branch;
       }
       if (dense && l < this.W.length - 1)
-        memories.push(z.slice(0, memoryWidth));
+        memories.push(z);
       acts.push(z); a = z;
     }
     return { out: a[0], acts };
@@ -69,12 +80,12 @@ class MLP {
     let a=x;const memories=[];
     for(let l=0;l<this.W.length;l++){
       const z=this._valueScratch[l],W=this.W[l],b=this.b[l],nOut=this.sizes[l+1];
-      const earlier=memories.length>0?memories.length-1:0;
-      const residual=scale!==0&&l>0&&l<this.W.length-1&&a.length===nOut;
+      const routes=this._packetRoutes[l];
+      const residual=scale!==0&&l>0&&l<this.W.length-1&&a.length===nOut&&hasResidual(this.topology,l);
       for(let j=0;j<nOut;j++){
         const row=j*this.fanIns[l];let s=b[j],off=0;
         for(let i=0;i<a.length;i++)s+=W[row+off++]*a[i];
-        for(let m=0;m<earlier;m++)for(let i=0;i<k;i++)s+=W[row+off++]*memories[m][i];
+        for(const [source,width] of routes)for(let i=0;i<width;i++)s+=W[row+off++]*memories[source][i];
         const branch=Math.tanh(s);
         z[j]=residual?a[j]+scale*branch:branch;
       }
@@ -159,3 +170,4 @@ class MLP {
 }
 
 module.exports = { MLP };
+
