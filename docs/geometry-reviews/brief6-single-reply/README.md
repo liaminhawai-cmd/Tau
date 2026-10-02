@@ -1,5 +1,13 @@
 # Brief 6: single-reply proof attempt
 
+2 October complete-band result: [the continuous cover now reaches 9°](ARM1-ONE-DEGREE.md).
+The fixed reply wins for every defender angle in 8°–9° on arm (1,−), in the
+specified real model, with a lower throw margin above 3.137u. The 240-cell
+cover closes two difficult contact switches by retaining all candidate
+branches. Full replay and 267,156 Decimal containment checks passed. The whole
+arm, other arms and floating-engine correspondence remain open.
+[View the certified band](arm1-one-degree-cover.svg).
+
 2 October extension: [the continuous cover now reaches 8.1°](ARM1-EXPANDED-COVER.md).
 Thirty-two adjoining cells cover every defender angle from 8° to 8.1° in the
 specified real model, with the shared reply legal and a lower throw margin

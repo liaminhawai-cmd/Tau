@@ -1,13 +1,21 @@
 # Closing contact-switch gaps in the 8°–9° band
 
-**Verification in progress.** The ordinary sweep and its independent scalar
-cross-checks are still running. The two small intervals described below have
-completed both their interval propagation and replay. This draft does not yet
-claim a complete 8°–9° certificate.
+2 October 2026. **The shared winning reply is now certified for every defender
+angle from 8° to 9° on arm (1,−), in the specified real-arithmetic model.**
+The 240 closed adjoining cells cover the whole band, including both formerly
+unresolved contact-switch intervals. The minimum lower throw margin is
+**3.137016072573885u**. This is a nominal tenfold extension of the previous
+8°–8.1° band.
+
+The full defender arm, other arms and uniform correspondence with JavaScript
+floating-point execution remain open. This is a result about the stored seed
+and prescribed reply, not the whole lost-position theorem.
+
+![Verified interval-wide throw bounds and cell widths](arm1-one-degree-cover.svg)
 
 ## Statement and scope
 
-The intended extension uses exactly the stored Brief 6 seed, engine pin,
+This extension uses exactly the stored Brief 6 seed, engine pin,
 real geometry, source-ordered contact program and arithmetic assumptions in
 [the 8°–8.1° certificate](ARM1-EXPANDED-COVER.md). Defender angle α is its exact
 real rotation about original foot 1 in the negative direction. The attacker
@@ -107,12 +115,45 @@ made 326 new attempts: 206 accepted cells and 120 rejected parent or terminal
 proposals. There are therefore 238 accepted ordinary cells. The rejected
 proposals comprise 86 unresolved horizontal-floor guards and 34 enclosure
 halfwidth limits. They are computation outcomes, not observed game losses.
-The two branch certificates add two cells, for a proposed 240-cell composition.
+The two branch certificates add two cells, for the verified 240-cell composition.
 
 All rejected nonterminal cells were subdivided. The only two remaining terminal
 gaps are exactly the intervals in the table above; there are no pending cells.
 The raw sweep's explicit `complete: false` is correct and is retained for
 provenance. Completion belongs to the composition after every cell is replayed.
+
+## Verification of the complete band
+
+All 238 ordinary cells were re-executed and matched their complete canonical
+propagation hashes. The run resumed from a checkpoint of 93 completed cells;
+the second invocation replayed the remaining 145. No cell was accepted solely
+because it had succeeded in the generator. Both branch certificates were also
+re-executed in full, retaining and checking all three terminal states each.
+
+The final composition has no gaps or pending work. It recomputes every
+terminal geometry bound. The minimum defender-hub displacement is
+**6.643456718172017u**, comfortably above the 0.25u ko requirement. All initial
+defender feet are on the board; the shared attacker crossing and stopping
+certificate applies throughout.
+
+The independent 80-digit Decimal checks total **724 trajectory cases** and
+**267,156 coordinate containment checks**, with **zero failures**. Ordinary
+cells use endpoints and midpoint; each branch cell additionally uses its two
+quarter points. Shared endpoints are tested against adjoining enclosures, so
+these are not independent statistical observations. Continuous coverage comes
+from the enclosures and complete partition, not these sampled checks.
+
+The component and composition checkers passed 12 corruption-control cases,
+including omitted cells, omitted branches, a lost terminal state, altered
+propagation digests, overlaps and nonpositive margins. The composition gate
+also rejected the unfinished ordinary replay before its final checkpoint.
+This run used Python 3.12.14 and Node v24.19.0.
+
+`arm1-one-degree-certificate.json` is the complete composed certificate.
+`arm1-one-degree-validation.json` describes the fully replayed ordinary cells
+only and therefore correctly remains `complete: false` for the whole domain;
+its two explicit gaps are closed by the separate branch artifacts. The
+composition checker verifies that those domains match exactly.
 
 ## Reproducibility and interruption recovery
 

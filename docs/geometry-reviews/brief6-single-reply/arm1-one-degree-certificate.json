@@ -1,0 +1,2688 @@
+{
+  "scope": "Complete continuous 8\u20139 degree cover on defender arm (1,\u2212) for the prescribed shared attacker reply (0,\u2212), in the specified real-arithmetic model only. Stored seed. Full arm, other arms and uniform floating-engine correspondence remain open.",
+  "domainDeg": [
+    8.0,
+    9.0
+  ],
+  "complete": true,
+  "cells": 240,
+  "singleZonotopeCells": 238,
+  "separateZonotopeCells": 2,
+  "gapForkEvents": 2,
+  "gapFinalBranches": 6,
+  "minimumThrowMargin": 3.137016072573885,
+  "minimumKoHubDisplacement": 6.643456718172017,
+  "decimalTrajectoryCases": 724,
+  "decimalCoordinateChecks": 267156,
+  "decimalFailures": 0,
+  "componentRejectionControlsPassed": 9,
+  "compositionRejectionControlsPassed": 3,
+  "sourceHashes": {
+    "reply_jet.py": "50d0fef1c70e399135d141946e1f77cf91ebf0383fb098f3142d5d4e00bb7955",
+    "reply_zonotope.py": "4373def79b28e1737e85f87a009695400c8c8f874b11868fc3dc55aa5aacca60",
+    "free_motion.py": "e09d7a3588b27e8bb9b9290f7869c49be6e3918d72baa87e460f76471796bb28",
+    "interval_core.py": "d4bd8c71cc6dfc6a6892557d1274e9234bb1719da0a8c207a11e3b49e6e1d821",
+    "arm1_prefix.py": "93f8e626a3fe66d24bbdccae2b821172965461baa2fb6f0b18d21a493306358b"
+  },
+  "branchSourceHashes": {
+    "reply_jet.py": "50d0fef1c70e399135d141946e1f77cf91ebf0383fb098f3142d5d4e00bb7955",
+    "reply_zonotope.py": "4373def79b28e1737e85f87a009695400c8c8f874b11868fc3dc55aa5aacca60",
+    "free_motion.py": "e09d7a3588b27e8bb9b9290f7869c49be6e3918d72baa87e460f76471796bb28",
+    "interval_core.py": "d4bd8c71cc6dfc6a6892557d1274e9234bb1719da0a8c207a11e3b49e6e1d821",
+    "arm1_prefix.py": "93f8e626a3fe66d24bbdccae2b821172965461baa2fb6f0b18d21a493306358b",
+    "reply_branches.py": "88fbaa94a66b31368a54e2215972bc1d756b18bde1e92770ce72bab24ea0f842"
+  },
+  "artifactSha256": {
+    "arm1-one-degree-cover.json": "f4cc9d92b7b9b0a12710aa561164094d51bdfe2e5ec39132ba2373ebf9d2b6d4",
+    "arm1-one-degree-validation.json": "bbfc05ceb60a8c2e3450c97101a594c02a3fa6ed6ca9d1fb06451266a715fea2",
+    "arm1-gap-branches.json": "dfc2873a7ad6cdc490e0c5c2c7c99ca151017598b269b001984c5364d10498fe",
+    "arm1-gap-validation.json": "5faa581cd203d1ad2ea475709c45386a40ead05175e7d4f259c17d1956acbd9b",
+    "arm1-gap2-branches.json": "c55befbf2c0fdda0cc496e9796067e061e07a61a14a322d87b7e9ef10a0f6613",
+    "arm1-gap2-validation.json": "efd52e1489cf75d3cdaefc5d64fd875baef19fa37facd9c23b68e739b620f1df",
+    "check_arm1_one_degree.py": "c9100ab497a3589d9532fc637122db46083fc0684be19497850f5729b87e9873"
+  },
+  "proofCells": [
+    {
+      "domainDeg": [
+        8.0,
+        8.01
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.261747485188365,
+      "koHubDisplacementLower": 6.995410503470216,
+      "propagationSha256": "fe1d92496049a5c3eb683e7580052ac692e1c9c63cc4047816dc0354458dfe1d",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.01,
+        8.02
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2602872480269407,
+      "koHubDisplacementLower": 6.991782285356368,
+      "propagationSha256": "8dbfcb217da446331e301a8cd1c4efe1866796b77c0f1771809419ee4fe04d26",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.02,
+        8.03
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.25898989579133,
+      "koHubDisplacementLower": 6.988186201190766,
+      "propagationSha256": "77e2b712db2f6682d35d9ed514d3b5dff022859633626d109f4e6244a63cd352",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.03,
+        8.04
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2576438940421464,
+      "koHubDisplacementLower": 6.984581354979756,
+      "propagationSha256": "79f03a2922ba4fbcb845a9d69a228cb42bf9da36ab5fd150a3e8127255630cc1",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.04,
+        8.05
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.256284175587069,
+      "koHubDisplacementLower": 6.980974592259925,
+      "propagationSha256": "71b66dbb0931948172c41992d18d2a343785a4ddf511093166be2f56cf114acf",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.05,
+        8.055
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.257160710810083,
+      "koHubDisplacementLower": 6.980192168463691,
+      "propagationSha256": "6484d958034856476e5d6406a7ca6f169823e36f3b75b00a7776f265e7e0cfb0",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.055,
+        8.06
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.256487771033093,
+      "koHubDisplacementLower": 6.978390907344533,
+      "propagationSha256": "f3c37a70d80d9076ab1594accab970561a3ae485277b610cf07db8493f295e4f",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.06,
+        8.0625
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2566786056001713,
+      "koHubDisplacementLower": 6.977951316073911,
+      "propagationSha256": "78c57ffd6237d82e9a7233fcd92492e6e18b1bcd5435d809daebaf5a0d40492f",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.0625,
+        8.065000000000001
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.256343813289774,
+      "koHubDisplacementLower": 6.977051194873608,
+      "propagationSha256": "42ab2019b746060b1569312c445d1e85bc31e64804162a1b1aaa2552b0c56eb2",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.065000000000001,
+        8.06625
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2564007686691663,
+      "koHubDisplacementLower": 6.976823956089395,
+      "propagationSha256": "c632e5197d25c5c6ada56f7e9a9a1fc4ee45fd52baf15cc80673c7a8b0f02413",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.06625,
+        8.0675
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.256473613237915,
+      "koHubDisplacementLower": 6.9764190639237125,
+      "propagationSha256": "8f58e1e09fdf974ae8ab10a8149d4d3983775e2d526aa420090172d3880649e7",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.0675,
+        8.068750000000001
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2563126268630778,
+      "koHubDisplacementLower": 6.975970267384758,
+      "propagationSha256": "97e24dd7465deced69a5ec3f72d485e8ac39b2911664a8ffd308a0bf389f8d17",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.068750000000001,
+        8.07
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2561516454006205,
+      "koHubDisplacementLower": 6.975521483367014,
+      "propagationSha256": "07cf059d960e785358a11ea271cead78ade206502af398bf7785a9b2226d55d0",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.07,
+        8.07125
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2559906715891453,
+      "koHubDisplacementLower": 6.975072712418424,
+      "propagationSha256": "a21ff6b6439fe922a40579421b1a5ac259e47e484879270362a6b77972516532",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.07125,
+        8.0725
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2558296999507657,
+      "koHubDisplacementLower": 6.9746239534478205,
+      "propagationSha256": "a82ea07c7ecc134596047bac60419e09c63428af5ff487f8e14faf64c45040f3",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.0725,
+        8.07375
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.25566873322586,
+      "koHubDisplacementLower": 6.974175207003915,
+      "propagationSha256": "81cea95ec3a1877c7ec2ce29f09a7be8c5662f3f2aad3c3ccea120a468811a14",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.07375,
+        8.075
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.255507771413718,
+      "koHubDisplacementLower": 6.973726473087951,
+      "propagationSha256": "45ade365004674a753620b91da6cb84ce9c3c85ac8d7fc385f3156c46f9cbdbb",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.075,
+        8.07625
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2553468144947426,
+      "koHubDisplacementLower": 6.973277751697916,
+      "propagationSha256": "7192b1296dbdd2e1273a0452ea70cbb0ff088f1b885de958522198e240c8009f",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.07625,
+        8.0775
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.255185862512348,
+      "koHubDisplacementLower": 6.972829042844052,
+      "propagationSha256": "7e4b93710ca1b13eca0657e29fa98bb1b27e7315d9da82ef456a0d2e437a544f",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.0775,
+        8.07875
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2550249154454316,
+      "koHubDisplacementLower": 6.972380346523852,
+      "propagationSha256": "86a8aa54d4b667e151124ae3720bbea51612c0159b0fbeb36385c20fe37cd0b2",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.07875,
+        8.08
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2548639732943623,
+      "koHubDisplacementLower": 6.971931662739069,
+      "propagationSha256": "c8589792b668407619e572098d4d4d92b3d53bb47d814d40f69188e918fd375c",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.08,
+        8.08125
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.254703036060135,
+      "koHubDisplacementLower": 6.971482991491774,
+      "propagationSha256": "bcccfc86afe4648e2171a0130a79e12b5288d3144db9bea393cdc715fed9e137",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.08125,
+        8.0825
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2545421037435314,
+      "koHubDisplacementLower": 6.971034332783811,
+      "propagationSha256": "d9c4ebdb62d822745a6acff1dc78c63e9de8ef9deff780d1605da22682dd9596",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.0825,
+        8.08375
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.254381176344196,
+      "koHubDisplacementLower": 6.970585686616648,
+      "propagationSha256": "a56281c0c99eade32f14640404170226c564dcadb0e5867c4db18395ac67700c",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.08375,
+        8.085
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2542202538643035,
+      "koHubDisplacementLower": 6.97013705299264,
+      "propagationSha256": "22777bb7903c769a7c9f081c172ed63b700b8e55808bd8d3b4b6d25b17f97160",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.085,
+        8.08625
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.254059336303001,
+      "koHubDisplacementLower": 6.969688431913222,
+      "propagationSha256": "84540fc0cdaae36e2d16a4b93508ef1e0a6a2b5455a0f3e257fed727b54cb7bd",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.08625,
+        8.0875
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.253898423660956,
+      "koHubDisplacementLower": 6.969239823380069,
+      "propagationSha256": "748119d78adeb90e2098504a6b6152c6fe90364f7dce7bc8813e7f56bdcade68",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.0875,
+        8.09
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2533599150563925,
+      "koHubDisplacementLower": 6.9681211113813175,
+      "propagationSha256": "6cd97394cc61bea350c0edadc796e3a127c0fe1f5cdfdf2ce81740f38ac7d871",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.09,
+        8.0925
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2530371031631797,
+      "koHubDisplacementLower": 6.967223754650376,
+      "propagationSha256": "1455b1dafeda252954c367662487529cc834135e37a2bf38a73f1c7e775498dd",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.0925,
+        8.094999999999999
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.252715364899927,
+      "koHubDisplacementLower": 6.966326651780566,
+      "propagationSha256": "f48f601c986c73bd67ba2d7201a0914a88cbe5461f6bd9f130474fcd97a91437",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.094999999999999,
+        8.0975
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.252393821487146,
+      "koHubDisplacementLower": 6.965429632979223,
+      "propagationSha256": "38115daacd3301cf0bafe1127ade3f38f3dba732ae65b0db3f978586af484276",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.0975,
+        8.1
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2520719877884825,
+      "koHubDisplacementLower": 6.964532604551188,
+      "propagationSha256": "9daedcf010e9b664685a2a70ec1c89c977206c4fee9fbcf906821ff6bd4e8701",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.1,
+        8.1025
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.251750309284773,
+      "koHubDisplacementLower": 6.963635652568422,
+      "propagationSha256": "de1ce0a2e73edeb845a292bbbe9abcf3b4190c90981b87863b5842802128726b",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.1025,
+        8.105
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2514284776539024,
+      "koHubDisplacementLower": 6.96273871761918,
+      "propagationSha256": "d7f870a3ae1a7831adf55c00ebee6caf1d5e74c40215777f17d785d26691b375",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.105,
+        8.1075
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.251106839349617,
+      "koHubDisplacementLower": 6.961841866360145,
+      "propagationSha256": "c18162db4ad0c7aa73dfd84ebe5cd1311f27ed80222632265bb391a9849b78cd",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.1075,
+        8.11
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2507853760395444,
+      "koHubDisplacementLower": 6.960945095326302,
+      "propagationSha256": "22387d3466f0f4848a3830b2b5e0ec337edc1ea99301951ec59e6c44f1e9676b",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.11,
+        8.112499999999999
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.250463659949005,
+      "koHubDisplacementLower": 6.960048322091466,
+      "propagationSha256": "a2e2e959ecfc98f765f10f48cc034e292455d2abd19989cadd8a45fbd9e4c7d4",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.112499999999999,
+        8.114999999999998
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2501420822970313,
+      "koHubDisplacementLower": 6.959151622097613,
+      "propagationSha256": "c7d9c7fd9d1f95046ae0c8807cc49d4a8e9549b5c700f797b727094cbd8c792c",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.114999999999998,
+        8.12
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.249003303322396,
+      "koHubDisplacementLower": 6.956902284233958,
+      "propagationSha256": "898aab8737fb58325266caa4f17cbe26981ec136a8199025c9f790c831c345b0",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.12,
+        8.125
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2483690287208726,
+      "koHubDisplacementLower": 6.955110806613218,
+      "propagationSha256": "5559f8f2f439aa7ff01f43c3ca5a1c6cfcf92b5e2c86d12148610ab008258349",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.125,
+        8.13
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2477235470736754,
+      "koHubDisplacementLower": 6.953317346580971,
+      "propagationSha256": "c9e3bc8a935d261eaea2f0fed99852f73006926357e963066f5830c50d12a4ff",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.13,
+        8.135000000000002
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.247076423570959,
+      "koHubDisplacementLower": 6.951523753355717,
+      "propagationSha256": "508703c9507258b2f9f4f6de8720bad11c11fbbf97e429bf1b14c35da0510efe",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.135000000000002,
+        8.14
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.246436751573597,
+      "koHubDisplacementLower": 6.949731790797182,
+      "propagationSha256": "7da9f9c63ea00d9bb6a5fe59aedd8c8d4a3139f7c8557f7698749764550b4449",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.14,
+        8.145
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2457938019908563,
+      "koHubDisplacementLower": 6.947939379933103,
+      "propagationSha256": "def0da30db57de1d3cedd4e317f422a4b3d082d1b2771c4b05249241260a26c9",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.145,
+        8.15
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2451477120127943,
+      "koHubDisplacementLower": 6.946146545975353,
+      "propagationSha256": "db57abc8cd7c646b362692f0c9ea32e9e604929b22420030d2476efac0a2f4d3",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.15,
+        8.155000000000001
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2445012012061194,
+      "koHubDisplacementLower": 6.944353818288576,
+      "propagationSha256": "a28eba61cd16d9bde8e408772c6c8de96f04d2faa66e7da73963d6da2e86586a",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.155000000000001,
+        8.16
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.243862761188964,
+      "koHubDisplacementLower": 6.942562842228443,
+      "propagationSha256": "e04bf7e5f5d12af2c656daa4ab2a0fca489a43df7160aa7585127a59d8a38bcc",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.16,
+        8.17
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2405929282989088,
+      "koHubDisplacementLower": 6.937869764301282,
+      "propagationSha256": "d31e0369906ca2354c31246c0758abee24ba09a40224cf1d92dc713d906474aa",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.17,
+        8.18
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2397436666089017,
+      "koHubDisplacementLower": 6.934373719130609,
+      "propagationSha256": "8b8d4c90f8581515f21742f36a16c6661f61a9e89f7538cf20fcb7feaa25caa2",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.18,
+        8.19
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2384933777651095,
+      "koHubDisplacementLower": 6.9308003549347985,
+      "propagationSha256": "6eabce363938f73a7ca78f6679dd0354a88ba86a38ade1fb02ebecb5fad7b263",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.19,
+        8.2
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2372597114813426,
+      "koHubDisplacementLower": 6.927230538616515,
+      "propagationSha256": "7a8d7033547dd1663db18ca94d2ed3fd5a1c86057da2171c578c87917744e832",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.2,
+        8.21
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.235942114218559,
+      "koHubDisplacementLower": 6.923645173939098,
+      "propagationSha256": "9bd8385b8b36166ff8326180692980e7a412797a1842c7591d8faf3282bcc19b",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.21,
+        8.22
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2346645686161675,
+      "koHubDisplacementLower": 6.920068405848496,
+      "propagationSha256": "1f3926bbc01c9b93c503ede404e2370d20f70b427edb78bab103f29501430fa6",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.22,
+        8.23
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2333652974123193,
+      "koHubDisplacementLower": 6.91648814124537,
+      "propagationSha256": "b6ae5a9ce43c5ad0dceff40e3db9247c1591f99b5b58309e5a1517ece9836f4a",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.23,
+        8.235
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.234175475701974,
+      "koHubDisplacementLower": 6.915709525678869,
+      "propagationSha256": "674d983f788913c40fb385db03805440aaaf81fcd6bf30bfa855ac4cbc27d388",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.235,
+        8.23625
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2347183139900717,
+      "koHubDisplacementLower": 6.915943314732732,
+      "propagationSha256": "80cf859e30f8ed4149232654d9263a2e6868b2a4555062c410324df2b154a1f3",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.23625,
+        8.236875000000001
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2347429635837694,
+      "koHubDisplacementLower": 6.915830851421905,
+      "propagationSha256": "7eea9f66d631ba44f0dbfbd898194479b406890b51b1227979bd7ccf5c208ac7",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.236875000000001,
+        8.237187500000001
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2347547419778944,
+      "koHubDisplacementLower": 6.91577451100915,
+      "propagationSha256": "64a7c92c15ebb270aa7b7a90ad3fd72670a29b4ffd3376e4d90b763fb84a03c4",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.237187500000001,
+        8.23734375
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.234760511392835,
+      "koHubDisplacementLower": 6.915746316897509,
+      "propagationSha256": "87cd0eb727a7a138f4d11323c120d43aada0b0a5890192c62dc376ea4d7705c6",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.23734375,
+        8.237421875
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2347633662174213,
+      "koHubDisplacementLower": 6.915732213882503,
+      "propagationSha256": "530e2867a0c8e0d475bb1a49cc3508511fb6c862b07242b17243422af61d9216",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.237421875,
+        8.237431640625001
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.234773416159882,
+      "koHubDisplacementLower": 6.915740828326536,
+      "propagationSha256": "053041f4659b27638a1b9601af058c015f41674b2d0a8c8b2a7708cf7a06946a",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.237431640625001,
+        8.2374365234375
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.234773592828517,
+      "koHubDisplacementLower": 6.91573994653261,
+      "propagationSha256": "ef2630cd7a82be2fbe60d292784e9530dac501a1de69dc5c6fda04341c7eb02f",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.2374365234375,
+        8.23743896484375
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2347736811380225,
+      "koHubDisplacementLower": 6.915739505630653,
+      "propagationSha256": "8431046a98d1239127843b1d25a416ae531fe142d39f7263ffdc4fb4a5aa4fd4",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.23743896484375,
+        8.23744140625
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.234773365792534,
+      "koHubDisplacementLower": 6.915738632387093,
+      "propagationSha256": "f473f10809d0d2604b4c1b1bbf7cc3b95f944eae1664faf82359f6b37a13a2e0",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.23744140625,
+        8.237442016601562
+      ],
+      "method": "separate zonotopes",
+      "throwMarginLower": 3.234773589686412,
+      "koHubDisplacementLower": 6.915738738330239,
+      "propagationSha256": "d133da373c5857c44f8c14c128bcb1570bd5bb19bf2d10c5e687ad0825452a5b",
+      "validationArtifact": "arm1-gap-validation.json",
+      "finalBranches": 3
+    },
+    {
+      "domainDeg": [
+        8.237442016601562,
+        8.237442626953126
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2367439875472566,
+      "koHubDisplacementLower": 6.915793592094323,
+      "propagationSha256": "796b36f58a760059ffb98822a00f878d21c5b592d62b4282cf085bfd9c93c58b",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.237442626953126,
+        8.23744384765625
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2367437280339852,
+      "koHubDisplacementLower": 6.915793047254042,
+      "propagationSha256": "638075b606e1c1e9fe488e0687ea643030bc3fa88539507a627223b09eaee22a",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.23744384765625,
+        8.2374462890625
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2367432089992714,
+      "koHubDisplacementLower": 6.915791957571761,
+      "propagationSha256": "7fa9a24d038e05f62261fef4bbe8629a605b6feeb8e9ce7c5db70fc82a6191b2",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.2374462890625,
+        8.237451171875
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.236742170931364,
+      "koHubDisplacementLower": 6.915789778207409,
+      "propagationSha256": "3669b265bd74288b517bcd55bfac3d2a8f9e708ff882d54d3580ca074efcdb3d",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.237451171875,
+        8.2374609375
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.236740094727551,
+      "koHubDisplacementLower": 6.915785419464536,
+      "propagationSha256": "89f7cef8ff72da5466fc0fa55259c4b1285e1b9c24272e79742a77c717d6c965",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.2374609375,
+        8.2375
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2367301674837132,
+      "koHubDisplacementLower": 6.915766253819335,
+      "propagationSha256": "1ace40d07340aa9bef8a0e9c52321d9ee7aa069e6bafa6a903c897e62f94a23a",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.2375,
+        8.23875
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.236364649216099,
+      "koHubDisplacementLower": 6.915103982315389,
+      "propagationSha256": "18fa5105d19c394e7814d6962ef8dc9d80ee47a8bfe8966f25595be8601bf8c6",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.23875,
+        8.24
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.236202648614096,
+      "koHubDisplacementLower": 6.9146568119608744,
+      "propagationSha256": "a3022f33ba3a3c9300543e36c2e8f6bedb90f15d31107aef731339fa809968bd",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.24,
+        8.2425
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2356616520826544,
+      "koHubDisplacementLower": 6.9135390079696935,
+      "propagationSha256": "a762c5e0477bd693780ddfd589e659569edee57d361afa8ed939e80a7154c703",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.2425,
+        8.245000000000001
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2353378694388506,
+      "koHubDisplacementLower": 6.91264476261847,
+      "propagationSha256": "dd140ea70010315d8a267c073ef7820ca2f89c0abb88c891677e86b84a5ba115",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.245000000000001,
+        8.2475
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.235013945567672,
+      "koHubDisplacementLower": 6.911750538176672,
+      "propagationSha256": "70a9aeb23c3c650b1b03d1d8934b0b8b7a24a9dd25aa98ebff1e79f55ff94291",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.2475,
+        8.25
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.23469003992929,
+      "koHubDisplacementLower": 6.910856365219939,
+      "propagationSha256": "6a9ec7d42789e93472c9392d3e138a182d40fefdea90a0989348dda68aaa9b4c",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.25,
+        8.2525
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.234366135392818,
+      "koHubDisplacementLower": 6.909962239249006,
+      "propagationSha256": "cec1a285578083ea393d30c0d32c2917655a83be9e57d0c23cb5f40e34c05b8e",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.2525,
+        8.254999999999999
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2340422663108366,
+      "koHubDisplacementLower": 6.909068169327433,
+      "propagationSha256": "f261afae27d89ffe0ba2bf524cd8a7bf92dcc7ab8f22ae5212920ff7378ab0f6",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.254999999999999,
+        8.2575
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2337184154780654,
+      "koHubDisplacementLower": 6.9081741509379055,
+      "propagationSha256": "193de3c35ba55bd1c00da19d785da56784be533fa0e2421e31f20c9c27df2e2d",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.2575,
+        8.26
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.233394436271112,
+      "koHubDisplacementLower": 6.907280156331352,
+      "propagationSha256": "4db82956d60ca109fb91684df752789f9add10e10f3b3ecbdd6969e8a1dad2a9",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.26,
+        8.2625
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2330706220029266,
+      "koHubDisplacementLower": 6.906386241055475,
+      "propagationSha256": "c4be8719b8da6c86b337fcefb7434d8a33422b1d561c79dc86e7cab8a00d7764",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.2625,
+        8.265
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.232746826007513,
+      "koHubDisplacementLower": 6.905492377359723,
+      "propagationSha256": "40f9a1d7fe7cb357f8d83e46ded25ad2ae3001b7b3f843553060316f39bf8e68",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.265,
+        8.27
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2316102140245984,
+      "koHubDisplacementLower": 6.903246172703886,
+      "propagationSha256": "8cb28dc20bb4a83102cc82dc1254d5647cf9aa521057b4e534c1666358bf4fdd",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.27,
+        8.274999999999999
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.230964567755478,
+      "koHubDisplacementLower": 6.901459035701058,
+      "propagationSha256": "371f5c7c02085578c7e97ed58f625e674747cb70abc077d6ba1c050a21415ae5",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.274999999999999,
+        8.28
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2303193214130625,
+      "koHubDisplacementLower": 6.899672169083362,
+      "propagationSha256": "2092483f54116f4ade4b8520a43130e12635a0c209e3243e38ca0b7623813483",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.28,
+        8.285
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.229671517617191,
+      "koHubDisplacementLower": 6.8978849994980225,
+      "propagationSha256": "e7a692dc69940dbeb1a4e7455b41be916d680581b805ef1245af916ec35db9dc",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.285,
+        8.29
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2290193306552335,
+      "koHubDisplacementLower": 6.89609716674181,
+      "propagationSha256": "6f7a41bbb7cdc868df9c6f865b55079aa8305f151e9c5ab5c4120e887c300026",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.29,
+        8.295
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.228373318340004,
+      "koHubDisplacementLower": 6.8943107288254275,
+      "propagationSha256": "6d5ad95b0fb6d90ac31feadf868d8e4496d651635f013becfb5a6dbbdb0d98e2",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.295,
+        8.3
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2277268010582953,
+      "koHubDisplacementLower": 6.892524386129589,
+      "propagationSha256": "1822ebb53e3b4a1d0716f9df2db0a4b1482af6cc56f4d6a7be3a81ae9f59bcc4",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.3,
+        8.31
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.224575267740476,
+      "koHubDisplacementLower": 6.887858718471993,
+      "propagationSha256": "e6c8b4905e6eaea34cae9187fe75119ec5b0cfb7cac561686d2fcbc884b0f7fc",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.31,
+        8.32
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2236785583180843,
+      "koHubDisplacementLower": 6.884364911507851,
+      "propagationSha256": "3f824d75f79eef8756880d233b1389fb0ebd0eb47994ec468995d73950cbd54b",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.32,
+        8.33
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2223842926676123,
+      "koHubDisplacementLower": 6.8807935843476145,
+      "propagationSha256": "e83b5fea1345d5ffebfc2737976df562de60e795c870f3d57aebfa019b1171ca",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.33,
+        8.34
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.221119924463522,
+      "koHubDisplacementLower": 6.877228994829902,
+      "propagationSha256": "bf716e5ab4ba09de3c706dde12b129525fcf60a7e1d28c896a877273900b85a0",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.34,
+        8.35
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2199076537243054,
+      "koHubDisplacementLower": 6.873674783010077,
+      "propagationSha256": "63596f75f9d3cd790e343dc3df4725327803115e2e77fad4eb0509722df7b2fb",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.35,
+        8.36
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2185012747897583,
+      "koHubDisplacementLower": 6.87008349783992,
+      "propagationSha256": "1da9b68430774e903c91fdc0e48ff5547b2626bfcfd3e4ad842978fa78ccefff",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.36,
+        8.37
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.217251814053881,
+      "koHubDisplacementLower": 6.866524958785951,
+      "propagationSha256": "b93e3ded9035fb2cb7c8912a08846adcbb5468272e0bffee0bd93c4aa7996802",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.37,
+        8.38
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2159522629175394,
+      "koHubDisplacementLower": 6.862958003226529,
+      "propagationSha256": "f1fd1053f4f82c2eee9b0fd12dc360d0c537a0aace1a6cbd2bea1a1c45ccb853",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.38,
+        8.39
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.214642582441314,
+      "koHubDisplacementLower": 6.859389848540064,
+      "propagationSha256": "698d1a79f510f719c1397836f807bfdc920a5fefe403e93e729e4a0e1370d852",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.39,
+        8.4
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2133537447882214,
+      "koHubDisplacementLower": 6.8558265717298665,
+      "propagationSha256": "648f4efc71036c8bc2c25734876f2db7ebbbdb0015c56b90c1bd64a604aa3f50",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.4,
+        8.41
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2120823069454185,
+      "koHubDisplacementLower": 6.852267519174663,
+      "propagationSha256": "1e24857c1af1df1ea45586f3f6eae7f362253216ce93a298b06ca30c17262ea5",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.41,
+        8.42
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2106572463758023,
+      "koHubDisplacementLower": 6.848678962137242,
+      "propagationSha256": "960ba15c9b83abbe76690a8219202ca30c3e64a72dc29af2215f3306005947c8",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.42,
+        8.43
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.209302029511718,
+      "koHubDisplacementLower": 6.8451047127374585,
+      "propagationSha256": "aa6585e91ba392cd1e4661f7d39b4d043e936169601e184f61b681f2d478b25d",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.43,
+        8.44
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2079179493091057,
+      "koHubDisplacementLower": 6.841525508627127,
+      "propagationSha256": "e7e52e192672a628fc36b381a0daf13507fa19843dce9f95eaaf17dbadf36245",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.44,
+        8.45
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.206531317042774,
+      "koHubDisplacementLower": 6.837946610507057,
+      "propagationSha256": "3d5babe5e570b95fd0135d741206428369059e75274b5757f4cc05446f8f403d",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.45,
+        8.4525
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.208253870317989,
+      "koHubDisplacementLower": 6.838562619328152,
+      "propagationSha256": "74fe450713d930a6dd7a54fa232ac6b87501e2c9fcf0770e0176997c6f4edfe9",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.4525,
+        8.455
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2076807424779896,
+      "koHubDisplacementLower": 6.837624095595064,
+      "propagationSha256": "562fc0b0f69e451c6cd6c433caf53fa7caf383a82646cc8647bb56781a87e030",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.455,
+        8.4575
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.20757948457188,
+      "koHubDisplacementLower": 6.83677775148874,
+      "propagationSha256": "f61956b866cb8928638af8da8862902d805e512cf7f8cd09736f4554198a0c88",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.4575,
+        8.46
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.207242360761526,
+      "koHubDisplacementLower": 6.835885394282895,
+      "propagationSha256": "2cf1c5724da2d2cdc0cb02ab8e0f902b2fcbf16147e3896d94b948a02ccd4317",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.46,
+        8.46125
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.207294700773516,
+      "koHubDisplacementLower": 6.835666327353734,
+      "propagationSha256": "63ee2f7a1542a58879df417bafc831b22cc024b6ea58b27c46caa06569a70925",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.46125,
+        8.4625
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2071263617809502,
+      "koHubDisplacementLower": 6.835220240049785,
+      "propagationSha256": "fbc8cbac0d3b83c5b4559a269b2a66528216489f3935d2dc14cca5267f2db768",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.4625,
+        8.463125000000002
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2073866832408835,
+      "koHubDisplacementLower": 6.835155221663212,
+      "propagationSha256": "2dbab90a2e33d62436bc421eaa0eaba90f9d79db0e54615ad7a91a5289bba0ce",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.463125000000002,
+        8.463750000000001
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2073057179611335,
+      "koHubDisplacementLower": 6.834932800642736,
+      "propagationSha256": "5cfa8fd1d62e98fad0077a4423ae1c0e2acad3993a447c33009f9221dfa2aeac",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.463750000000001,
+        8.465
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2070385807182187,
+      "koHubDisplacementLower": 6.834375495047469,
+      "propagationSha256": "34b1b034b3fc63cf04781a1cf6e5e3efb5f2ced91d27e0c39c4bc2927017fce5",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.465,
+        8.46625
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2068766645349878,
+      "koHubDisplacementLower": 6.833930669750005,
+      "propagationSha256": "30e634b1127f8dae9e5919d096873b5364b43477b7e5ab9379aaafcc8670e9f4",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.46625,
+        8.467500000000001
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2067147544370864,
+      "koHubDisplacementLower": 6.83348585793887,
+      "propagationSha256": "5b1e8c44c3c3ccbd0a730a796e263b50b3b6aa5ed9b1ff969c78c5b6c6cf17bb",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.467500000000001,
+        8.46875
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.206552847790831,
+      "koHubDisplacementLower": 6.833041059171514,
+      "propagationSha256": "200073392e6ac3250165d1791fac21b921bd0e0979b9ff0f3b64d846d86b6f3a",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.46875,
+        8.47
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.206390945914094,
+      "koHubDisplacementLower": 6.8325962736721655,
+      "propagationSha256": "28024f5beea2ec263cdcb80b2fd527b152ff3e11901f3e1a31bccd6d460020bb",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.47,
+        8.471250000000001
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2062290488079124,
+      "koHubDisplacementLower": 6.832151501442997,
+      "propagationSha256": "a7e770e574e9579224d752e0125255a3adbf085e3b7f23ff86727a41b328a68d",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.471250000000001,
+        8.4725
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2060671564718173,
+      "koHubDisplacementLower": 6.831706742485767,
+      "propagationSha256": "363c2453a3587a9ba2a57a2522fa608cea6c2ad0fdd0b056c3e6e9e64ad2f781",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.4725,
+        8.47375
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.205905268907571,
+      "koHubDisplacementLower": 6.8312619968026285,
+      "propagationSha256": "1a800506a3638d0c4d959047e4f87374a6ce484cd3ab7a9c9a80512a3a19b6ac",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.47375,
+        8.475000000000001
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2057433861153437,
+      "koHubDisplacementLower": 6.8308172643955976,
+      "propagationSha256": "6749b061b353ab50b6acaf3c6e2a58b98bc4211a8c79859c0bf085e06183830b",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.475000000000001,
+        8.47625
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2055815080956473,
+      "koHubDisplacementLower": 6.830372545266594,
+      "propagationSha256": "bb98c29e4ca014731eb068010cd130408675007e9a52ddbc7eef21f6df2b0061",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.47625,
+        8.477500000000001
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.205419634848624,
+      "koHubDisplacementLower": 6.8299278394173975,
+      "propagationSha256": "09d3105be2587eae76126d5280fa25d0fa21a320464f33ead1766de2dc2793eb",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.477500000000001,
+        8.478750000000002
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.205257766375794,
+      "koHubDisplacementLower": 6.829483146850426,
+      "propagationSha256": "4af1a0d3ad7abe73e7da953a3a9677a17aef352d00873b9afc239cd16d3fdcf4",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.478750000000002,
+        8.48
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2050959026775554,
+      "koHubDisplacementLower": 6.829038467567525,
+      "propagationSha256": "08d71c2686babfdb3e15f86612820be4f55658a6d647286a8fa0a2d6e585a74e",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.48,
+        8.48125
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2049340437543345,
+      "koHubDisplacementLower": 6.828593801570609,
+      "propagationSha256": "48c8611b7ddae95ddd26eef8c79559aa60d33bf31a0edf41fec974cd4b617ead",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.48125,
+        8.4825
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.204772189605833,
+      "koHubDisplacementLower": 6.828149148861488,
+      "propagationSha256": "cf4cc9100caad5c066034bf9eb10c37d35fb30e048716056bc3118ed54bd6853",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.4825,
+        8.485
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.204233162399859,
+      "koHubDisplacementLower": 6.827033674940399,
+      "propagationSha256": "0bfe199648ad987498ecba0f8239ea0e257895204f6f4e14c1a3e96c0873f360",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.485,
+        8.4875
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.203909827910706,
+      "koHubDisplacementLower": 6.826144498383579,
+      "propagationSha256": "93fdfeefc880cc7de79e4f1f013072e1a0a0b078fe5d4debaf2910070bdb6c3b",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.4875,
+        8.49
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2035862021256487,
+      "koHubDisplacementLower": 6.825255314391801,
+      "propagationSha256": "48df0905c9edada23818ddc805adc8b6df481fb9a4ada9939d42b13218b68a7a",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.49,
+        8.4925
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.203262580714451,
+      "koHubDisplacementLower": 6.824366180582492,
+      "propagationSha256": "5943325fe65ba61ead13985d15c05887738bd4daffedaaaa67423b7f39f916b6",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.4925,
+        8.495000000000001
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2029389912684105,
+      "koHubDisplacementLower": 6.823477102715799,
+      "propagationSha256": "c09271aac510259aa5d045f2d4a069d9bbf57cfd33ca7889db6d26fc72b88f55",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.495000000000001,
+        8.4975
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.202615420963738,
+      "koHubDisplacementLower": 6.822588078091876,
+      "propagationSha256": "4b5d474de8443e020954bebbe484f4361b9c7e99b1c6d1dfb51032e9d15e79dc",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.4975,
+        8.5
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2022918695632394,
+      "koHubDisplacementLower": 6.821699106691722,
+      "propagationSha256": "6bda1a4817d55a26434c558527cd588c447a5e4456e5b99744d04fcce822064d",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.5,
+        8.5025
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.201968337557488,
+      "koHubDisplacementLower": 6.820810188601133,
+      "propagationSha256": "d0d14d99045201977ffd892240289bbdd280914f2a865999dd29969875fecebd",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.5025,
+        8.504999999999999
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2016448112997007,
+      "koHubDisplacementLower": 6.81992132121394,
+      "propagationSha256": "d430fe624eedacffd2844afa6df24b667608881df54dfb56f23e15160e27ef23",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.504999999999999,
+        8.5075
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.2013213170823884,
+      "koHubDisplacementLower": 6.819032509616707,
+      "propagationSha256": "e0887888e7c451d990c08f6a26a1b4658099093fd1cabbe8bc86089fafac7b27",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.5075,
+        8.51
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.20099784254387,
+      "koHubDisplacementLower": 6.818143751442879,
+      "propagationSha256": "75102964b071a82c5e08fd922e0cba499d242f69134359bf72c254c985ad4d05",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.51,
+        8.515
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1998676519065152,
+      "koHubDisplacementLower": 6.81590267701852,
+      "propagationSha256": "791976585fd1d159267eee6a92503fbd82f5bb28842762a47e54a8c9c178fa68",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.515,
+        8.52
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.199222569884071,
+      "koHubDisplacementLower": 6.814125751690365,
+      "propagationSha256": "2c83fa7ed6315dc43280b4a4dca6fa3ecb5fdfeafa8e25c64cb9f6f09595a408",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.52,
+        8.524999999999999
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.198573815660509,
+      "koHubDisplacementLower": 6.812348301217385,
+      "propagationSha256": "87b6b29604094d1bb1cb18ce6f99cef3517a80739fa3a84968ca10bfcc2806c9",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.524999999999999,
+        8.53
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1979279685929067,
+      "koHubDisplacementLower": 6.810571621658725,
+      "propagationSha256": "05a145380ff1e4ad745729e5aa0ef54854353941542ef99ba29674ce97ae963c",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.53,
+        8.535
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.197284191822845,
+      "koHubDisplacementLower": 6.808795547688865,
+      "propagationSha256": "6e2a82ec5125dadfee059bca5ff3582536d9cacbf0d3cc8400f9812713fd72fe",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.535,
+        8.54
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1966330139539987,
+      "koHubDisplacementLower": 6.807018218620219,
+      "propagationSha256": "e69c5c5478889b3e1985e47a48d8a0fb3b50207d135933378f20c1abae602649",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.54,
+        8.545
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.195988325981616,
+      "koHubDisplacementLower": 6.805242361869562,
+      "propagationSha256": "8c400decb17b2ae8c7e5f33f5c7f233e6fb69514e6b9a3b3307271b8f2c51555",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.545,
+        8.55
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1953254378625355,
+      "koHubDisplacementLower": 6.803463295472237,
+      "propagationSha256": "6fa36d5d7450da5a66e952f8e7f7bdc2c2bbb00fbe564b6aa1949f88acd40aeb",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.55,
+        8.555
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1946824765434907,
+      "koHubDisplacementLower": 6.801688884403216,
+      "propagationSha256": "721a1fab07b697a4760c301b1eb4f30ec865b5ee8a4c33a86aea8eb70bd5794e",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.555,
+        8.56
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1940302425821865,
+      "koHubDisplacementLower": 6.799913155270432,
+      "propagationSha256": "429c161ef8a5a88c6d71170ecd70ad672becfc45e1d539d41e397139af11ed20",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.56,
+        8.57
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.191228062626237,
+      "koHubDisplacementLower": 6.795325118226568,
+      "propagationSha256": "4f98ebe82323f2efdb4d10c98cca574e30d67075180d51bd0f75b695d9c26aec",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.57,
+        8.58
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1899217835369877,
+      "koHubDisplacementLower": 6.791774166490701,
+      "propagationSha256": "30031025eb8c0a88d7af09e715762da839284910a9e6c394cc02a5e4f14f8288",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.58,
+        8.59
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1886001977692895,
+      "koHubDisplacementLower": 6.7882209877227355,
+      "propagationSha256": "746b615ffd59c88990413bca0aefec5c450bc3ac741e6f812462744770afa439",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.59,
+        8.6
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.187323252082748,
+      "koHubDisplacementLower": 6.784677498811447,
+      "propagationSha256": "2a015ee208c6d56d6c3c1256ad1431c545e06d2ab2c79f8f60c02b097653ecf9",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.6,
+        8.61
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1860159367780763,
+      "koHubDisplacementLower": 6.781128779598513,
+      "propagationSha256": "80d56ff2292ba6ee745a4241f033ad778293675b0ece92cb14a1d4317314eca8",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.61,
+        8.62
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1847292711331217,
+      "koHubDisplacementLower": 6.777584955400658,
+      "propagationSha256": "0b6e894c3c0711a2247496c9ad57e9608dd3444d3efd576464beefcc22b66ee6",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.62,
+        8.63
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1834206655158392,
+      "koHubDisplacementLower": 6.7740375784698905,
+      "propagationSha256": "6beb23e5481edaafce655c974c9c72e644637582a96270bc806aba9c13745866",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.63,
+        8.64
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1821111307653633,
+      "koHubDisplacementLower": 6.770490848836913,
+      "propagationSha256": "3a3c821faa6cdc2a0ea7555edd0d3b9d1453fd18702c24ac4fd2962b17b03d46",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.64,
+        8.65
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.180817154235356,
+      "koHubDisplacementLower": 6.7669480281707015,
+      "propagationSha256": "1af8a993c1e825d40ffbd9aaa9479ff8eb541a60c8d09c18a2ab9ddccce854a1",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.65,
+        8.66
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1795164535321017,
+      "koHubDisplacementLower": 6.763404691292357,
+      "propagationSha256": "794d1ff1e0ab3274815d7d8c031ad389be10ec43d7376ad8c6f7784c9fe5f298",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.66,
+        8.67
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1781727602174494,
+      "koHubDisplacementLower": 6.759853028203826,
+      "propagationSha256": "df7f56bf869da620a6996a533217d4b07cc68f9abd869787a61366f4e16562b2",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.67,
+        8.68
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.176808598628298,
+      "koHubDisplacementLower": 6.756297906116154,
+      "propagationSha256": "e809e21cd0c5a71eab7b187d18e1399f8705af402078a8a4aac9cdfc278ef1ca",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.68,
+        8.681249999999999
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.178879878189306,
+      "koHubDisplacementLower": 6.757602603788539,
+      "propagationSha256": "5e362984f97353df59790fa02199038fd441b01348e955688612a9043dc7da6a",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.681249999999999,
+        8.681406249999998
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1790422471728585,
+      "koHubDisplacementLower": 6.757746225516847,
+      "propagationSha256": "4ec46417162a27fcc705f17cf53ca384604aa5f23b3a64c73045e68b0a799ca8",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.681406249999998,
+        8.6814453125
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.179131743722834,
+      "koHubDisplacementLower": 6.757768061879939,
+      "propagationSha256": "0709bba59da1f7862ca57ea92698f27420bc51ae01a6a8ac70ef1d71d7a3474d",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.6814453125,
+        8.68146484375
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1791324255035103,
+      "koHubDisplacementLower": 6.757764689249634,
+      "propagationSha256": "c351f8382c278f4bdc58954b1c56d4f8f2dbd6e2e6531b6b3005ca65c2dbaa66",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.68146484375,
+        8.681474609374998
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.179132765914843,
+      "koHubDisplacementLower": 6.7577630028382645,
+      "propagationSha256": "17c9fd255adb68d77d72fb779987769c5200cee8efccadebbd6b143d7d5c4933",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.681474609374998,
+        8.6814794921875
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.179132936024899,
+      "koHubDisplacementLower": 6.757762159613209,
+      "propagationSha256": "9e5235f72abeed079a52d610783593013afa43acd7668490061a4804f9a1f4bf",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.6814794921875,
+        8.681480712890624
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1791333797506662,
+      "koHubDisplacementLower": 6.757762391444415,
+      "propagationSha256": "84b7f561193a9369ed8db70e00b5c330d49faf20e7c499ac96829753a49e4107",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.681480712890624,
+        8.681481323242185
+      ],
+      "method": "separate zonotopes",
+      "throwMarginLower": 3.1791334010025873,
+      "koHubDisplacementLower": 6.757762286038958,
+      "propagationSha256": "5503be3fc4786b367a04fc28053a2031946388a07be79fe7a782582a47e69a2e",
+      "validationArtifact": "arm1-gap2-validation.json",
+      "finalBranches": 3
+    },
+    {
+      "domainDeg": [
+        8.681481323242185,
+        8.681481933593748
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.181066753267103,
+      "koHubDisplacementLower": 6.757794448611619,
+      "propagationSha256": "a83f79e283ab2a8916cb1cb823cb7c106a4852dadb2020b1922692879b8ea24f",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.681481933593748,
+        8.681484374999998
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1810661326503147,
+      "koHubDisplacementLower": 6.757793251866308,
+      "propagationSha256": "f27faab5883365359fb186e7a33b5e65b5f1d92c73dd5d2a23dd6cb363224372",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.681484374999998,
+        8.681562499999998
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1810434386504336,
+      "koHubDisplacementLower": 6.757751852216494,
+      "propagationSha256": "026604001011cb46114b10d6ce0acedb00a100610b916bf634ff8ace55db5bab",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.681562499999998,
+        8.681874999999998
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1809638548290446,
+      "koHubDisplacementLower": 6.7575986377072566,
+      "propagationSha256": "e55ad175de541d784a8516a99503b75f031b2e4ac60b46dcad2550f6c387a95b",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.681874999999998,
+        8.6825
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.180830339326007,
+      "koHubDisplacementLower": 6.757320530459973,
+      "propagationSha256": "85cbe203ab44180cfd4f878267cbde3cf665ff22d733918345d33c6fb65b2134",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.6825,
+        8.684999999999999
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.180184359010951,
+      "koHubDisplacementLower": 6.756092830574411,
+      "propagationSha256": "81882793cc5a0ff6f0c061ea0a78946ac4210336b3ed3c10c017d66179ec1036",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.684999999999999,
+        8.69
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1790610091778997,
+      "koHubDisplacementLower": 6.75385659845534,
+      "propagationSha256": "4b274a3ba1f2a81a44b11d9b0f3f8fa52778a0a8bd0a0b6409fe0cfd5a36d92e",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.69,
+        8.695
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.178411388717151,
+      "koHubDisplacementLower": 6.7520867901285335,
+      "propagationSha256": "c1d4f7fffb6f18a0adc006a753a20595463bbfe67a26d2254310e90001b9ac3e",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.695,
+        8.7
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1777583354421632,
+      "koHubDisplacementLower": 6.750316513764244,
+      "propagationSha256": "44bfe66d266e58a03825926e6bc46afb9374f4895f91ea5077407406625559a9",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.7,
+        8.71
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1749799198757525,
+      "koHubDisplacementLower": 6.74573720058728,
+      "propagationSha256": "899bd8a79964ac16e0c4479d95acc19c05913e95760c702a0ad61dd45915147e",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.71,
+        8.72
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.173683901681144,
+      "koHubDisplacementLower": 6.742199547058592,
+      "propagationSha256": "367572e32c4aa519055bc0dc76ab2134fec2ecb18d67a6d29e0027544b4dc63b",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.72,
+        8.73
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.172356596165201,
+      "koHubDisplacementLower": 6.738656467581582,
+      "propagationSha256": "07034eedd46efd0025e70a9c2e94419623fbca4334a68a58c8fb92fe79957328",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.73,
+        8.74
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1710936174273736,
+      "koHubDisplacementLower": 6.735127083723631,
+      "propagationSha256": "a8a2d07eced184110f5a4741da813f0081a8af3b82093fdd7012e6500224b00a",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.74,
+        8.75
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.169630034969543,
+      "koHubDisplacementLower": 6.731559346178834,
+      "propagationSha256": "f321e85d4044a19f801617ff7d96f4c653d4cbc8e0beaf8d85cb4d78906fba93",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.75,
+        8.76
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1684504154860345,
+      "koHubDisplacementLower": 6.7280503606246675,
+      "propagationSha256": "70dde2758eb9cf0000f10cc2b4f32ed993415d4b063263afd9b224d2d3bfd41e",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.76,
+        8.77
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.167131465012815,
+      "koHubDisplacementLower": 6.724514395622591,
+      "propagationSha256": "3b190044db4ced59376153a9cb3adb2bf08fd618ded672c4733be5686232b1c2",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.77,
+        8.78
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1658086870043998,
+      "koHubDisplacementLower": 6.720978490323356,
+      "propagationSha256": "8664eebd2b7af2bdedda342fac4c708cd0432e7fafc7eaa68a3fc78e129f545f",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.78,
+        8.79
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1645066681950733,
+      "koHubDisplacementLower": 6.71744759726419,
+      "propagationSha256": "a67ecbb63fffafbe835d93d67eeaf34535fa742f7e16b94be06a70026e7665d6",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.79,
+        8.8
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1631960007710798,
+      "koHubDisplacementLower": 6.713915816601748,
+      "propagationSha256": "d905ec34a56fc8c958bb344fc8190e312768f65ce95ea98fc829aadae90c7aec",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.8,
+        8.81
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.161847272451453,
+      "koHubDisplacementLower": 6.710377110127337,
+      "propagationSha256": "5d5c05dddea8706d14588147b47c97af5f87d2874511108156e35d8d5de8e24d",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.81,
+        8.82
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1604454437066205,
+      "koHubDisplacementLower": 6.706827841121932,
+      "propagationSha256": "4749a4c7865fcfca3b82d62ff34b9b46a4000afa97405a6a9e651223669d76c0",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.82,
+        8.83
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.159097355789228,
+      "koHubDisplacementLower": 6.703290309515847,
+      "propagationSha256": "7b59ba15784a6604d64d67203712898ba013664cb5686d2fc2690b3a3eb362e8",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.83,
+        8.84
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1576794808282496,
+      "koHubDisplacementLower": 6.6997396017235555,
+      "propagationSha256": "d3a31878de9678175cb7fe3c2b2ce31b2c74b40807b07009a9d1b8875ea490e4",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.84,
+        8.844999999999999
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.158587662196069,
+      "koHubDisplacementLower": 6.6990410886496665,
+      "propagationSha256": "96b8cb329562d17a6232ae5be9a65a57eac637ccb840eef5a0ddba584a023b95",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.844999999999999,
+        8.8475
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.158734594586164,
+      "koHubDisplacementLower": 6.698629969170883,
+      "propagationSha256": "3856e787ae0fa4e5dc523638109e212f08f8062a0e0ddda0c1b29b18470072ab",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.8475,
+        8.848749999999999
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1587832849998985,
+      "koHubDisplacementLower": 6.698419436886999,
+      "propagationSha256": "1533df2622bbffef92f384ac6d6489341415a9b80aa3aef6562c77d068f6c766",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.848749999999999,
+        8.85
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.158613691372721,
+      "koHubDisplacementLower": 6.697977415896746,
+      "propagationSha256": "e3aeab8668272313c0375a78316bd46700e4a4b301fb6dc8c2df153ce0621bde",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.85,
+        8.850625
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.158875122753656,
+      "koHubDisplacementLower": 6.697917827590294,
+      "propagationSha256": "654e90c771c6585482af437da1375b62896345721ecb65965d2cd03ab4946b36",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.850625,
+        8.85125
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1587936463495505,
+      "koHubDisplacementLower": 6.697697470810235,
+      "propagationSha256": "2396775f96280368b5eafa89ae7475ac28a459398c99658050c855df4a19242d",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.85125,
+        8.8525
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.158525765256115,
+      "koHubDisplacementLower": 6.697141891232586,
+      "propagationSha256": "0992d1142719ef9e0be5fc0e6d533ac6c4d47c5ac9c1860a996dbdc4c492c184",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.8525,
+        8.85375
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1583628256800576,
+      "koHubDisplacementLower": 6.696701195613717,
+      "propagationSha256": "ed72dc8bdaad297983e846b3d1624c9167dc18f677ea4a48175239506045b4c2",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.85375,
+        8.855
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.158199890456984,
+      "koHubDisplacementLower": 6.696260514045533,
+      "propagationSha256": "235f2639971bf437687615eab710ae12f415816baaae7072ac710dccb218c899",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.855,
+        8.85625
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1580369595882583,
+      "koHubDisplacementLower": 6.6958198465303935,
+      "propagationSha256": "ec18704f215cbf93341397bf317b430a0df4c8c3c4eb43f319fe8ee27ca7d311",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.85625,
+        8.8575
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.157874032766585,
+      "koHubDisplacementLower": 6.695379193009662,
+      "propagationSha256": "84787414b68aeffc434f9d03535ae1c7f160b68940e6d3960e7b2b95e11fda53",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.8575,
+        8.85875
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.157711110606541,
+      "koHubDisplacementLower": 6.6949385536066846,
+      "propagationSha256": "2212ecfb9985338f4f85d1d0a5acf151c16760eaaba83a76dace5d3489f9714d",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.85875,
+        8.86
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1575481928023517,
+      "koHubDisplacementLower": 6.694497928263398,
+      "propagationSha256": "79261a4d55f8a6aa60fb962b36e506eab65dbd6c26e91776004e8e5fb595edbc",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.86,
+        8.861249999999998
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1573852793546417,
+      "koHubDisplacementLower": 6.694057316981854,
+      "propagationSha256": "53ac498f7fcae19b08cd002df58ba0cb09041ea892686d22ba1dc1b53cf5c200",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.861249999999998,
+        8.862499999999999
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1572223702636815,
+      "koHubDisplacementLower": 6.693616719764163,
+      "propagationSha256": "3b90f7c1d7f158caf5439b64c8a09eb0e71470ddcf67458a02f5a0a3302cff5d",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.862499999999999,
+        8.86375
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.157059465529428,
+      "koHubDisplacementLower": 6.693176136612513,
+      "propagationSha256": "005f4a280dd4637174aec122f8767be6b4b3e3c7202a13efeafee76c703d4a1e",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.86375,
+        8.864999999999998
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.156896565152635,
+      "koHubDisplacementLower": 6.692735567528952,
+      "propagationSha256": "88403622e673460f36d1ace43ecde1ae0944cedffa40365eb34db022e7f9fac2",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.864999999999998,
+        8.866249999999999
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.156733669133487,
+      "koHubDisplacementLower": 6.692295012515739,
+      "propagationSha256": "250c9bc165b87612c367f13ddedf0307ef8d5650083c8f35e9c202b1516684ed",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.866249999999999,
+        8.8675
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1565707774748826,
+      "koHubDisplacementLower": 6.69185447157553,
+      "propagationSha256": "09888fb0b7e475fcfd93a1e965ca5c7f7f543c0a1a842eb77d4e5ff739478803",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.8675,
+        8.868749999999999
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.156407890175117,
+      "koHubDisplacementLower": 6.691413944709927,
+      "propagationSha256": "9c74562c73f46da0cd5201d8d8af0b17c67ec9fc7d5ffb5158f758fb8a6e4fbb",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.868749999999999,
+        8.87
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1562450072351704,
+      "koHubDisplacementLower": 6.690973431921383,
+      "propagationSha256": "f2982aec4ca662eda43c10c52ee9c915740ea5257578c8b6ee24cd06b2ae15e2",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.87,
+        8.872499999999999
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.155705753004369,
+      "koHubDisplacementLower": 6.689861670017626,
+      "propagationSha256": "c2bee6d51eb1d5c06f0c3cccc649b7db27613b7eb9824a7237603562ace23233",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.872499999999999,
+        8.875
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1553800411407162,
+      "koHubDisplacementLower": 6.688980716597776,
+      "propagationSha256": "69667f392693480d5aaceba4b62cbe2971898b948ed21f4ba963b22124dd3e15",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.875,
+        8.877500000000001
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1550543467294854,
+      "koHubDisplacementLower": 6.688099819530329,
+      "propagationSha256": "bdfa1f9a147210d5e8f23ca3f39ce7cb0639080d4efb2b1a8bb2f2d0868b266f",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.877500000000001,
+        8.88
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1547286697733194,
+      "koHubDisplacementLower": 6.687218978832529,
+      "propagationSha256": "63ef074da8a02c70b9c23f40e80e7f50569f4b65ba951e47e81243df4ec57d94",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.88,
+        8.8825
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.154403010278315,
+      "koHubDisplacementLower": 6.686338194522151,
+      "propagationSha256": "15e145c1b74bd25521e0adcd50d53766d5f7e8059d262cbc27fd178a5372dce9",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.8825,
+        8.885000000000002
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1540773690511226,
+      "koHubDisplacementLower": 6.685457466775514,
+      "propagationSha256": "e57b84db6feb4efcc3173833bb8d3cb0108dcf7f6be6fb67f45ea61e496a29fa",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.885000000000002,
+        8.887500000000001
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1537517444910743,
+      "koHubDisplacementLower": 6.684576795292714,
+      "propagationSha256": "3a0b48c2f674851af317242b697e38f6d14bad11175b275465d919718d2b398b",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.887500000000001,
+        8.888750000000002
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1538022870580984,
+      "koHubDisplacementLower": 6.68436743089464,
+      "propagationSha256": "3d28ac4e17de21fb4f4ac4140411bd1b0cd6f7ddbc2be0921f7088f6730fad18",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.888750000000002,
+        8.89
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.15363943272807,
+      "koHubDisplacementLower": 6.683927131344825,
+      "propagationSha256": "1210306c8481caa71a8dbf34302023d9d67137d0b47c7745b98480795548ff8b",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.89,
+        8.8925
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1531001570137955,
+      "koHubDisplacementLower": 6.682815527431435,
+      "propagationSha256": "6660d0e79b902c3f13f65ef6a7c750c5818f6a1600a9d03fda759740d55456dc",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.8925,
+        8.895
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.152774679596916,
+      "koHubDisplacementLower": 6.6819350267777775,
+      "propagationSha256": "55bba66259d76577c7c5f0b1aef043a0fdb19c3c92d99a1c6e4dd0cf527013ed",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.895,
+        8.8975
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1524492207391996,
+      "koHubDisplacementLower": 6.681054582623043,
+      "propagationSha256": "3a3a898b041eeaf84cca57065ed9ac3907d1e60e1605ca42128117ccadfc7c76",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.8975,
+        8.9
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.152123780403016,
+      "koHubDisplacementLower": 6.680174194976555,
+      "propagationSha256": "c55fd50c9b53319a1c5c2507f579fb8fc853ecbb7a4fb32f14faffeb4c62253e",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.9,
+        8.905000000000001
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1509976377181483,
+      "koHubDisplacementLower": 6.677941384131167,
+      "propagationSha256": "fa2b6b6e275d5e8d72b726feb7679800f1f181999d8c769d8ecb742e89ab06f7",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.905000000000001,
+        8.91
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1503493582588784,
+      "koHubDisplacementLower": 6.676181372078015,
+      "propagationSha256": "34ae92db30d952c228bd5923f7dce17fa27a893a59f0de9da677e85bfd3680ae",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.91,
+        8.915
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.149697929777616,
+      "koHubDisplacementLower": 6.674420944757088,
+      "propagationSha256": "1f23d6aa118eb9267ce62c9124d5874ec3b6404d79c5e026cda797310ce94830",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.915,
+        8.92
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1490527601163047,
+      "koHubDisplacementLower": 6.672661973406576,
+      "propagationSha256": "e53cf96d55af64bb50f2ad6a809cf8d89a5c1afe3f724f87bbd21b3c8fcda2a2",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.92,
+        8.925
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1484019485225896,
+      "koHubDisplacementLower": 6.670902091286537,
+      "propagationSha256": "a588cd0850019337145ad09c1ce4c5b592c07166b2a92be45fe6b1e4ed2fb10e",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.925,
+        8.93
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1477508474337266,
+      "koHubDisplacementLower": 6.669142363235949,
+      "propagationSha256": "009f1861cfe9b728a0216204724fa6604cc7aa697431f80ddbf3fc95bde727ef",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.93,
+        8.934999999999999
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1470949861307242,
+      "koHubDisplacementLower": 6.667381908738779,
+      "propagationSha256": "17e08b95da7a1828f18837cd78a7abe4d42020967a794c3c7de756b2209c88b6",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.934999999999999,
+        8.94
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.146439696546181,
+      "koHubDisplacementLower": 6.665622314196433,
+      "propagationSha256": "949cc1bb173da8d13277293435db6b9f198661d71f19b2f61d0cf3ddbcfdf985",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.94,
+        8.95
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1436139250539834,
+      "koHubDisplacementLower": 6.661043052544323,
+      "propagationSha256": "daeaf661070a0dff172533ec6c2a9a78dc8250624ec8cbf068f8b6cbceed6fe2",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.95,
+        8.96
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1423040684650654,
+      "koHubDisplacementLower": 6.657526020308782,
+      "propagationSha256": "01e068c2a4534abefc1ca9cab9ba0bbf26d7368f4a97174aa7c9688532738799",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.96,
+        8.97
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1410112626574285,
+      "koHubDisplacementLower": 6.654013283187624,
+      "propagationSha256": "ae10d50d343e406347c424c160bde47ae83b9dc25e4bfb8a2788f939e3cc4108",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.97,
+        8.98
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.1396563515898346,
+      "koHubDisplacementLower": 6.650488909295109,
+      "propagationSha256": "4e1719142efd8863b674593b34e76d8c771e5bb407d02ecaeff0fd332a1e2c67",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.98,
+        8.99
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.138417641785608,
+      "koHubDisplacementLower": 6.646988808084239,
+      "propagationSha256": "1997a4227a0ad7933b600ddee6bfe512c4017094ef36ad2d64ce108098ccb8e1",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    },
+    {
+      "domainDeg": [
+        8.99,
+        9.0
+      ],
+      "method": "single zonotope",
+      "throwMarginLower": 3.137016072573885,
+      "koHubDisplacementLower": 6.643456718172017,
+      "propagationSha256": "34539536fb42b715ff5a36c27c03f50ba21894a7f12720856609c5e7e2f13c92",
+      "validationArtifact": "arm1-one-degree-validation.json"
+    }
+  ]
+}

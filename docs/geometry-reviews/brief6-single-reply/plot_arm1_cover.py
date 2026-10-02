@@ -44,7 +44,7 @@ def plot(certificate_path, output, preview=None):
     axes[0].set_ylim(0, max(margins)*1.13)
     axes[0].axhline(0, color=ink, linewidth=1)
     axes[0].set_ylabel('Guaranteed throw margin (u)')
-    axes[0].text(.02, .08, '0 = defender exactly at the fall threshold',
+    axes[0].text(.02, .08, 'Above 0 = guaranteed beyond the fall threshold',
                  transform=axes[0].transAxes, color=muted, fontsize=9)
     axes[0].text(.02, .55, f'Minimum lower bound: {min(margins):.6f} u',
                  transform=axes[0].transAxes, color=ink, fontsize=13)
@@ -60,13 +60,18 @@ def plot(certificate_path, output, preview=None):
         a, b = row['domainDeg']
         for ax in axes:
             ax.axvline((a+b)/2, color='#b87016', alpha=.8, linewidth=.9, linestyle=':')
+        axes[0].scatter([(a+b)/2], [row['throwMarginLower']], color='#b87016', s=22, zorder=3)
+        axes[1].scatter([(a+b)/2], [b-a], color='#b87016', s=22, zorder=3)
         axes[0].text((a+b)/2, max(margins)*1.04, f'{(a+b)/2:.5f}°',
                      color='#9a5a0b', fontsize=9, ha='center')
-    fig.text(.12, .09, 'Orange markers: two contact-switch cells, each enclosing all three possible contact images.',
+    fig.text(.12, .09, 'Orange dots: two contact-switch cells, each enclosing all three possible contact images.',
              fontsize=10, color=muted)
     fig.text(.12, .05, 'Stored seed; shared reply (0,−). Full-arm coverage and floating-engine correspondence remain open.',
              fontsize=9, color=muted)
     fig.savefig(output, format='svg', metadata={'Date': None, 'Creator': 'Tau interval-cover research'})
+    # Matplotlib leaves spaces before path-data newlines; normalise only that
+    # whitespace so the generated vector artifact passes the repository check.
+    output.write_text('\n'.join(line.rstrip() for line in output.read_text().splitlines())+'\n')
     if preview:
         fig.savefig(preview, dpi=160, facecolor='white')
     plt.close(fig)
