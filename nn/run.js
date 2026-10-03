@@ -57,6 +57,7 @@ const crypto = require('crypto');
 const { planMint, stripPolicyHead } = require('./mint-plan.js');
 const evo = require('./evolution-roster.js');
 const gate = require('./promotion-gate.js');
+const champFace = require('./best-face.js');
 const { fmtEloRange } = require('./elo.js');
 const { withGitLock, isBusy, pushWithRetry, sleepSync } = require('./git-lock.js');
 
@@ -638,6 +639,7 @@ const championShape = () => {
 const mutantPopFile = path.join(dir, 'models', '.mutant-pop.json');
 const mutantHistFile = path.join(dir, 'models', '.mutant-history.jsonl');
 const gateHistFile = path.join(dir, 'models', '.gate-history.jsonl');
+const bestFaceFile = path.join(dir, 'models', '.best-face.json');
 function loadMutantPop() {
   let pop;
   try { pop = JSON.parse(fs.readFileSync(mutantPopFile, 'utf8')); } catch (e) { pop = null; }
@@ -2048,14 +2050,18 @@ async function runPoolCycle() {
         return fs.readFileSync(p).equals(bestBytes);
       } catch (e) { return false; }
     };
-    // The champion defends with its strongest rated face, read through its byte twins. A checkpoint
-    // is a fresh copy of whatever was promoted, so its own file has at most a D1 face rated when it
-    // first defends, while the model it was copied from is rated deeper: ckpt-612, byte-identical to
-    // resume-521, defended at D1 (28-32 on 30 members where the same weights went 48-12 at D2), every
-    // D2 candidate cleared it, and best.json flip-flopped 611-614 on search depth alone.
-    const incTwin = ranked.filter(r => isBestTwin(livePath(r)) || path.basename(r.model, '.json') === incumbentName)
-      .sort((a, b) => (b.eloLo ?? -Infinity) - (a.eloLo ?? -Infinity))[0];
-    const incumbentDepth = incTwin?.depth || 1;
+    // The champion defends at the face it was promoted at (best-face.js has the argument: the twins
+    // that carry its rated faces leave the roster, and ckpt-621 drifted D2 -> D1 -> D3 as they did).
+    // Only when nothing is recorded for these bytes -- first run, or best.json changed some other
+    // way -- is the face read off the rated byte twins, and that reading is then recorded.
+    const incRec = champFace.load(bestFaceFile, best);
+    let incumbentDepth = incRec ? incRec.depth : 0;
+    if (!incumbentDepth) {
+      const incTwin = ranked.filter(r => isBestTwin(livePath(r)) || path.basename(r.model, '.json') === incumbentName)
+        .sort((a, b) => (b.eloLo ?? -Infinity) - (a.eloLo ?? -Infinity))[0];
+      incumbentDepth = incTwin?.depth || 1;
+      champFace.save(bestFaceFile, best, { name: incumbentName, depth: incumbentDepth, cycle: num, source: 'twin' });
+    }
     const mutantFiles = new Set(((mutantPop && mutantPop.active) || []).map(m => path.join(dir, 'models', m.file)));
     const dualFiles = new Set(dualRun.focus);
     const fresh = focus.filter(p => p !== ckpt && !dualFiles.has(p) && !mutantFiles.has(p) &&
@@ -2122,6 +2128,7 @@ async function runPoolCycle() {
       if (winner && fs.existsSync(winner.path)) {
         atomicCopy(best, path.join(dir, 'models', `best.pre-pool-${Date.now()}.json`));
         atomicCopy(winner.path, best);
+        champFace.save(bestFaceFile, best, { name: winner.name, depth: winner.depth, cycle: num, source: 'promotion' });
         gateLine = `promoted ${winner.name}@D${winner.depth}: ${winner.w}-${winner.l}-${winner.d} vs ${incumbentName}@D${incumbentDepth}, ` +
                    `${fmtEloRange(winner.rating)} (lower bound clears +${gateMargin})`;
       } else {
