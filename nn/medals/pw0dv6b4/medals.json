@@ -1,34 +1,34 @@
 {
-  "updated": "2026-10-03T13:33:50.130Z",
+  "updated": "2026-10-03T14:23:13.269Z",
   "machine": "pw0dv6b4",
   "basis": "global 90% Elo lower bound across D1-D4",
   "medals": {
     "gold": {
+      "source": "seed-pool-slot-06-c83cb5",
+      "sourceId": "seed-pool-slot-06-c83cb5@D2",
+      "depth": 2,
+      "games": 72,
+      "elo": 158.8,
+      "eloLo": 89,
+      "eloHi": 228.6
+    },
+    "silver": {
       "source": "seed-pool-slot-06-92f552",
       "sourceId": "seed-pool-slot-06-92f552@D3",
       "depth": 3,
       "games": 48,
-      "elo": 153.8,
-      "eloLo": 88.9,
-      "eloHi": 218.7
-    },
-    "silver": {
-      "source": "seed-pool-slot-06-c83cb5",
-      "sourceId": "seed-pool-slot-06-c83cb5@D2",
-      "depth": 2,
-      "games": 68,
-      "elo": 120.7,
-      "eloLo": 45.5,
-      "eloHi": 196
+      "elo": 154.5,
+      "eloLo": 80.8,
+      "eloHi": 228.2
     },
     "bronze": {
-      "source": "seed-desktop-2b7iqhn-silver-mutant-013-sep19",
-      "sourceId": "seed-desktop-2b7iqhn-silver-mutant-013-sep19@D2",
+      "source": "seed-pool-slot-10-040290",
+      "sourceId": "seed-pool-slot-10-040290@D2",
       "depth": 2,
-      "games": 100,
-      "elo": 69,
-      "eloLo": 35.7,
-      "eloHi": 102.2
+      "games": 32,
+      "elo": 171.2,
+      "eloLo": 58.7,
+      "eloHi": 283.7
     }
   }
 }
