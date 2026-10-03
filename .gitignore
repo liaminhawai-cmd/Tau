@@ -97,3 +97,5 @@ marketing/tau-danger-map-moves-best.json-111frames (1).zip
 
 # grow-train.py parse cache: parsed copies of nn/data, rebuilt on demand
 nn/grow-cache/
+# search-label.js / svx-experiment.js working files: position copies, labels, teacher snapshot
+nn/svx/

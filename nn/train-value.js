@@ -104,6 +104,9 @@ async function main() {
       ...(arg('dataRecentRows') ? ['--dataRecentRows', arg('dataRecentRows')] : []),
       ...(arg('eloWeightTemp') ? ['--eloWeightTemp', arg('eloWeightTemp')] : []),
       ...(original.includes('--poseInput') ? ['--poseInput'] : []),
+      // Search-score labels (search-label.js). Experiment-only, forwarded verbatim; off unless asked.
+      ...(arg('svBlend') ? ['--svBlend', arg('svBlend')] : []),
+      ...(arg('svMinDepth') ? ['--svMinDepth', arg('svMinDepth')] : []),
       // A structured birth is only a structured birth if these actually reach the core trainer.
       // Without them --topology dense-memory used to be dropped here and quietly produce a plain
       // net under the experiment's name, which is worse than failing.
@@ -134,6 +137,8 @@ async function main() {
       throw new Error(`--topology ${arg('topology')} exists only in the PyTorch trainer; a silent plain CPU run would fake the experiment`);
     if (original.includes('--poseInput'))
       throw new Error('--poseInput exists only in the PyTorch trainer; a silent pose-less CPU run would fake the experiment');
+    if (+arg('svBlend', 0) > 0)
+      throw new Error('--svBlend exists only in the PyTorch trainer; a CPU run would train on results alone and fake the experiment');
     if (arg('eloWeight', 'logistic') !== 'off')
       console.warn('[value-train] note: the JS CPU trainer has no --eloWeight; this run trains on the flat corpus');
     console.log('[value-train] backend js-cpu');
