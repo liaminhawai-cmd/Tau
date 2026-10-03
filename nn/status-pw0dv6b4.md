@@ -1,5 +1,5 @@
 # Tau NN training status
-_Last updated: 2026-10-03T23:28:55.567Z_
+_Last updated: 2026-10-03T23:34:05.684Z_
 
 **Self-play batch:** 562
 **Stage:** self-play batch 562 running, next check in 5 min
