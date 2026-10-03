@@ -1,0 +1,454 @@
+{
+  "scope": "Exploratory real-model enclosures at three intervals in 9\u201310 degrees. Accepted as cover proposals only; the complete cover checker must replay every interval before certification.",
+  "proposals": [
+    {
+      "record": {
+        "scope": "Finite-union enclosure of the prescribed ordinary real contact program; no floating-engine correspondence.",
+        "domainDeg": [
+          9.0,
+          9.02
+        ],
+        "sourceHashes": {
+          "reply_jet.py": "50d0fef1c70e399135d141946e1f77cf91ebf0383fb098f3142d5d4e00bb7955",
+          "reply_zonotope.py": "4373def79b28e1737e85f87a009695400c8c8f874b11868fc3dc55aa5aacca60",
+          "free_motion.py": "e09d7a3588b27e8bb9b9290f7869c49be6e3918d72baa87e460f76471796bb28",
+          "interval_core.py": "d4bd8c71cc6dfc6a6892557d1274e9234bb1719da0a8c207a11e3b49e6e1d821",
+          "arm1_prefix.py": "93f8e626a3fe66d24bbdccae2b821172965461baa2fb6f0b18d21a493306358b",
+          "reply_branches.py": "88fbaa94a66b31368a54e2215972bc1d756b18bde1e92770ce72bab24ea0f842"
+        },
+        "threshold": 0.0001,
+        "branchLimit": 32,
+        "completedSubsteps": 123,
+        "failure": null,
+        "forks": [],
+        "counts": {
+          "contactMaps": 238,
+          "positiveSwitches": 161,
+          "closestUnions": 19,
+          "segmentBranches": 1
+        },
+        "finalBranches": [
+          {
+            "id": 0,
+            "box": [
+              [
+                -30.395906810252892,
+                -30.392479127288045
+              ],
+              [
+                -45.79719368915935,
+                -45.79514870273342
+              ],
+              [
+                1.0396532254519097,
+                1.0400581036037149
+              ]
+            ],
+            "footRadii": [
+              [
+                31.92130018269901,
+                31.938020800929895
+              ],
+              [
+                70.2965967766681,
+                70.31063075545903
+              ],
+              [
+                68.55738009156296,
+                68.57186962770938
+              ]
+            ],
+            "throwMarginLower": 3.12959677666808
+          }
+        ],
+        "minimumThrowMargin": 3.12959677666808,
+        "propagationSha256": "3df158692c1d78ef754cb497a1a7a3b8ea9e300c379c21c4d0191528397cce41"
+      },
+      "seconds": 49.265618751999995
+    },
+    {
+      "record": {
+        "scope": "Finite-union enclosure of the prescribed ordinary real contact program; no floating-engine correspondence.",
+        "domainDeg": [
+          9.5,
+          9.52
+        ],
+        "sourceHashes": {
+          "reply_jet.py": "50d0fef1c70e399135d141946e1f77cf91ebf0383fb098f3142d5d4e00bb7955",
+          "reply_zonotope.py": "4373def79b28e1737e85f87a009695400c8c8f874b11868fc3dc55aa5aacca60",
+          "free_motion.py": "e09d7a3588b27e8bb9b9290f7869c49be6e3918d72baa87e460f76471796bb28",
+          "interval_core.py": "d4bd8c71cc6dfc6a6892557d1274e9234bb1719da0a8c207a11e3b49e6e1d821",
+          "arm1_prefix.py": "93f8e626a3fe66d24bbdccae2b821172965461baa2fb6f0b18d21a493306358b",
+          "reply_branches.py": "88fbaa94a66b31368a54e2215972bc1d756b18bde1e92770ce72bab24ea0f842"
+        },
+        "threshold": 0.0001,
+        "branchLimit": 32,
+        "completedSubsteps": 123,
+        "failure": null,
+        "forks": [
+          {
+            "step": 89,
+            "iteration": 0,
+            "parentId": 0,
+            "nodes": [
+              {
+                "prefix": [],
+                "site": 1,
+                "arity": 2,
+                "centreSpread": [
+                  0.00010946578322901246,
+                  0.0005990117520155991,
+                  1.295875023066273e-05
+                ]
+              }
+            ],
+            "children": [
+              {
+                "path": [
+                  0
+                ],
+                "id": 1
+              },
+              {
+                "path": [
+                  1
+                ],
+                "id": 2
+              }
+            ]
+          }
+        ],
+        "counts": {
+          "contactMaps": 449,
+          "positiveSwitches": 359,
+          "closestUnions": 38,
+          "segmentBranches": 18
+        },
+        "finalBranches": [
+          {
+            "id": 1,
+            "box": [
+              [
+                -30.44179321315918,
+                -30.4350607339652
+              ],
+              [
+                -45.772260058155766,
+                -45.76810708975415
+              ],
+              [
+                1.0341404768427311,
+                1.034925032489831
+              ]
+            ],
+            "footRadii": [
+              [
+                31.9069803589904,
+                31.939572127161714
+              ],
+              [
+                70.22469323972966,
+                70.25256046210332
+              ],
+              [
+                68.62557853691179,
+                68.65389863152991
+              ]
+            ],
+            "throwMarginLower": 3.057693239729644
+          },
+          {
+            "id": 2,
+            "box": [
+              [
+                -30.44177622010838,
+                -30.435109201043154
+              ],
+              [
+                -45.772229745863605,
+                -45.76811877770222
+              ],
+              [
+                1.0341422835052085,
+                1.0349194346617259
+              ]
+            ],
+            "footRadii": [
+              [
+                31.9071336700386,
+                31.93941443885928
+              ],
+              [
+                70.22482950186355,
+                70.25244417682428
+              ],
+              [
+                68.62574043056698,
+                68.65379002816428
+              ]
+            ],
+            "throwMarginLower": 3.057829501863537
+          }
+        ],
+        "minimumThrowMargin": 3.057693239729644,
+        "propagationSha256": "862a049f2ac547da44870485493b08558bd4eb0d41b5a3cbd0aea5eed0ada47e"
+      },
+      "seconds": 87.30181044599999
+    },
+    {
+      "record": {
+        "scope": "Finite-union enclosure of the prescribed ordinary real contact program; no floating-engine correspondence.",
+        "domainDeg": [
+          9.98,
+          10.0
+        ],
+        "sourceHashes": {
+          "reply_jet.py": "50d0fef1c70e399135d141946e1f77cf91ebf0383fb098f3142d5d4e00bb7955",
+          "reply_zonotope.py": "4373def79b28e1737e85f87a009695400c8c8f874b11868fc3dc55aa5aacca60",
+          "free_motion.py": "e09d7a3588b27e8bb9b9290f7869c49be6e3918d72baa87e460f76471796bb28",
+          "interval_core.py": "d4bd8c71cc6dfc6a6892557d1274e9234bb1719da0a8c207a11e3b49e6e1d821",
+          "arm1_prefix.py": "93f8e626a3fe66d24bbdccae2b821172965461baa2fb6f0b18d21a493306358b",
+          "reply_branches.py": "88fbaa94a66b31368a54e2215972bc1d756b18bde1e92770ce72bab24ea0f842"
+        },
+        "threshold": 0.0001,
+        "branchLimit": 32,
+        "completedSubsteps": 123,
+        "failure": null,
+        "forks": [
+          {
+            "step": 67,
+            "iteration": 0,
+            "parentId": 0,
+            "nodes": [
+              {
+                "prefix": [],
+                "site": 1,
+                "arity": 2,
+                "centreSpread": [
+                  0.001177870617716792,
+                  0.00996204753808172,
+                  0.00019843849142331393
+                ]
+              }
+            ],
+            "children": [
+              {
+                "path": [
+                  0
+                ],
+                "id": 1
+              },
+              {
+                "path": [
+                  1
+                ],
+                "id": 2
+              }
+            ]
+          },
+          {
+            "step": 88,
+            "iteration": 0,
+            "parentId": 1,
+            "nodes": [
+              {
+                "prefix": [],
+                "site": 1,
+                "arity": 2,
+                "centreSpread": [
+                  6.358562049157968e-05,
+                  0.00035583685250628605,
+                  7.709779395348448e-06
+                ]
+              }
+            ],
+            "children": [
+              {
+                "path": [
+                  0
+                ],
+                "id": 3
+              },
+              {
+                "path": [
+                  1
+                ],
+                "id": 4
+              }
+            ]
+          },
+          {
+            "step": 88,
+            "iteration": 0,
+            "parentId": 2,
+            "nodes": [
+              {
+                "prefix": [],
+                "site": 1,
+                "arity": 2,
+                "centreSpread": [
+                  9.077012572689114e-05,
+                  0.0004907296068523692,
+                  1.071808958474918e-05
+                ]
+              }
+            ],
+            "children": [
+              {
+                "path": [
+                  0
+                ],
+                "id": 5
+              },
+              {
+                "path": [
+                  1
+                ],
+                "id": 6
+              }
+            ]
+          }
+        ],
+        "counts": {
+          "closestUnions": 80,
+          "contactMaps": 880,
+          "positiveSwitches": 683,
+          "segmentBranches": 18
+        },
+        "finalBranches": [
+          {
+            "id": 3,
+            "box": [
+              [
+                -30.48162711032301,
+                -30.47710308905166
+              ],
+              [
+                -45.74719236780385,
+                -45.744403963653724
+              ],
+              [
+                1.029330147437642,
+                1.0298639171736785
+              ]
+            ],
+            "footRadii": [
+              [
+                31.90675106370443,
+                31.928851646586995
+              ],
+              [
+                70.17048301019464,
+                70.1911367923213
+              ],
+              [
+                68.69930081099257,
+                68.71853893272049
+              ]
+            ],
+            "throwMarginLower": 3.003483010194628
+          },
+          {
+            "id": 4,
+            "box": [
+              [
+                -30.481670666526522,
+                -30.477077896616617
+              ],
+              [
+                -45.74720866622811,
+                -45.74437665428733
+              ],
+              [
+                1.0293250676055574,
+                1.0298667809012205
+              ]
+            ],
+            "footRadii": [
+              [
+                31.906584164241774,
+                31.929016189758165
+              ],
+              [
+                70.17029998821592,
+                70.19122329898279
+              ],
+              [
+                68.69917193339764,
+                68.7186987868892
+              ]
+            ],
+            "throwMarginLower": 3.0032999882159
+          },
+          {
+            "id": 5,
+            "box": [
+              [
+                -30.48274842236095,
+                -30.47643572987274
+              ],
+              [
+                -45.74762776473683,
+                -45.74369636640981
+              ],
+              [
+                1.0292003331437436,
+                1.0299389490284843
+              ]
+            ],
+            "footRadii": [
+              [
+                31.902436299750022,
+                31.93310820816567
+              ],
+              [
+                70.16576562683646,
+                70.19339355512217
+              ],
+              [
+                68.69594976720083,
+                68.72265580060204
+              ]
+            ],
+            "throwMarginLower": 2.998765626836444
+          },
+          {
+            "id": 6,
+            "box": [
+              [
+                -30.482793202885205,
+                -30.476416689004928
+              ],
+              [
+                -45.747640781791944,
+                -45.743667914685446
+              ],
+              [
+                1.02919512805541,
+                1.0299410478715028
+              ]
+            ],
+            "footRadii": [
+              [
+                31.90228153809371,
+                31.93325966781248
+              ],
+              [
+                70.16559019436764,
+                70.19346746519544
+              ],
+              [
+                68.69583798618602,
+                68.72281099693092
+              ]
+            ],
+            "throwMarginLower": 2.998590194367622
+          }
+        ],
+        "minimumThrowMargin": 2.998590194367622,
+        "propagationSha256": "74c12717c996771e84306231043efec1851e7789da7fbb209716c15c14097d37"
+      },
+      "seconds": 166.0234423
+    }
+  ]
+}

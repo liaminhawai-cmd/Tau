@@ -1,5 +1,14 @@
 # Brief 6: single-reply proof attempt
 
+3 October extension: [the continuous cover now reaches 10°](ARM1-EIGHT-TEN.md).
+The fixed reply wins for every defender angle in 8°–10° on arm (1,−), in the
+specified real model. The 292-cell joined cover has a lower throw margin
+above 2.9967u and retains up to eight contact enclosures per cell. All 52 new
+cells passed full replay; the joined packet records 354,240 Decimal coordinate
+containment checks with zero failures. Whole-arm and whole-position coverage,
+and uniform floating-engine correspondence, remain open.
+[View the extended certified band](arm1-eight-ten-cover.svg).
+
 2 October complete-band result: [the continuous cover now reaches 9°](ARM1-ONE-DEGREE.md).
 The fixed reply wins for every defender angle in 8°–9° on arm (1,−), in the
 specified real model, with a lower throw margin above 3.137u. The 240-cell
