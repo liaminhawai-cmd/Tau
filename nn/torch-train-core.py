@@ -171,11 +171,17 @@ def mover_name(mv):
     return MOVER_FACE.sub('', str(mv))
 
 
-def load_rows(data_glob, budget_mb=0.0, since_days=0.0, recent_rows=0):
+def load_rows(data_glob, budget_mb=0.0, since_days=0.0, recent_rows=0, sv_blend=0.0, sv_min_depth=2):
     """Read training rows. Mirrors train.js's filtering exactly. Also collects, per game, the
     set of mover identities (for --eloWeight) and, per row, the raw pose (for --poseInput) --
-    both fields have been stamped on rows by arena.js/selfplay-legacy.js all along."""
+    both fields have been stamped on rows by arena.js/selfplay-legacy.js all along.
+
+    Each row is (f, z, mover, pose, target). target is z unless --svBlend is on and the row
+    carries a search score `sv` (search-label.js) from a search at least sv_min_depth deep; then
+    it is sv_blend*sv + (1 - sv_blend)*z. z itself stays the outcome, because the draw, family and
+    Elo weights read the game's result from it."""
     by_game, skipped_nof, stale, policy_rows = defaultdict(list), 0, defaultdict(int), 0
+    sv_rows = 0
     game_movers = defaultdict(set)
     for path in cap_files(glob.glob(data_glob), budget_mb, since_days, recent_rows):
         name = os.path.basename(path)
@@ -209,7 +215,13 @@ def load_rows(data_glob, budget_mb=0.0, since_days=0.0, recent_rows=0):
                     g = cur
                 else:
                     prev_abs = float('inf')
-                by_game[g].append((f, float(j.get('z', 0.0)), j.get('m'), j.get('p')))
+                z = float(j.get('z', 0.0))
+                target = z
+                sv = j.get('sv')
+                if sv_blend > 0 and sv is not None and (j.get('svd') or 0) >= sv_min_depth:
+                    target = sv_blend * max(-1.0, min(1.0, float(sv))) + (1.0 - sv_blend) * z
+                    sv_rows += 1
+                by_game[g].append((f, z, j.get('m'), j.get('p'), target))
                 if j.get('mv') is not None:
                     game_movers[g].add(mover_name(j.get('mv')))
     if stale:
@@ -223,6 +235,10 @@ def load_rows(data_glob, budget_mb=0.0, since_days=0.0, recent_rows=0):
         print(f"skipped {skipped_nof} row(s) with no feature vector (not training data)")
     if policy_rows:
         print(f"skipped {policy_rows} policy-target row(s)")
+    if sv_blend > 0:
+        total = sum(len(rows) for rows in by_game.values())
+        print(f"svBlend {sv_blend:g}: {sv_rows}/{total} positions train toward {sv_blend:g}*search + "
+              f"{1 - sv_blend:g}*result (search depth >= {sv_min_depth}); the rest keep the result")
     return by_game, game_movers
 
 
@@ -334,7 +350,7 @@ def _js_shuffle(items, seed):
 
 
 def split_and_weight(by_game, seed, gw_mode, fw_mode, draw_w, game_w=None):
-    """Game split and row/family weights matching train.js. Returns (x, y, w) rows. game_w is an
+    """Game split and row/family weights matching train.js. Returns (x, y, w, z) rows. game_w is an
     optional per-game multiplier (e.g. --eloWeight); it composes with, never replaces, the
     existing game-size/draw/family weights, and the final mean-normalisation keeps the loss
     scale unchanged either way."""
@@ -351,8 +367,8 @@ def split_and_weight(by_game, seed, gw_mode, fw_mode, draw_w, game_w=None):
             base = 1.0 / math.sqrt(n) if gw_mode == 'sqrt' else 1.0 / n if gw_mode == 'game' else 1.0
             if game_w:
                 base *= game_w.get(gid, 1.0)
-            for f, z, mover, _pose in game:
-                rows.append([f, z, base * (draw_w if z == 0.0 else 1.0), gid, mover])
+            for f, z, mover, _pose, target in game:
+                rows.append([f, target, base * (draw_w if z == 0.0 else 1.0), gid, mover, z])
         return rows
 
     train, val = base_rows(train_ids), base_rows(val_ids)
@@ -377,7 +393,8 @@ def split_and_weight(by_game, seed, gw_mode, fw_mode, draw_w, game_w=None):
         if mean_w > 0:
             for row in train:
                 row[2] /= mean_w
-    return [(f, z, w) for f, z, w, _, _ in train], [(f, z, w) for f, z, w, _, _ in val]
+    # (features, training target, weight, outcome z); the target is z unless --svBlend is on.
+    return [(f, t, w, z) for f, t, w, _, _, z in train], [(f, t, w, z) for f, t, w, _, _, z in val]
 
 
 def export_for_netjs(layers, probe_inputs=None, probe_fn=None, topology=None):
@@ -436,7 +453,16 @@ def main():
                     help='EXPERIMENT: append the z-scored raw pose (6 values) to the feature vector. '
                          'Offline ablation only -- live play feeds nets the plain features, so a '
                          'pose-input model must never be placed in nn/models.')
+    ap.add_argument('--svBlend', type=float, default=0.0,
+                    help='EXPERIMENT: on rows carrying a search score (sv, written by search-label.js), '
+                         'train toward svBlend*sv + (1-svBlend)*result instead of the result alone. '
+                         '0 (default) ignores sv, so ordinary training is unchanged.')
+    ap.add_argument('--svMinDepth', type=int, default=2,
+                    help='with --svBlend: use sv only when it came from a search at least this deep')
     args = ap.parse_args()
+    if not 0.0 <= args.svBlend <= 1.0:
+        print('--svBlend must be between 0 and 1', file=sys.stderr)
+        sys.exit(1)
 
     try:
         import torch
@@ -451,7 +477,8 @@ def main():
           (f" ({torch.cuda.get_device_name(0)})" if device.type == 'cuda' else ''))
 
     torch.manual_seed(args.seed)
-    by_game, game_movers = load_rows(args.data, args.dataBudgetMB, args.dataSinceDays, args.dataRecentRows)
+    by_game, game_movers = load_rows(args.data, args.dataBudgetMB, args.dataSinceDays, args.dataRecentRows,
+                                     args.svBlend, args.svMinDepth)
     if not by_game:
         print(f"no training rows matched {args.data}", file=sys.stderr)
         sys.exit(1)
@@ -462,13 +489,13 @@ def main():
         # reproduce the exact transform; until then this is a ceiling probe, not a league player.
         dropped, kept = 0, defaultdict(list)
         for gid, rows in by_game.items():
-            for f, z, m, p in rows:
+            for f, z, m, p, t in rows:
                 if isinstance(p, list) and len(p) == 6:
-                    kept[gid].append((f, z, m, p))
+                    kept[gid].append((f, z, m, p, t))
                 else:
                     dropped += 1
         by_game = {gid: rows for gid, rows in kept.items() if rows}
-        allp = [p for rows in by_game.values() for (_f, _z, _m, p) in rows]
+        allp = [p for rows in by_game.values() for (_f, _z, _m, p, _t) in rows]
         if not allp:
             print('no rows carry a raw pose; cannot train with --poseInput', file=sys.stderr)
             sys.exit(1)
@@ -476,8 +503,8 @@ def main():
         std = [max(1e-6, math.sqrt(sum((p[i] - mean[i]) ** 2 for p in allp) / len(allp))) for i in range(6)]
         pose_norm = {'mean': [round(x, 6) for x in mean], 'std': [round(x, 6) for x in std]}
         for gid in list(by_game.keys()):
-            by_game[gid] = [(f + [(p[i] - mean[i]) / std[i] for i in range(6)], z, m, p)
-                            for f, z, m, p in by_game[gid]]
+            by_game[gid] = [(f + [(p[i] - mean[i]) / std[i] for i in range(6)], z, m, p, t)
+                            for f, z, m, p, t in by_game[gid]]
         print(f"poseInput: appended 6 z-scored pose values; {dropped} row(s) without a pose dropped")
     game_w = None
     if args.eloWeight != 'off':
@@ -508,6 +535,9 @@ def main():
 
     xtr, ytr, wtr = tens(train)
     xva, yva, _ = tens(val)
+    # Under --svBlend the selection target (yva) is the blend this run optimises; the result alone
+    # is reported beside it so blended and plain runs can be read on one yardstick.
+    zva = torch.tensor([[r[3]] for r in val], dtype=torch.float32, device=device) if args.svBlend > 0 else None
 
     checkpoint = None
     if args.resume:
@@ -597,15 +627,18 @@ def main():
         with torch.no_grad():
             vpred = model(xva)
             vmse = float(((vpred - yva) ** 2).mean())
-            decided = (yva != 0)
-            sign_acc = float((torch.sign(vpred[decided]) == torch.sign(yva[decided])).float().mean()) if bool(decided.any()) else 0.0
+            ref = zva if zva is not None else yva      # sign accuracy is always against the result
+            decided = (ref != 0)
+            sign_acc = float((torch.sign(vpred[decided]) == torch.sign(ref[decided])).float().mean()) if bool(decided.any()) else 0.0
+            zmse = float(((vpred - zva) ** 2).mean()) if zva is not None else None
         flag = ''
         if vmse < best_val:
             best_val, flag = vmse, '  *'
             best_epoch = ep
             best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
         print(f"epoch {ep}/{args.epochs}: train mse {tot/n:.5f}, val mse {vmse:.5f}, "
-              f"val sign-acc {sign_acc*100:.1f}% (lr {lr_ep:.6f}){flag}", flush=True)
+              + (f"val mse vs result {zmse:.5f}, " if zmse is not None else "")
+              + f"val sign-acc {sign_acc*100:.1f}% (lr {lr_ep:.6f}){flag}", flush=True)
 
     if best_state is not None:
         model.load_state_dict(best_state)
