@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-03T19:33:20.642Z",
+  "updated": "2026-10-03T20:00:52.774Z",
   "machine": "pw0dv6b4",
   "basis": "global 90% Elo lower bound across D1-D4",
   "medals": {
@@ -7,28 +7,28 @@
       "source": "seed-pool-slot-10-040290",
       "sourceId": "seed-pool-slot-10-040290@D2",
       "depth": 2,
-      "games": 38,
-      "elo": 190.9,
-      "eloLo": 61.8,
-      "eloHi": 320
+      "games": 40,
+      "elo": 183.2,
+      "eloLo": 65.3,
+      "eloHi": 301.1
     },
     "silver": {
       "source": "seed-pool-slot-10-d03d1d",
       "sourceId": "seed-pool-slot-10-d03d1d@D2",
       "depth": 2,
-      "games": 10,
-      "elo": 235.8,
-      "eloLo": 55,
-      "eloHi": 416.6
+      "games": 12,
+      "elo": 195.1,
+      "eloLo": 21.6,
+      "eloHi": 368.7
     },
     "bronze": {
       "source": "seed-pool-slot-06-c83cb5",
       "sourceId": "seed-pool-slot-06-c83cb5@D2",
       "depth": 2,
-      "games": 74,
-      "elo": 96.7,
-      "eloLo": 32,
-      "eloHi": 161.4
+      "games": 76,
+      "elo": 90.1,
+      "eloLo": 13.1,
+      "eloHi": 167
     }
   }
 }
