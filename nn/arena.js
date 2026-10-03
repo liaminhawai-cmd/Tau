@@ -26,8 +26,10 @@ const { makeLadderEval } = require('./laddereval.js');
 // It matters most for exactly the games self-play cannot produce -- run.js draws its ladder
 // opponents from the ZPD window (zpdLevels), so rungs above the frontier are never played at all
 // and the net has literally never trained on them.
-// Schema is selfplay.js's, byte for byte, so train.js needs no changes: f/z/p/m/g, z discounted
-// toward 0 the further a position sits from the finish, positions kept only from DECIDED games.
+// Schema is selfplay.js's, so train.js needs no changes: f/z/p/m/g, z discounted toward 0 the
+// further a position sits from the finish, positions kept only from DECIDED games. Value-net
+// movers' rows also carry sv/svd, the search's own score of the move and its depth; every trainer
+// ignores them unless asked (torch-train-core.py --svBlend).
 const RUN_TAG = 'arena' + Math.random().toString(36).slice(2, 7) + process.pid.toString(36);
 
 function arg(name, dflt) {
@@ -124,11 +126,12 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
     if (timeMs) {
       const tm = () => (typeof timeMs === 'object' ? timeMs.ms : timeMs);
       const tTag = typeof timeMs === 'object' ? 'Trand' : 'T' + timeMs + 'ms';
-      return { name: `dual(${path.basename(mp)},${tTag}${kTag}${pTag}${sTag})`,
+      return { name: `dual(${path.basename(mp)},${tTag}${kTag}${pTag}${sTag})`, scored: true,
                fn: idx => nnPlanForTimed(eng, null, idx, { ...common, timeMs: tm() }) };
     }
     const depthLabel = quiesce ? depth + 0.5 : depth;
-    return { name: `dual(${path.basename(mp)}${temperature ? ',T' + temperature : ''}` +
+    return { scored: true, depth,
+             name: `dual(${path.basename(mp)}${temperature ? ',T' + temperature : ''}` +
                    `${depthLabel > 1 ? ',D' + depthLabel : ''}${kTag}${pTag}${sTag})`,
              fn: idx => nnPlanFor(eng, null, idx, { ...common, depth }) };
   }
@@ -164,7 +167,7 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
     const aTag = (policy && !abCut && policyArms) ? ',A' + policyArms : '';
     const sTag = (stopStride > 1 ? ',S' + stopStride : '') + (sweepDeg !== 3 ? ',W' + sweepDeg : '') +
                  (parkStops ? ',PARK' : '');
-    return { name: 'nn(' + path.basename(mp) + ',' + tTag + kTag + pTag + aTag + sTag + ')',
+    return { name: 'nn(' + path.basename(mp) + ',' + tTag + kTag + pTag + aTag + sTag + ')', scored: true,
              fn: idx => nnPlanForTimed(eng, net, idx, { temperature, keepForDepth, quiesce, policy,
                                                         timeMs: tm(), policyArms, stopStride, sweepDeg,
                                                         parkStops: !!parkStops,
@@ -177,7 +180,8 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
   const aTagD = (policy && !abCut && policyArms) ? ',A' + policyArms : '';
   const sTagD = (stopStride > 1 ? ',S' + stopStride : '') + (sweepDeg !== 3 ? ',W' + sweepDeg : '') +
                 (parkStops ? ',PARK' : '');
-  return { name: 'nn(' + path.basename(mp) + (temperature ? ',T' + temperature : '') + (depthLabel > 1 ? ',D' + depthLabel : '') +
+  return { scored: true, depth,
+           name: 'nn(' + path.basename(mp) + (temperature ? ',T' + temperature : '') + (depthLabel > 1 ? ',D' + depthLabel : '') +
            kTag + pTag + aTagD + sTagD + ')',
            fn: idx => nnPlanFor(eng, net, idx, { temperature, depth, keepForDepth, quiesce, policy, policyArms, stopStride, sweepDeg,
                                                  parkStops: !!parkStops,
@@ -395,6 +399,21 @@ function main() {
       // describe a position nobody moved from.
       if (!plan) { if (dataStream) rows.pop(); nulls++; if (nulls > 4) break; eng.clearTurn(); eng.setActive(1 - idx); continue; }
       nulls = 0;
+      // The search's own score of the move it chose, saved beside the result as a second label
+      // (torch-train-core.py --svBlend; search-label.js has the argument). Free: the search already
+      // computed it to pick the move. `deep` is the D2+ recursive score, `s` the D1 one, both the
+      // mover's view on the value net's scale; a proven throw (+-1e6) is a sure result, so +-1.
+      // Value-net brains only -- a ladder rung or le: brain scores on a hand-tuned scale that
+      // would mean something else entirely. svd is the depth that score actually came from.
+      if (dataStream && brain.scored) {
+        const deep = Number.isFinite(plan.deep);
+        const sc = deep ? plan.deep : Number.isFinite(plan.s) ? plan.s : plan.v;
+        if (Number.isFinite(sc)) {
+          const row = rows[rows.length - 1];
+          row.sv = Math.max(-1, Math.min(1, sc));
+          row.svd = deep ? (plan.searchDepth || brain.depth || 2) : 1;
+        }
+      }
       eng.applyPlan(plan);
       plies++;
     }
@@ -432,7 +451,8 @@ function main() {
         dataStream.write(JSON.stringify({ f: rows[i].f.map(v => +v.toFixed(5)), z: +z.toFixed(4),
                                           p: rows[i].p.map(v => +v.toFixed(4)), m: rows[i].m,
                                           g: gameId, mv, ...adj,
-                                          ...(randomStart ? { src: 'random' } : {}) }) + '\n');
+                                          ...(randomStart ? { src: 'random' } : {}),
+                                          ...(rows[i].sv != null ? { sv: +rows[i].sv.toFixed(4), svd: rows[i].svd } : {}) }) + '\n');
         savedRows++;
       }
     }
