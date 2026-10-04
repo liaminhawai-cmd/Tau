@@ -128,9 +128,40 @@ the result also holds under the stricter reading that excludes them.
   that. The first thing worth doing with this package is an independent review of `tm.js` and
   `push-tm.js`.
 
+## The other five arms: sampled, not yet proved
+
+A lost position needs a winning red reply to every legal blue move, not only arm (1,−).
+`six-arms/` samples all six arms with the engine itself (`arms.js`, summary in
+`arms-summary.js`, data in `six-arms/data/`). Blue's stop angle runs from the 2° minimum to the
+arm's legal limit: 63.375° for (0,−), 44.25° for (0,+), 16.5° for (1,−), 14.625° for (1,+),
+15.75° for (2,−), 4.875° for (2,+). Blue's reply is played by the engine's own planner call
+schedule (3° calls and a final partial one), and red swings to its legal limit in the same way.
+
+| Blue arm | Stops (0.01°) | Red (0,−) throws at | Smallest margin | Blue's reply pushes red |
+| --- | ---: | ---: | ---: | --- |
+| (0,−) | 6,139 | all | 2.1829u at 8.32° | 2.00°–63.38° |
+| (0,+) | 4,227 | all | 4.8530u at 2.00° | 43.83°–44.25° |
+| (1,−) | 1,452 | all | 2.3028u at 15.36° | never |
+| (1,+) | 1,264 | all | 5.2738u at 2.00° | 2.00°–14.63° |
+| (2,−) | 1,377 | all | 2.2988u at 11.88° | 2.00°–15.75° |
+| (2,+) | 289 | all | 4.6608u at 2.00° | 2.00°–4.88° |
+
+**Red's (0,−) reply throws blue off the board at all 14,748 sampled stops on all six arms**, and no
+blue reply wins outright by pushing red off. The same table at 0.1° with all six red replies is in
+`six-arms/data/all-replies-*`: red (2,−) also throws everywhere on (1,−), (2,−) and (2,+), and
+covers most of (0,+); the other four red arms do not win everywhere. Red's legal limit after blue's
+push stays at 46.125° (123 substeps) on four arms and rises to 54.75° and 55.5° on (0,−) and (1,+),
+so the 123-substep swing the proofs use is legal at every sampled stop.
+
+This is sampled evidence at a stated resolution, not a proof: a gap narrower than 0.01° could
+hide between samples, though the largest step between neighbouring margins is 0.16u against a
+smallest margin of 2.18u. The proof so far covers arm (1,−) only. On the other five, blue's reply
+pushes red (arm (0,+) only after 43.83°), so red starts its reply from a pose that depends on
+blue's stop angle; the cover above assumes red starts from the seed pose.
+
 ## Not shown
 
-Blue's other five arms (a lost position needs every legal reply answered), any bound relating the
+Proofs for blue's other five arms (sampled above, not covered), any bound relating the
 real-arithmetic model to floating-point execution, and the imported pieces above.
 
 ## Reproduce
