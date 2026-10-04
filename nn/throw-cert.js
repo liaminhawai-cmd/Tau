@@ -271,18 +271,20 @@ function footOnFixedSeg(pB, q0, q1) {
 // attacker's chord is fixed, so w = P_perp (p - A0) with P_perp = I - u u^T, and everything below is
 // the chain rule on that. Returns B = da/dq at the centre, and the same over the whole box so the
 // mean-value remainder (B_box - B_centre) dq can be bounded.
-function parkJacobian(att, q, pair, vk, box) {
+function parkJacobian(att, q, pair, vk, box, segWant) {
   const A = arcPts(att, pair[0]), V = arcPts(q, pair[1]);
   const p = V[vk];
-  // the attacker chord holding the perpendicular foot.
-  // The degenerate point segment goes FIRST -- see the note at the bottom of this file:
-  // segClosest3 solves for the SECOND segment's parameter, so passing the point second returns
-  // the first segment's start, not the perpendicular foot, and this loop then picks the nearest
-  // chord START. Over the studied park that selected chord 2 where the perpendicular foot is on
-  // chord 1, and a derivative interval for the wrong chord cannot justify the mean-value
-  // enclosure for the real contact direction (Brief 4 section 2.1).
-  let seg = null, bestd = Infinity;
-  for (let a = 0; a < NSEG; a++) { const c = segClosest3(p, p, A[a], A[a + 1]); if (c.dist < bestd) { bestd = c.dist; seg = a; } }
+  // Bind the Jacobian to the attacker's chord carried by the park regime. If two nearby attacker
+  // chords can see the same victim vertex, rediscovering the chord from the vertex alone is not a
+  // valid regime enclosure. The caller therefore supplies segWant = the regime's attacker chord.
+  const seg = Number.isInteger(segWant) ? segWant : null;
+  if (seg == null || seg < 0 || seg >= NSEG) return null;
+  // The interval vertex must project strictly into this SAME attacker segment for every pose in the
+  // box. This turns "the centre uses this chord" into the local feature assumption required by the
+  // mean-value Jacobian calculation; if the projection can leave the segment, refuse the linearised
+  // step and let the conservative interval propagation handle it.
+  const vbCheck = vertexBoxOf(box, pair[1], vk);
+  if (!footOnFixedSeg(vbCheck, A[seg], A[seg + 1])) return null;
   const e = [A[seg + 1].x - A[seg].x, A[seg + 1].y - A[seg].y, A[seg + 1].h - A[seg].h], eL = Math.hypot(...e), u = e.map(v => v / eL);
   const Pp = [0, 1, 2].map(i => [0, 1, 2].map(j => (i === j ? 1 : 0) - u[i] * u[j]));
   // ONE builder, evaluated in interval arithmetic throughout. Degenerate intervals give the centre's
@@ -785,9 +787,9 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
       const groups = [];
       for (const sp of pre.segPairs) {
         const spvk = (sp.vertex === 'V' && sp.vk !== null && sp.vk !== undefined) ? sp.vk : null;
-        const g = groups.find(gr => gr.vk === spvk && Math.abs(gr.seed - (sp.psiN[0] + sp.psiN[1]) / 2) < 1.5 * DEG);
+        const g = groups.find(gr => gr.a === sp.a && gr.vk === spvk && Math.abs(gr.seed - (sp.psiN[0] + sp.psiN[1]) / 2) < 1.5 * DEG);
         if (g) { g.psiN = [Math.min(g.psiN[0], sp.psiN[0]), Math.max(g.psiN[1], sp.psiN[1])]; g.rn = hull(g.rn, sp.rn); g.hf = hull(g.hf, sp.hf); }
-        else groups.push({ psiN: sp.psiN.slice(), rn: sp.rn.slice(), hf: sp.hf.slice(), seed: (sp.psiN[0] + sp.psiN[1]) / 2, vk: spvk });
+        else groups.push({ a: sp.a, psiN: sp.psiN.slice(), rn: sp.rn.slice(), hf: sp.hf.slice(), seed: (sp.psiN[0] + sp.psiN[1]) / 2, vk: spvk });
       }
       for (const g of groups) { g.n = [cosRange(g.psiN), sinRange(g.psiN)]; g.G = [mul(g.hf, g.n[0]), mul(g.hf, g.n[1]), mul(g.hf, g.rn)]; }
       ngroups += groups.length;
@@ -811,7 +813,7 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
         // During a park the push direction is an exactly differentiable function of the pose, so its
         // variation over the set is a LINEAR map plus a second-order remainder rather than an
         // independent interval. Absorb the linear part into the basis, where it costs nothing.
-        const JB = grp.vk !== null && grp.vk !== undefined && grp.vk >= 0 ? parkJacobian(att, qc, pair, grp.vk, aabbOf(qc, M, U)) : null;
+        const JB = grp.vk !== null && grp.vk !== undefined && grp.vk >= 0 ? parkJacobian(att, qc, pair, grp.vk, aabbOf(qc, M, U), grp.a) : null;
         for (let round = 1; round <= 32; round++) {
           rounds = Math.max(rounds, round);
           const da = [sub(cone.n[0], [a_c[0], a_c[0]]), sub(cone.n[1], [a_c[1], a_c[1]]), scale(sub(cone.rn, [cc.rn, cc.rn]), 1 / I)];
