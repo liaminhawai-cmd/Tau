@@ -787,9 +787,14 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
       const groups = [];
       for (const sp of pre.segPairs) {
         const spvk = (sp.vertex === 'V' && sp.vk !== null && sp.vk !== undefined) ? sp.vk : null;
-        const g = groups.find(gr => gr.a === sp.a && gr.vk === spvk && Math.abs(gr.seed - (sp.psiN[0] + sp.psiN[1]) / 2) < 1.5 * DEG);
+        // A non-park closest pair is identified by BOTH chord indices. For a parked victim vertex,
+        // the dwelling vertex is the feature itself, so the victim-chord index is immaterial and is
+        // deliberately collapsed to null. Keeping b for non-parks prevents two different victim
+        // chords with similar normal azimuths from being merged into one fictitious contact regime.
+        const spb = spvk === null ? sp.b : null;
+        const g = groups.find(gr => gr.a === sp.a && gr.b === spb && gr.vk === spvk && Math.abs(gr.seed - (sp.psiN[0] + sp.psiN[1]) / 2) < 1.5 * DEG);
         if (g) { g.psiN = [Math.min(g.psiN[0], sp.psiN[0]), Math.max(g.psiN[1], sp.psiN[1])]; g.rn = hull(g.rn, sp.rn); g.hf = hull(g.hf, sp.hf); }
-        else groups.push({ a: sp.a, psiN: sp.psiN.slice(), rn: sp.rn.slice(), hf: sp.hf.slice(), seed: (sp.psiN[0] + sp.psiN[1]) / 2, vk: spvk });
+        else groups.push({ a: sp.a, b: spb, psiN: sp.psiN.slice(), rn: sp.rn.slice(), hf: sp.hf.slice(), seed: (sp.psiN[0] + sp.psiN[1]) / 2, vk: spvk });
       }
       for (const g of groups) { g.n = [cosRange(g.psiN), sinRange(g.psiN)]; g.G = [mul(g.hf, g.n[0]), mul(g.hf, g.n[1]), mul(g.hf, g.rn)]; }
       ngroups += groups.length;
