@@ -10,9 +10,10 @@
 // Every branch of the program (which segment pair is closest, how the closest point is clamped,
 // whether a pair touches) is either decided uniformly over the whole model, or all the possible
 // outcomes are computed over the whole model and kept: enclosed together in one hull (fresh noise
-// symbols), or carried as separate branches. Leg-leg and hub-leg pushes are modelled. Program paths
-// the certificate does not model (the deep-crossing shove, the horizontal-fraction floor, the
-// separation cap, hub-hub contact) must be excluded uniformly, or the run stops.
+// symbols), or carried as separate branches. Leg-leg and hub-leg pushes, the horizontal-fraction
+// floor and the separation cap are modelled. Program paths the certificate does not model (the
+// deep-crossing shove, near-vertical contacts with hf < 1e-4, hub-hub contact) must be excluded
+// uniformly, or the run stops.
 'use strict';
 const iv = require('./iv.js');
 const { TM, newSym, norm1, getN } = require('./tm.js');
@@ -267,18 +268,29 @@ function pushAlternative(st, br, info, thr = [minD, minD], deepRule = true, opts
   const hd = br.hd2.sqrt();
   const hf = hd.div(br.dist);
   const HF = hf.range();
-  if (!(HF[0] >= 0.35)) throw new Error('horizontal-fraction floor not excluded: hf ' + HF + ' (' + br.label + ')');
+  if (!(HF[0] >= 1e-4)) throw new Error('vertical contact (hf < 1e-4) not excluded: hf ' + HF);
   const invHd = hd.inv();
   const nx = br.dx.mul(invHd), ny = br.dy.mul(invHd);
-  let gp = gap;
+  // the separation the engine asks for: gap / max(hf, 0.35), then min(., 0.8). Where the floor or
+  // the cap may be active somewhere on the model, every possible formula is an outcome.
+  const sepsOf = g => {
+    const out = [];
+    if (HF[1] >= 0.35) out.push(g.mul(br.dist).mul(invHd));                         // gap / hf
+    if (HF[0] < 0.35) { out.push(g.scaleI(iv.div([1, 1], [0.35, 0.35]))); info.floorUsed = (info.floorUsed || 0) + 1; }
+    const capped = [];
+    for (const s of out) {
+      const SR = s.range();
+      if (SR[0] <= 0.8) capped.push(s);
+      if (SR[1] > 0.8) { capped.push(TM.const(0.8)); info.capUsed = (info.capUsed || 0) + 1; }
+    }
+    return capped;
+  };
   if (GR[0] < 0 && opts.branch && opts.branchStraddle && Math.min(-GR[0], GR[1]) > (opts.tolRelax || 1e-9)) {
-    // two exact outcomes: this pair pushes (raw gap) or it does not touch
-    const sepRaw = gap.mul(br.dist).mul(invHd);
-    const SRr = sepRaw.range();
-    if (!(SRr[1] <= 0.8)) throw new Error('separation cap not excluded: sep ' + SRr);
+    // exact outcomes: this pair pushes (raw gap) or it does not touch
     info.pushes++; info.straddleSplits = (info.straddleSplits || 0) + 1;
-    return [applyPush(st, br.pb.x, br.pb.y, nx, ny, sepRaw), null];
+    return [...sepsOf(gap).map(s => applyPush(st, br.pb.x, br.pb.y, nx, ny, s)), null];
   }
+  let gp = gap;
   if (GR[0] < 0) {
     // max(0, g) = a g + w with w in [0, W]: exact for any a in [0, 1]
     const l = GR[0], u = GR[1], a = u / (u - l);
@@ -289,11 +301,10 @@ function pushAlternative(st, br, info, thr = [minD, minD], deepRule = true, opts
     gp.widen(up(Math.abs(0.5 * W) * 2.3e-16));
     info.relaxed++;
   }
-  const sep = gp.mul(br.dist).mul(invHd);       // gap / hf
-  const SR = sep.range();
-  if (!(SR[1] <= 0.8)) throw new Error('separation cap not excluded: sep ' + SR);
   info.pushes++;
-  return applyPush(st, br.pb.x, br.pb.y, nx, ny, sep);
+  const seps = sepsOf(gp);
+  if (seps.length === 1) return applyPush(st, br.pb.x, br.pb.y, nx, ny, seps[0]);
+  return seps.map(s => applyPush(st, br.pb.x, br.pb.y, nx, ny, s));
 }
 
 // ---- one call of resolvePush(red, blue) on models, with optional branch splitting ----
@@ -417,6 +428,7 @@ function mergeTagged(list, opts, info) {
     for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) {
       const d = stateDiff(L[i].cur, L[j].cur); if (!best || d < best.d) best = { i, j, d };
     }
+    if (opts.failOnForcedMerge) throw new Error('branch cap reached');
     const h = { cur: hullStates([L[best.i].cur, L[best.j].cur]), pushed: L[best.i].pushed || L[best.j].pushed };
     L = L.filter((_, k) => k !== best.i && k !== best.j); L.push(h);
     info.forcedMerges = (info.forcedMerges || 0) + 1;
@@ -451,6 +463,7 @@ function mergeBranches(list, opts, info) {
     for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) {
       const d = stateDiff(L[i], L[j]); if (!best || d < best.d) best = { i, j, d };
     }
+    if (opts.failOnForcedMerge) throw new Error('branch cap reached');
     const h = hullStates([L[best.i], L[best.j]]);
     L = L.filter((_, k) => k !== best.i && k !== best.j); L.push(h);
     info.forcedMerges = (info.forcedMerges || 0) + 1;

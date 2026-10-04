@@ -1,4 +1,4 @@
-# Taylor-model cover of the arm (1,−) reply band
+# Taylor-model cover of defender arm (1,−)
 
 4 October 2026. A prototype that certifies whole intervals of defender angles at once by running
 the engine's push law on polynomials instead of numbers. It is new code and **has not been
@@ -7,29 +7,47 @@ independently reviewed**; treat its outputs as program results until someone che
 ## Result
 
 Position: the Brief 6 seed `[-27.3934, -36.4088, 1.2052, -11.7593, -23.2838, 2.9442]`, blue
-(defender) to move. Blue replies on arm (1,−) to stop angle α. Red replies with arm (0,−): it pins
-foot 0 and swings to its limit, 123 substeps of 0.375° (46.125°), exactly the reply that
+(defender) to move. Blue replies on arm (1,−) to stop angle α, anywhere from the 2° minimum move
+to the arm's 16.5° limit. Red replies with arm (0,−): it pins foot 0 and swings to its limit,
+123 substeps of 0.375° (46.125°), exactly the reply that
 [ARM1-ONE-DEGREE](https://github.com/liaminhawai-cmd/Tau/blob/codex/brief6-single-reply-proof/docs/geometry-reviews/brief6-single-reply/ARM1-ONE-DEGREE.md)
-certifies.
+certifies on 8°–9°.
 
-| Band | Cells | Widest cell | Cells with separate branches | Smallest proved margin | Smallest hub move | Run time |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 8°–9° | 35 | 0.125° | 3 | 3.139467u | 6.6455u | 3.6 min |
-| 9°–10° | 26 | 0.125° | 4 | 3.011362u | 6.2990u | 0.9 min |
+**For every α in [2°, 16.5°], in the real-arithmetic model below, red's reply leaves blue's foot 1
+off the board, by at least 2.296743u** (the weakest cell is [15.25°, 15.40625°]), and blue's hub
+moves by at least 4.4089u, far over the 0.25u ko threshold. 456 proved cells tile the arm with
+no gaps and no failures; 32 of them carry separate branches.
 
-For every α in each band, in the real-arithmetic model below, blue's foot 1 ends red's swing
-outside the board by at least the stated margin, and blue's hub moves by at least the stated
-amount (the ko threshold is 0.25u). The cells tile each band with no gaps (`results/*.json` list
-them).
+![Proved throw margin across arm (1,−)](results/arm-cover.svg)
 
-For comparison, ARM1-ONE-DEGREE covers 8°–9° with 240 cells and a minimum lower margin of
-3.137016072573885u. Its two contact-switch gaps (8.2374414° and 8.6814807°) sit here inside
-ordinary cells, [8.1875°, 8.25°] and [8.625°, 8.75°], which carry 3 and 6 separate branches.
-The three contact switches in 9°–10° (near 9.116°, 9.541° and 9.957°) likewise sit inside cells
-with 2, 3 and 2 branches. Run as tiny single cells around ARM1's two gaps, the results agree
-with ARM1-ONE-DEGREE's to about 1e-7: margins 3.2347737u and 3.1791326u here against
-3.2347736u and 3.1791334u there; hub moves 6.915739u and 6.757760u against 6.915739u and
-6.757762u.
+| Band | Cells | Widest cell | Cells with separate branches | Smallest proved margin | Smallest hub move |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 2°–4° | 83 | 0.0625° | 0 | 3.770786u | 8.53u |
+| 4°–6° | 74 | 0.125° | 5 | 3.509777u | 7.73u |
+| 6°–8° | 73 | 0.125° | 10 | 3.265390u | 7.00u |
+| 8°–10° | 61 | 0.125° | 7 | 3.011362u | 6.30u |
+| 10°–12° | 75 | 0.125° | 6 | 2.741741u | 5.64u |
+| 12°–14° | 58 | 0.125° | 4 | 2.480320u | 5.04u |
+| 14°–16.5° | 32 | 0.15625° | 0 | 2.296743u | 4.41u |
+| **2°–16.5°** | **456** | **0.15625°** | **32** | **2.296743u** | **4.41u** |
+
+The whole cover took about 15 CPU-minutes (seven bands on four cores, about 10 minutes of wall
+time). `results/cover_*_d6.json` lists every cell; `summary.js` checks the tiling.
+
+### Against ARM1-ONE-DEGREE
+
+ARM1-ONE-DEGREE covers 8°–9° with 240 cells and a minimum lower margin of 3.137016072573885u.
+Here 8°–9° takes 35 cells, minimum 3.139467u. ARM1's two contact-switch gaps (8.2374414° and
+8.6814807°) sit inside ordinary cells, [8.1875°, 8.25°] and [8.625°, 8.75°], carrying 3 and 6
+separate branches; the switches near 9.116°, 9.541° and 9.957° likewise sit inside cells 0.03°
+to 0.06° wide. Run as tiny single cells around ARM1's two gaps, the bounds agree with ARM1's to
+about 1e-7: margins 3.2347737u and 3.1791326u here against 3.2347736u and 3.1791334u there; hub
+moves 6.915739u and 6.757760u against 6.915739u and 6.757762u.
+
+Past 10° the same kind of switch recurs once per substep, at 10.870°, 11.129°, 11.387°, 11.644°,
+11.900°, 12.154°, 12.406° and 12.656° (substeps 70 to 77). There the branches still had to be
+merged past the cap of eight, which only works in narrow cells (1.2e-4° to 4.9e-4°), so those
+eight points are where the cover is finest.
 
 `freemotion.js` also proves that blue's reply never touches red anywhere on the arm, φ in
 [0°, 16.5°].
@@ -57,19 +75,26 @@ cell (0.008u and 0.018u); the bound itself adds almost nothing.
   to the remainder with outward rounding (`iv.js`).
 - **The engine's push program** (`push-tm.js`): `resolvePush` with its ten Gauss–Seidel passes,
   snapshot geometry per pass, 12-segment leg polylines, `segClosest3` with every clamp branch,
-  red-hub/blue-leg and blue-hub/red-leg pushes, and `apply` exactly as written. Red is kinematic:
-  its pose at each substep is a constant.
-- **Branches.** Each program branch (closest segment pair, clamp case, touch or not) is either
-  decided uniformly over the cell or all its outcomes are kept: enclosed in one hull with fresh
-  noise symbols, or carried as separate exact branches (at most 8; outcomes closer than 1e-7u
-  are hulled). A contact that starts somewhere inside the cell uses the exact relaxation
+  red-hub/blue-leg and blue-hub/red-leg pushes, the horizontal-fraction floor and the 0.8u
+  separation cap, and `apply` exactly as written. Red is kinematic: its pose at each substep is a
+  constant.
+- **Branches.** Each program branch (closest segment pair, clamp case, touch or not, floor or
+  cap active) is either decided uniformly over the cell or all its outcomes are kept: enclosed in
+  one hull with fresh noise symbols, or carried as separate exact branches (outcomes closer than
+  1e-7u are hulled). A contact that starts somewhere inside the cell uses the exact relaxation
   max(0, g) = a·g + w, w ∈ [0, W].
-- **Guards that must hold uniformly** or the cell fails: the deep-crossing shove (dist ≥ 0.3),
-  the horizontal-fraction floor (hf ≥ 0.35), the 0.8u separation cap, and hub–hub contact.
+- **Excluded paths**, which must be ruled out uniformly or the cell fails: the deep-crossing shove
+  (dist ≥ 0.3 required), near-vertical contacts (hf ≥ 1e-4 required) and hub–hub contact.
 - **Symbol reduction** after each contact substep: a Lohner-style re-basis with a rigorous 3×3
   interval inverse.
-- **Cover** (`cover.js`): try a cell; if it fails, retry with separate branches; if that fails
-  too, halve it.
+- **Cover** (`cover.js`, `modes.js`): try a cell with every outcome hulled. If that fails, retry
+  (cells up to 0.25°) keeping separate branches, giving up rather than merge distinct ones past
+  eight; then (cells up to 0.002°) allowing that merge; then halve.
+
+What the proof actually used, per `audit.js`: red's hub pushes blue's leg in all 456 cells; 210
+cells use the contact-start relaxation; 32 carry separate branches (20 within the cap, 12 merged
+past it). The floor and the cap never activated: in every cell they were inactive throughout, so
+the result also holds under the stricter reading that excludes them.
 
 ## Model and imported assumptions
 
@@ -90,10 +115,13 @@ cell (0.008u and 0.018u); the bound itself adds almost nothing.
 
 ## Checks run
 
+- `audit.js` re-ran all 456 cells independently, each in the mode that proved it: every bound
+  reproduced exactly.
 - `contain.js` replays the float engine at sample angles in a cell and requires its blue pose
-  after every substep to lie inside a branch of the model. On seven cells (five with branches),
-  11,685 substep checks found none outside by more than 1e-9; the largest excess was 6.7e-16,
-  the engine's own rounding.
+  after every substep to lie inside a branch of the model. On 28 cells spread over the arm (the
+  first, middle and weakest cell of each band and its branch cells), 35,916 substep checks found
+  none outside by more than 1e-9; the largest excess was 1e-15, the engine's own rounding
+  (`results/containment.txt`).
 - The segment-distance lower bound used for screening was checked against a brute-force
   reference on 20,000 random segment pairs, a third of them nearly parallel: none exceeded it.
 - Containment and these unit checks are evidence that the code does what it says, not a proof of
@@ -102,14 +130,17 @@ cell (0.008u and 0.018u); the bound itself adds almost nothing.
 
 ## Not shown
 
-Other defender arms, the rest of arm (1,−), other attacker replies, the whole lost-position
-theorem, and any bound relating the real-arithmetic model to floating-point execution.
+Blue's other five arms (a lost position needs every legal reply answered), any bound relating the
+real-arithmetic model to floating-point execution, and the imported pieces above.
 
 ## Reproduce
 
-Node 22; run from this directory (the containment check loads `../../../nn/engine.js`).
+Node 22; run from this directory (`contain.js` and `figure.js` load `../../../nn/engine.js`).
 
-    node cover.js 8 9 6            # cover a band; writes results/cover_8_9_d6.json (about 4 min)
+    node cover.js 8 10 6           # cover a band; writes results/cover_8_10_d6.json (about 25 s)
+    node summary.js 2 16.5         # check the bands tile the arm
+    node audit.js 2 16.5           # re-run every cell; writes results/audit_2_16.5.json
     node cert.js 8.625 8.75 6      # one cell (BRANCH=1 for separate branches)
     node contain.js 8.625 8.75 1 9 # engine containment: cell, branches on/off, sample angles
     node freemotion.js 0 16.5      # blue's reply never touches red
+    node figure.js 2 16.5          # results/arm-cover.svg

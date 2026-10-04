@@ -95,11 +95,12 @@ records the seed/post-reply comparison, current-engine replay, degree/radian
 runs and the repeated chord/frame audit at `431f13129d57fb41dd17e0844b3bd55624e2c3b4`.
 
 
-## Taylor-model cover of the arm (1,−) reply band
+## Taylor-model cover of defender arm (1,−)
 
 [Read the package README](taylor-model/README.md). A prototype that runs the engine's push law on
 polynomials in the defender's stop angle, so one computation certifies a whole interval of
-angles. On the Brief 6 seed it covers 8°–9° of defender arm (1,−) with far fewer, much wider
-cells than ARM1-ONE-DEGREE, and carries both contact-switch gaps inside ordinary cells as
-separate branches. New code, not yet independently reviewed; red's stopping schedule and blue's
+angles. On the Brief 6 seed it covers all of defender arm (1,−), 2° to 16.5°, with 456 cells:
+red's (0,−) reply throws with a margin of at least 2.2967u everywhere. On 8°–9° it needs 35
+cells where ARM1-ONE-DEGREE used 240, and carries the contact-switch gaps inside ordinary cells
+as separate branches. New code, not yet independently reviewed; red's stopping schedule and blue's
 reply legality are imported from the ARM1 certificates and the engine.
