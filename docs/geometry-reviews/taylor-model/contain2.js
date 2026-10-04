@@ -71,7 +71,7 @@ if (require.main === module) {
   const [bp, bd, a0, a1] = process.argv.slice(2, 6).map(Number);
   const mode = process.argv[6] || 'plain', ns = +(process.argv[7] || 5);
   try {
-    const c = containment(bp, bd, a0, a1, mode, ns);
+    const c = containment(bp, bd, a0, a1, mode, ns, +(process.env.DEG || 4));
     console.log(`arm (${bp},${bd}) cell [${a0}, ${a1}] ${mode}: margin >= ${c.margin.toFixed(5)}; ${c.checks} comparisons at ${ns} angles, ${c.fails} outside; worst excess ${c.worst.toExponential(2)}${c.bad.length ? ' | ' + c.bad.join(' ; ') : ''}`);
   } catch (e) { console.log(`arm (${bp},${bd}) cell [${a0}, ${a1}] ${mode}: model stopped: ${e.message.slice(0, 120)}`); }
 }
