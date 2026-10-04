@@ -263,6 +263,24 @@ function hullStates(alts) {
   return res;
 }
 
+// Move a model's interval remainder into one fresh noise symbol (centre into the constant term).
+// The remainder of a push amount is evaluation error. Left in the interval part it is copied, as an
+// independent box, into the pushed piece's x, y and rotation, the next pass evaluates the gap on that
+// piece with an error about 17 times bigger, and that error is copied into the next push: the loop
+// gain was about 4 per pass. As a symbol the same uncertainty stays one direction, the next gap sees it
+// cancel against the push, and nothing is fed back. The enclosure is the same set; only its shape differs.
+function remToSym(m) {
+  const rl = m.lo, rh = m.hi;
+  if (rl === 0 && rh === 0) return m;
+  const mid = 0.5 * (rl + rh), rad = up(Math.max(rh - mid, mid - rl));
+  let o = m.clone(); o.lo = 0; o.hi = 0;
+  o = o.addC(mid);
+  const p = new Float64Array(getN() + 1); p[0] = rad;
+  o.s.set(newSym(), p);
+  return o;
+}
+const identity = x => x;
+
 // the engine's apply(): push the opponent by sep along (nx, ny) at contact point (px, py)
 function applyPush(st, pbx, pby, nx, ny, sep) {
   const rx = pbx.sub(st.x), ry = pby.sub(st.y);
@@ -299,7 +317,7 @@ function pushAlternative(st, br, info, thr = [minD, minD], deepRule = true, opts
       if (SR[0] <= 0.8) capped.push(s);
       if (SR[1] > 0.8) { capped.push(TM.const(0.8)); info.capUsed = (info.capUsed || 0) + 1; }
     }
-    return capped;
+    return opts.symRem ? capped.map(remToSym) : capped;
   };
   if (GR[0] < 0 && (opts.branchStraddle || opts.hullStraddle) && Math.min(-GR[0], GR[1]) > (opts.tolRelax || 1e-9)) {
     // exact outcomes: this pair pushes (raw gap) or it does not touch
@@ -429,11 +447,12 @@ function hubHubAlt(st, hub, info, opts) {
   const GR = gap.range();
   if (GR[1] <= 0) return null;
   const inv = d.inv(), nx = dx.mul(inv), ny = dy.mul(inv);
+  const S = opts.symRem ? remToSym : identity;
   const capped = g => {                                              // min(g, 0.8)
     const SR = g.range();
-    if (SR[1] <= 0.8) return [g];
+    if (SR[1] <= 0.8) return [S(g)];
     if (SR[0] >= 0.8) { info.capUsed = (info.capUsed || 0) + 1; return [TM.const(0.8)]; }
-    info.capUsed = (info.capUsed || 0) + 1; return [g, TM.const(0.8)];
+    info.capUsed = (info.capUsed || 0) + 1; return [S(g), TM.const(0.8)];
   };
   const move = sep => ({ x: st.x.add(sep.mul(nx)), y: st.y.add(sep.mul(ny)), rot: st.rot });
   info.hubHubPushes = (info.hubHubPushes || 0) + 1;
@@ -522,7 +541,7 @@ function runPasses(state, red, info, pass, opts) {
     console.error(`  pass ${pass}: x width ${wd(state.x)} y ${wd(state.y)} rot ${wd(state.rot)} symMag ${state.x.symMag().toExponential(1)} rem ${state.x.remMag().toExponential(1)} polyW ${(() => { const q = state.x.polyRange(); return (q[1] - q[0]).toExponential(1); })()}`);
     for (const sl of slots) {
       if (sl.kind === 'hubhub') { console.error('    slot hubhub'); continue; }
-      for (const c of sl.keep) for (const b of c.br) console.error(`    slot ${sl.kind} ${c.u ?? c.k}-${c.v ?? ''} ${b.label || ''} gap [${b.dist.neg().addI(sl.thr).range().map(v => v.toExponential(2))}] hd2 [${b.hd2.range().map(v => v.toFixed(3))}]`);
+      for (const c of sl.keep) for (const b of c.br) { const gg = b.dist.neg().addI(sl.thr); console.error(`    slot ${sl.kind} ${c.u ?? c.k}-${c.v ?? ''} ${b.label || ''} gap [${gg.range().map(v => v.toExponential(2))}] poly [${gg.polyRange().map(v => v.toExponential(2))}] sym ${gg.symMag().toExponential(1)} rem ${gg.remMag().toExponential(1)} hd2 [${b.hd2.range().map(v => v.toFixed(3))}]`); }
     }
   }
   if (!slots.length) return [state];

@@ -19,7 +19,9 @@ const ws = leaves.map(l => l.b - l.a);
 const modes = leaves.reduce((m, l) => (m[l.mode] = (m[l.mode] || 0) + 1, m), {});
 const w = leaves.reduce((m, l) => (l.m < m.m ? l : m), leaves[0]);
 console.log(JSON.stringify({
-  arm: [bp, bd], range: [from, to], files: files.length, tiled: gaps.length === 0 && fails.length === 0, gaps, failedCells: fails.length,
+  // a failed cell recorded by a piece's own run counts only if no cell covers it: a later pass with a
+  // narrower minimum width (cover2.js ... 1e-9) writes its own file and closes the hole
+  arm: [bp, bd], range: [from, to], files: files.length, tiled: gaps.length === 0, gaps, failRecords: fails.length,
   cells: leaves.length, widest: Math.max(...ws), narrowest: Math.min(...ws), minMargin: w.m, minMarginCell: [w.a, w.b],
   minHubMove: Math.min(...leaves.map(l => l.hub)), modes, seconds: leaves.reduce((s, l) => s + l.ms / 1000, 0),
 }, null, 1));

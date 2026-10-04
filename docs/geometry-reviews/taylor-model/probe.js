@@ -18,12 +18,13 @@ const code = msg => {
   if (/pushed off|swing itself off/.test(msg)) return 'offboard';
   return 'other';
 };
+const push = process.env.SYMREM ? { symRem: true } : {};   // SYMREM=1: probe the model that moves push remainders into noise symbols
 console.log('alpha,ok,margin,phase,substep,reason');
 const n = Math.floor((to - from) / step + 1e-9);
 for (let i = 0; i <= n; i++) {
   const a = from + i * step;
   try {
-    const r = run2(bp, bd, a, a + width, deg, {});
+    const r = run2(bp, bd, a, a + width, deg, { push });
     console.log(`${a},1,${r.marginLo.toFixed(4)},,,`);
   } catch (e) {
     const m = /^phase ([AB]) substep (\d+): (.*)$/.exec(e.message);
