@@ -142,3 +142,30 @@ The commit implementing this is `e3282f9`.
 The invariant the eventual proof should state explicitly is:
 
 > every propagated state is associated with one fixed closest-feature branch, and no state is allowed to cross a feature boundary without subdivision.
+
+## Exact chord-feature walls
+
+For two fixed chord pieces A(s)=A0+s uA and V(t)=V0+t uV, write
+A = uA·uA, E = uV·uV, B = uA·uV, C = uA·(A0-V0), F = uV·(A0-V0).
+For nonparallel chords, Delta = A E - B^2 > 0, and the unconstrained closest-point parameters are
+  s* = (B F - C E) / Delta,    t* = (A F - B C) / Delta.
+
+The exact feature walls are the four zero sets:
+  B F - C E = 0,
+  B F - C E - Delta = 0,
+  A F - B C = 0,
+  A F - B C - Delta = 0.
+
+An interior/interior feature regime is precisely
+  0 < B F - C E < Delta,
+  0 < A F - B C < Delta.
+
+A wall-crossing is therefore a sign change of one of these four scalar functions. For a rigid one-parameter reply family these become one-variable trigonometric functions, so interval subdivision can be driven by their signs.
+
+### Consequence for the proof architecture
+
+For each proposed response patch we should carry four feature margins for every active chord pair. If an interval enclosure proves all four have a strict common sign, the closest-point feature cannot change inside that patch. If any margin enclosure contains zero, the patch must be subdivided or split into the adjacent endpoint/vertex regime.
+
+This is stronger than the existing dmax drift test. The existing test is a useful conservative localisation lemma, but it should not be treated as the final feature-wall certificate until its drift bound is independently derived and checked against the exact parameter margins above.
+
+The next implementation step is to expose these four margins from the geometry layer and make them first-class branch conditions in the response-cover validator.
