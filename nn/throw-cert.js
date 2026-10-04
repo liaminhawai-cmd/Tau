@@ -474,6 +474,14 @@ function analyse(box, att, pairWant) {
     // interiority of the centre's own minimiser, in arclength, with the slack it needs
     const sA = sg.s * LA, sV = sg.t * LV;
     const atStartA = sA <= dmax, atEndA = LA - sA <= dmax, atStartV = sV <= dmax, atEndV = LV - sV <= dmax;
+    // Exact feature-wall ownership: the four margins are Delta*s, Delta*(1-s), Delta*t, Delta*(1-t).
+    // If a margin is no larger than the certified dmax/L drift band, the interior regime may cross
+    // a feature wall and cannot own the whole box. The matching vertex regime must carry that wall.
+    const fm = featureMargins3(A[P.i][sg.a], A[P.i][sg.a + 1], V[P.j][sg.b], V[P.j][sg.b + 1]);
+    if (!fm) return { ...out, refuse: 'degenerate feature geometry on candidate segments' };
+    const wallBand = { s0: dmax / Math.max(LA, 1e-12), s1: dmax / Math.max(LA, 1e-12), t0: dmax / Math.max(LV, 1e-12), t1: dmax / Math.max(LV, 1e-12) };
+    const wallReachable = { s0: fm.normalised.s0 <= wallBand.s0, s1: fm.normalised.s1 <= wallBand.s1, t0: fm.normalised.t0 <= wallBand.t0, t1: fm.normalised.t1 <= wallBand.t1 };
+    const interiorCertified = !Object.values(wallReachable).some(Boolean);
 
     // IS THE INTERIOR/INTERIOR REGIME REACHABLE AT ALL? Its normal is the one perpendicular to both
     // chord tangents, which is a genuine contact only when some pose in the set has its minimiser in
@@ -593,7 +601,7 @@ function analyse(box, att, pairWant) {
     // ... and the interior entry itself, once. It used to be pushed twice, identically but for the
     // annotation; the hull is idempotent so the duplicate changed no bound, but it doubled this
     // pair's contribution to the regime and state counts that MAXSTATES caps.
-    if (!interiorImpossible) segPairs.push({ a: sg.a, b: sg.b, aBox, vBox, psiN, hf, fanA, fanV, rn, dmax, cth, atStartV, atEndV, why: `(${sg.a},${sg.b}) d ${sg.dist.toFixed(4)} cross ${(Math.acos(cth) / DEG).toFixed(1)}deg mu ${mu.toFixed(3)} dmax ${dmax.toFixed(3)} sA ${sA.toFixed(2)}/${LA.toFixed(2)} sV ${sV.toFixed(2)}/${LV.toFixed(2)} ends ${[atStartA, atEndA, atStartV, atEndV].map(v => (v ? 1 : 0)).join('')} n ${(psiN[0] / DEG).toFixed(2)}..${(psiN[1] / DEG).toFixed(2)}` });
+    if (!interiorImpossible && interiorCertified) segPairs.push({ a: sg.a, b: sg.b, aBox, vBox, psiN, hf, fanA, fanV, rn, dmax, cth, atStartV, atEndV, featureMargins: fm, wallReachable, why: `(${sg.a},${sg.b}) d ${sg.dist.toFixed(4)} cross ${(Math.acos(cth) / DEG).toFixed(1)}deg mu ${mu.toFixed(3)} dmax ${dmax.toFixed(3)} sA ${sA.toFixed(2)}/${LA.toFixed(2)} sV ${sV.toFixed(2)}/${LV.toFixed(2)} ends ${[atStartA, atEndA, atStartV, atEndV].map(v => (v ? 1 : 0)).join('')} n ${(psiN[0] / DEG).toFixed(2)}..${(psiN[1] / DEG).toFixed(2)}` });
   }
   // A PARK IS ONE REGIME, NOT TWO. While the closest point dwells on the vertex shared by victim
   // chords k-1 and k, both chord pairs report their minimiser AT that vertex: the same physical
