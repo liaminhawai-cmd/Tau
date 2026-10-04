@@ -106,3 +106,23 @@ Once one complete interval closes this way, subdivide only at actual event bound
 - `048c246` — bind park Jacobian to its regime chord
 - `ed4511d` — expose Jacobian for the audit probe
 - `f12570b` — park-Jacobian regime regression probe
+
+## Additional Newton-step obligation
+
+There is a subtle domain condition behind
+
+eta = M p^2 / (2 m^2).
+
+Taylor's theorem applies along the segment joining the pre-push pose to the corrected pose. Therefore the quoted M must bound the Hessian throughout that entire segment, not merely at the pre-push set.
+
+The current implementation computes M from the pre-contact geometry and later refreshes it using pre/post summaries during the fixed-point rounds. That may be sufficient, but the written proof still needs the missing lemma:
+
+> every Newton correction used by the enclosure remains inside a domain on which the same active feature branch is valid and the stated Hessian bound controls the Hessian.
+
+A clean proof would bound the correction length by p/m, enlarge the feature-domain box by that amount, and show the active chord pair, endpoint regime, and nonzero-distance lower bound survive on the enlarged domain. If the enlarged domain crosses a feature wall, the step must branch rather than reuse the single-branch Hessian bound.
+
+This is precisely the kind of issue that can make a numerically stable enclosure look rigorous while leaving a gap in the proof.
+
+## Therefore
+
+The research branch currently has a stronger and cleaner implementation than the historical checker, but it is not yet entitled to the word theorem. The right standard is to close the analytic lemmas first, then add directed/validated arithmetic, then run the engine falsification suite as an independent correspondence check.
