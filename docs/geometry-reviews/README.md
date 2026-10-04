@@ -93,3 +93,13 @@ outputs reproduce from the **post-reply** pose on committed code. The unit
 correction and two enclosure defects remain. The [reproduction package](brief6/README.md)
 records the seed/post-reply comparison, current-engine replay, degree/radian
 runs and the repeated chord/frame audit at `431f13129d57fb41dd17e0844b3bd55624e2c3b4`.
+
+
+## Taylor-model cover of the arm (1,−) reply band
+
+[Read the package README](taylor-model/README.md). A prototype that runs the engine's push law on
+polynomials in the defender's stop angle, so one computation certifies a whole interval of
+angles. On the Brief 6 seed it covers 8°–9° of defender arm (1,−) with far fewer, much wider
+cells than ARM1-ONE-DEGREE, and carries both contact-switch gaps inside ordinary cells as
+separate branches. New code, not yet independently reviewed; red's stopping schedule and blue's
+reply legality are imported from the ARM1 certificates and the engine.
