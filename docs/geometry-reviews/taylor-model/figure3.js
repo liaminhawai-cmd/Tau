@@ -1,7 +1,7 @@
-// Six panels, one per blue arm: how far past the rim blue's worst foot ends after red's (0,-) reply, against
-// blue's stop angle. The line is what the engine gives at sampled stops (every 0.01 degrees, every 0.001
-// near the end); the filled steps are the proved lower bounds of the Taylor-model cells. Anything above zero
-// is a throw.
+// Six panels, one per blue arm: how far past the rim blue's worst foot ends after red's (0,-) reply of 123
+// substeps, against blue's stop angle. The line is what the engine gives at sampled stops (every 0.01
+// degrees, every 0.001 near the end; six-arms/samples123.js); the filled steps are the proved lower bounds of
+// the Taylor-model cells. Anything above zero is a throw.
 //   node figure3.js   ->  results/margins.svg
 'use strict';
 const fs = require('fs'), path = require('path');
@@ -21,13 +21,11 @@ function cells(a) {
   for (const f of files) leaves.push(...JSON.parse(fs.readFileSync(f)).leaves);
   return leaves.sort((p, q) => p.a - q.a);
 }
+// targets up to the arm's limit only: beyond it the engine plays a shorter move (see check-vs-samples.js)
 function sampled(a) {
-  const rows = [];
-  for (const name of [`red-0m-0.01deg_b${a.bp}_${a.bd}.csv`, `red-0m-ext-0.001deg_b${a.bp}_${a.bd}.csv`]) {
-    const f = path.join(__dirname, 'six-arms', 'data', name);
-    if (fs.existsSync(f)) for (const r of fs.readFileSync(f, 'utf8').trim().split('\n').slice(1)) { const v = r.split(',').map(Number); rows.push([v[0], v[3]]); }
-  }
-  return rows.sort((p, q) => p[0] - q[0]);
+  const f = path.join(__dirname, 'six-arms', 'data', `red-0m-123_b${a.bp}_${a.bd}.csv`);
+  return fs.readFileSync(f, 'utf8').trim().split('\n').slice(1).map(r => r.split(',').map(Number))
+    .filter(v => v[0] <= a.limit).map(v => [v[0], v[3]]).sort((p, q) => p[0] - q[0]);
 }
 
 const PW = 440, PH = 190, ML = 52, MR = 14, MT = 34, MB = 38, GX = 26, GY = 30, COLS = 2;
@@ -35,7 +33,7 @@ const W = ML + COLS * PW + (COLS - 1) * GX + MR, rowsN = Math.ceil(ARMS.length /
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
 let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-labelledby="t d">
 <title id="t">How far past the rim red's reply throws blue, for every blue move</title>
-<desc id="d">Six panels, one per blue arm. The horizontal axis is blue's stop angle, the vertical axis is how far blue's worst foot ends beyond the rim after red's (0,−) reply. A thin line is the engine at sampled stops; filled steps are proved lower bounds from Taylor-model cells. Every value is above zero.</desc>
+<desc id="d">Six panels, one per blue arm. The horizontal axis is blue's stop angle, the vertical axis is how far blue's worst foot ends beyond the rim after red's (0,−) reply of 123 substeps. A thin line is the engine at sampled stops; filled steps are proved lower bounds from Taylor-model cells. Every value is above zero.</desc>
 <style>
   svg { --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --grid:#e6e5e1; --line:#2a78d6; --fill:#b7d3f6; }
   @media (prefers-color-scheme: dark) { svg { --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --grid:#33332f; --line:#3987e5; --fill:#254a78; } }
@@ -45,7 +43,7 @@ let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width
 </style>
 <rect class="bg" width="${W}" height="${H}"/>
 <text class="t1" x="${ML}" y="28">How far past the rim red's reply throws blue</text>
-<text class="t2" x="${ML}" y="48">Blue's worst foot, in board units beyond the rim, after red's (0,−) reply. Line: engine samples. Steps: proved lower bounds.</text>
+<text class="t2" x="${ML}" y="48">Blue's worst foot, in board units beyond the rim, after red's (0,−) reply of 123 substeps. Line: engine samples. Steps: proved lower bounds.</text>
 `;
 ARMS.forEach((a, i) => {
   const col = i % COLS, row = Math.floor(i / COLS);

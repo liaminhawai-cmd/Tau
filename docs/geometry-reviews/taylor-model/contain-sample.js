@@ -3,6 +3,9 @@
 // re-run in the model that proved it and the float engine is replayed at sample angles inside it
 // (contain2.js); the engine's blue pose after every red substep must lie inside the model.
 //   node contain-sample.js <bluePivot> <blueDir> [bandDeg=8] [samples=7]   ->  results/arm_X/containment.txt
+// PICK=narrowest checks instead the narrowest cell of every band (where the contact program switches), and
+// PICK=vtx every cell proved with vertexDedup; both leave out the cells the arm's other containment files
+// already check. With TAG=narrow (TAG=vtx) the lines go to containment_narrow.txt (containment_vtx.txt).
 'use strict';
 const fs = require('fs'), path = require('path');
 const { containment } = require('./contain2.js');
@@ -13,7 +16,7 @@ const leaves = [];
 for (const f of fs.readdirSync(dir)) if (/^cover_.*_d\d+\.json$/.test(f)) leaves.push(...JSON.parse(fs.readFileSync(path.join(dir, f))).leaves);
 leaves.sort((p, q) => p.a - q.a);
 const lo = leaves[0].a, hi = leaves[leaves.length - 1].b;
-const picked = new Map();
+const picked = new Map(), narrow = new Map();
 const pick = (c, why) => { const k = c.a + ':' + c.b; if (!picked.has(k)) picked.set(k, { c, why }); };
 for (let b0 = lo; b0 < hi; b0 += band) {
   const cs = leaves.filter(l => l.a >= b0 && l.b <= b0 + band);
@@ -21,16 +24,29 @@ for (let b0 = lo; b0 < hi; b0 += band) {
   pick(cs.reduce((m, l) => (l.m < m.m ? l : m)), 'weakest');
   pick(cs.reduce((m, l) => (l.b - l.a > m.b - m.a ? l : m)), 'widest');
   for (const mode of new Set(cs.map(l => l.mode))) pick(cs.find(l => l.mode === mode), mode);
+  const c = cs.reduce((m, l) => (l.b - l.a < m.b - m.a ? l : m));
+  narrow.set(c.a + ':' + c.b, { c, why: 'narrowest' });
+}
+if (process.env.PICK === 'narrowest' || process.env.PICK === 'vtx') {
+  const want = process.env.PICK === 'vtx' ? new Map(leaves.filter(l => l.vtx).map(c => [c.a + ':' + c.b, { c, why: 'vertexDedup' }])) : narrow;
+  // leave out the cells the arm's other containment files already check
+  const out = `containment${process.env.TAG ? '_' + process.env.TAG : ''}.txt`;
+  for (const f of fs.readdirSync(dir)) {
+    if (!/^containment.*\.txt$/.test(f) || f === out) continue;
+    for (const m of fs.readFileSync(path.join(dir, f), 'utf8').matchAll(/cell \[([^,\]]+), ([^\]]+)\]/g)) want.delete(+m[1] + ':' + +m[2]);
+  }
+  picked.clear();
+  for (const [k, v] of want) picked.set(k, v);
 }
 const lines = []; let comparisons = 0, outside = 0, stopped = 0;
 for (const { c, why } of picked.values()) {
-  process.env.SYMREM = c.sym ? '1' : '';
+  process.env.SYMREM = c.sym ? '1' : ''; process.env.VTX = c.vtx ? '1' : '';
   let line;
   try {
     const r = containment(bp, bd, c.a, c.b, c.mode, ns, +(process.env.DEG || 4));
     comparisons += r.checks; outside += r.fails;
-    line = `arm (${bp},${bd}) cell [${c.a}, ${c.b}] ${c.mode}${c.sym ? '+sym' : ''} (${why}): margin >= ${r.margin.toFixed(5)}; ${r.checks} comparisons at ${ns - r.skipped} angles${r.skipped ? ` (${r.skipped} beyond the engine's limit skipped)` : ''}, ${r.fails} outside; worst excess ${r.worst.toExponential(2)}${r.bad.length ? ' | ' + r.bad.join(' ; ') : ''}`;
-  } catch (e) { stopped++; line = `arm (${bp},${bd}) cell [${c.a}, ${c.b}] ${c.mode}${c.sym ? '+sym' : ''} (${why}): model stopped: ${e.message.slice(0, 120)}`; }
+    line = `arm (${bp},${bd}) cell [${c.a}, ${c.b}] ${c.mode}${c.sym ? '+sym' : ''}${c.vtx ? '+vtx' : ''} (${why}): margin >= ${r.margin.toFixed(5)}; ${r.checks} comparisons at ${ns - r.skipped} angles${r.skipped ? ` (${r.skipped} beyond the engine's limit skipped)` : ''}, ${r.fails} outside; worst excess ${r.worst.toExponential(2)}${r.bad.length ? ' | ' + r.bad.join(' ; ') : ''}`;
+  } catch (e) { stopped++; line = `arm (${bp},${bd}) cell [${c.a}, ${c.b}] ${c.mode}${c.sym ? '+sym' : ''}${c.vtx ? '+vtx' : ''} (${why}): model stopped: ${e.message.slice(0, 120)}`; }
   lines.push(line); console.log(line);
 }
 lines.push(`TOTAL: ${picked.size} cells, ${comparisons} comparisons, ${outside} outside, ${stopped} stopped`);

@@ -1,0 +1,31 @@
+{
+ "arm": [
+  2,
+  -1
+ ],
+ "interval": [
+  15.54,
+  15.56
+ ],
+ "deg": 4,
+ "cells": 1,
+ "failed": 0,
+ "runs": 1,
+ "seconds": 2.49,
+ "width": {
+  "min": 0.02000000000000135,
+  "median": 0.02000000000000135,
+  "max": 0.02000000000000135
+ },
+ "minMargin": 2.8333611795075764,
+ "minHubMove": 15.15917727656149,
+ "modes": {
+  "plain": 1
+ },
+ "splitReasons": {},
+ "fails": []
+}
+
+real	0m2.547s
+user	0m2.480s
+sys	0m0.084s

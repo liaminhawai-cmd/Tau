@@ -20,9 +20,10 @@ const MAX_OPS = +(process.env.MAXOPS || 3.5e6);
 const MERGE_MAXW = +(process.env.MERGE_MAXW || Infinity), MAX_OPS_MERGE = +(process.env.MAXOPS_MERGE || MAX_OPS);
 
 // base: push options applied to every run of the cover (the plain run and every mode); { symRem: true }
-// moves the remainders of push amounts into noise symbols (see remToSym in push-tm.js)
+// moves the remainders of push amounts into noise symbols (see remToSym in push-tm.js), { vertexDedup: true }
+// counts a hub resting on a leg vertex once (see sameVertex). Each cell records the options that proved it.
 function cover(bp, bd, a0, a1, deg = 6, minW = 1e-5, log, base = {}) {
-  const sym = base.symRem ? 1 : 0;
+  const sym = base.symRem ? 1 : 0, tag = base.vertexDedup ? { vtx: 1 } : {};
   const leaves = [], fails = [], reasons = {};
   let runs = 0;
   const t0 = Date.now();
@@ -30,7 +31,7 @@ function cover(bp, bd, a0, a1, deg = 6, minW = 1e-5, log, base = {}) {
     runs++;
     let r = null, err = null;
     try { r = run2(bp, bd, a, b, deg, { push: base, maxPasses: MAX_PASSES, maxOps: MAX_OPS }); } catch (e) { err = e.message; }
-    if (r && r.marginLo > 0) { leaves.push({ a, b, m: r.marginLo, hub: r.hubMoveLo, ms: r.ms, branches: 1, mode: 'plain', sym }); return; }
+    if (r && r.marginLo > 0) { leaves.push({ a, b, m: r.marginLo, hub: r.hubMoveLo, ms: r.ms, branches: 1, mode: 'plain', sym, ...tag }); return; }
     const errOf = {};
     for (const [mode, maxW, push] of MODES) {
       if (b - a > maxW) continue;
@@ -42,7 +43,7 @@ function cover(bp, bd, a0, a1, deg = 6, minW = 1e-5, log, base = {}) {
       if (base_mode !== mode && b - a > MERGE_MAXW) continue;
       let r2 = null;
       try { r2 = run2(bp, bd, a, b, deg, { push: { ...base, ...push }, maxPasses: MAX_PASSES, maxOps: base_mode !== mode ? MAX_OPS_MERGE : MAX_OPS }); } catch (e) { err = err || e.message; errOf[mode] = e.message; }
-      if (r2 && r2.marginLo > 0) { leaves.push({ a, b, m: r2.marginLo, hub: r2.hubMoveLo, ms: r2.ms, branches: r2.info.maxBranches || 1, mode, sym }); return; }
+      if (r2 && r2.marginLo > 0) { leaves.push({ a, b, m: r2.marginLo, hub: r2.hubMoveLo, ms: r2.ms, branches: r2.info.maxBranches || 1, mode, sym, ...tag }); return; }
     }
     const why = err ? err.replace(/[-\d.e+,]+/g, '#').slice(0, 80) : 'margin not positive';
     reasons[why] = (reasons[why] || 0) + 1;
@@ -57,7 +58,7 @@ module.exports = { cover };
 if (require.main === module) {
   const [bp, bd, a0, a1] = process.argv.slice(2, 6).map(Number);
   const deg = +(process.argv[6] || 6), minW = +(process.argv[7] || 1e-5);
-  const res = cover(bp, bd, a0, a1, deg, minW, undefined, process.env.SYMREM ? { symRem: true } : {});
+  const res = cover(bp, bd, a0, a1, deg, minW, undefined, { ...(process.env.SYMREM ? { symRem: true } : {}), ...(process.env.VTX ? { vertexDedup: true } : {}) });
   const ws = res.leaves.map(l => l.b - l.a).sort((x, y) => x - y);
   const q = p => ws[Math.min(ws.length - 1, Math.floor(p * ws.length))];
   const modes = res.leaves.reduce((m, l) => (m[l.mode] = (m[l.mode] || 0) + 1, m), {});

@@ -100,9 +100,9 @@ function crossingCheck(r0) {
 }
 
 // every red branch of every regime of one cell
-function checkCell(bp, bd, a, b, deg, mode, sym) {
+function checkCell(bp, bd, a, b, deg, mode, sym, vtx) {
   const m = MODES.find(x => x[0] === mode);
-  const r = run2(bp, bd, a, b, deg, { push: { ...(sym ? { symRem: true } : {}), ...(m ? m[2] : {}) }, keepTrace: true, phaseAOnly: true });
+  const r = run2(bp, bd, a, b, deg, { push: { ...(sym ? { symRem: true } : {}), ...(vtx ? { vertexDedup: true } : {}), ...(m ? m[2] : {}) }, keepTrace: true, phaseAOnly: true });
   let ok = true, why = null, clearance = Infinity, branches = 0, borderline = null; const crossings = new Set();
   for (const it of r.trace.items) for (const red of it.red) {
     branches++;
@@ -127,7 +127,7 @@ if (require.main === module) {
   const bad = [], kinds = {}, edge = []; let clearance = Infinity, stopped = 0;
   for (const c of cells) {
     let v;
-    try { v = checkCell(bp, bd, c.a, c.b, deg, c.mode, c.sym); } catch (e) { stopped++; bad.push({ a: c.a, b: c.b, why: 'model stopped: ' + e.message.slice(0, 100) }); continue; }
+    try { v = checkCell(bp, bd, c.a, c.b, deg, c.mode, c.sym, c.vtx); } catch (e) { stopped++; bad.push({ a: c.a, b: c.b, why: 'model stopped: ' + e.message.slice(0, 100) }); continue; }
     clearance = Math.min(clearance, v.clearance);
     if (v.borderline) edge.push({ a: c.a, b: c.b, pivot: v.borderline });
     for (const k of v.crossings) kinds[k.replace(/substeps.*/, '')] = (kinds[k.replace(/substeps.*/, '')] || 0) + 1;

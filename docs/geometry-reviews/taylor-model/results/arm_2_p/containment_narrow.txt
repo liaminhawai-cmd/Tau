@@ -1,0 +1,2 @@
+arm (2,1) cell [3.825927734375, 3.82611083984375] plain (narrowest): margin >= 4.99745; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+TOTAL: 1 cells, 2604 comparisons, 0 outside, 0 stopped

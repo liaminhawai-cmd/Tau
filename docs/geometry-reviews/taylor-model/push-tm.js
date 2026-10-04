@@ -213,15 +213,15 @@ function hubLegBranches(p, j, k, G) {
   const wx = Px.sub(A.x), wy = Py.sub(A.y), wh = iv.sub(p.h, A.h);
   const traw = wx.mul(dx).add(wy.mul(dy)).addI(iv.mul(wh, dH)).scaleI(iv.div([1, 1], len2));
   const R = traw.range(), ts = [];
-  if (R[0] < 0) ts.push(TM.const(0));
-  if (R[1] > 1) ts.push(TM.const(1));
-  if (R[1] >= 0 && R[0] <= 1) ts.push(traw);
-  return ts.map(t => {
+  if (R[0] < 0) ts.push([TM.const(0), 'lo']);
+  if (R[1] > 1) ts.push([TM.const(1), 'hi']);
+  if (R[1] >= 0 && R[0] <= 1) ts.push([traw, 'in']);
+  return ts.map(([t, clamp]) => {
     const pb = { x: A.x.add(dx.mul(t)), y: A.y.add(dy.mul(t)), h: t.scaleI(dH).addI(A.h) };
     // push3d(aHub, c.pt, ...): pa = pusher hub, pb = the point on the pushed leg
     const ddx = pb.x.sub(Px), ddy = pb.y.sub(Py), ddh = pb.h.addI(iv.neg(p.h));
     const hd2 = ddx.sqr().add(ddy.sqr());
-    return { pb, dx: ddx, dy: ddy, dh: ddh, hd2, dist: hd2.add(ddh.sqr()).sqrt() };
+    return { pb, dx: ddx, dy: ddy, dh: ddh, hd2, dist: hd2.add(ddh.sqr()).sqrt(), clamp };
   });
 }
 // pushed hub (models, snapshot) vs pusher leg segment a->b
@@ -233,15 +233,15 @@ function blueHubBranches(a, b, G) {
   const wx = hx.sub(Ax), wy = hy.sub(Ay), wh = iv.sub(hh, a.h);
   const traw = wx.mul(d.x).add(wy.mul(d.y)).addI(iv.mul(wh, d.h)).mul(len2.inv());
   const R = traw.range(), ts = [];
-  if (R[0] < 0) ts.push(TM.const(0));
-  if (R[1] > 1) ts.push(TM.const(1));
-  if (R[1] >= 0 && R[0] <= 1) ts.push(traw);
-  return ts.map(t => {
+  if (R[0] < 0) ts.push([TM.const(0), 'lo']);
+  if (R[1] > 1) ts.push([TM.const(1), 'hi']);
+  if (R[1] >= 0 && R[0] <= 1) ts.push([traw, 'in']);
+  return ts.map(([t, clamp]) => {
     // push3d(c.pt, oHub, ...): pa = the point on the pusher's leg, pb = the pushed (snapshot) hub
     const qx = t.mul(d.x).add(Ax), qy = t.mul(d.y).add(Ay), qh = t.scaleI(d.h).addI(a.h);
     const ddx = hx.sub(qx), ddy = hy.sub(qy), ddh = qh.neg().addI(hh);
     const hd2 = ddx.sqr().add(ddy.sqr());
-    return { pb: { x: hx, y: hy }, dx: ddx, dy: ddy, dh: ddh, hd2, dist: hd2.add(ddh.sqr()).sqrt() };
+    return { pb: { x: hx, y: hy }, dx: ddx, dy: ddy, dh: ddh, hd2, dist: hd2.add(ddh.sqr()).sqrt(), clamp };
   });
 }
 // hull of several alternative states: S1 + sum_i (Si - S1)(1 + e_i)/2, sharing e_i across x, y, rot
@@ -474,6 +474,16 @@ function hubHubAlt(st, hub, info, opts) {
   const seps = capped(gp);
   return seps.length === 1 ? move(seps[0]) : seps.map(move);
 }
+// opts.vertexDedup: a hub against a leg polyline whose closest point may be the vertex shared by segments k-1
+// and k gets two candidates, segment k-1 clamped at its end and segment k clamped at its start. Both are the
+// same point in real arithmetic (vertex k = vertex k-1 + segment k-1), so whichever the engine picks the push
+// is the same function of the pose. Without this the two copies get separate fresh symbols, their hull turns
+// the difference into an interval remainder, and the next pass feeds it back (gain about 4 per pass). The
+// copy for segment k is dropped; segment k-1's stands for both.
+function sameVertex(slot, c, b) {
+  if ((slot.kind !== 'redhub' && slot.kind !== 'bluehub') || b.clamp !== 'lo') return false;
+  return slot.keep.some(o => o.k === c.k - 1 && o.br.some(x => x.clamp === 'hi'));
+}
 // push every outcome of every slot onto cur, slot by slot in the engine's order; returns
 // [{ cur, pushed }], merged after each slot so the branch count stays bounded
 function applySlots(cur, slots, info, opts) {
@@ -487,7 +497,10 @@ function applySlots(cur, slots, info, opts) {
         else if (r) { alts.push(r); anyPush = true; } else alts.push(st.cur);
       };
       if (slot.kind === 'hubhub') take(hubHubAlt(st.cur, slot.hub, info, opts));
-      else for (const c of slot.keep) for (const b of c.br) take(pushAlternative(st.cur, b, info, slot.thr, slot.deep, opts));
+      else for (const c of slot.keep) for (const b of c.br) {
+        if (opts.vertexDedup && sameVertex(slot, c, b)) { info.vertexDedups = (info.vertexDedups || 0) + 1; continue; }
+        take(pushAlternative(st.cur, b, info, slot.thr, slot.deep, opts));
+      }
       if (info.dbg) {
         const wd = m => { const r = m.range(); return (r[1] - r[0]).toExponential(1); };
         console.error(`      slot ${slot.kind} candidates ${slot.keep.map(c => `${c.u ?? c.k}-${c.v ?? ''}x${c.br.length}`).join(',')} thr ${slot.thr}`);

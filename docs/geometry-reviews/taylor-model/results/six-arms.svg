@@ -29,27 +29,27 @@
 <line class="grid" x1="936.0" x2="936.0" y1="90" y2="458"/><text class="ax" x="936.0" y="476" text-anchor="middle">64°</text>
 <text class="arm" x="106" y="118" text-anchor="end">blue (0,−)</text>
 <rect class="samp" x="118.0" y="104" width="813.9" height="14" rx="3"><title>sampled 6,466 stops, smallest margin 2.183u</title></rect>
-<rect class="prov" x="118.0" y="104" width="13.2" height="14" rx="3"><title>proved 2.000° to 3.000°: 67 cells, smallest margin 3.201u</title></rect>
-<rect class="prov" x="144.4" y="104" width="448.6" height="14" rx="3"><title>proved 4.000° to 38.000°: 1170 cells, smallest margin 1.858u</title></rect>
-<text class="t2" x="118.0" y="136">proved 57% (1,237 cells, margin ≥ 1.86u); sampled 6,466 stops, margin ≥ 2.18u</text>
+<rect class="prov" x="118.0" y="104" width="814.0" height="14" rx="3"><title>proved 2.000° to 63.700°: 1858 cells, smallest margin 1.858u</title></rect>
+<text class="t2" x="118.0" y="136">proved 100% (1,858 cells, margin ≥ 1.86u); sampled 6,466 stops, margin ≥ 2.18u</text>
 <text class="arm" x="106" y="180" text-anchor="end">blue (0,+)</text>
 <rect class="samp" x="118.0" y="166" width="558.7" height="14" rx="3"><title>sampled 4,329 stops, smallest margin 4.853u</title></rect>
-<rect class="prov" x="118.0" y="166" width="557.4" height="14" rx="3"><title>proved 2.000° to 44.250°: 1158 cells, smallest margin 4.853u</title></rect>
-<text class="t2" x="118.0" y="198">proved 100% (1,158 cells, margin ≥ 4.85u); sampled 4,329 stops, margin ≥ 4.85u</text>
+<rect class="prov" x="118.0" y="166" width="558.7" height="14" rx="3"><title>proved 2.000° to 44.350°: 1159 cells, smallest margin 4.853u</title></rect>
+<text class="t2" x="118.0" y="198">proved 100% (1,159 cells, margin ≥ 4.85u); sampled 4,329 stops, margin ≥ 4.85u</text>
 <text class="arm" x="106" y="242" text-anchor="end">blue (1,−)</text>
 <rect class="samp" x="118.0" y="228" width="195.6" height="14" rx="3"><title>sampled 1,783 stops, smallest margin 2.303u</title></rect>
-<rect class="prov" x="118.0" y="228" width="191.3" height="14" rx="3"><title>proved 2.000° to 16.500°: 456 cells, smallest margin 2.297u</title></rect>
-<text class="t2" x="118.0" y="260">proved 98% (456 cells, margin ≥ 2.30u); sampled 1,783 stops, margin ≥ 2.30u</text>
+<rect class="prov" x="118.0" y="228" width="195.7" height="14" rx="3"><title>proved 2.000° to 16.830°: 391 cells, smallest margin 2.288u</title></rect>
+<text class="t2" x="118.0" y="260">proved 100% (391 cells, margin ≥ 2.29u); sampled 1,783 stops, margin ≥ 2.30u</text>
 <text class="arm" x="106" y="304" text-anchor="end">blue (1,+)</text>
 <rect class="samp" x="118.0" y="290" width="168.7" height="14" rx="3"><title>sampled 1,431 stops, smallest margin 5.274u</title></rect>
-<rect class="prov" x="118.0" y="290" width="80.8" height="14" rx="3"><title>proved 2.000° to 8.125°: 421 cells, smallest margin 4.639u</title></rect>
-<text class="t2" x="118.0" y="322">proved 48% (421 cells, margin ≥ 4.64u); sampled 1,431 stops, margin ≥ 5.27u</text>
+<rect class="prov" x="118.0" y="290" width="168.7" height="14" rx="3"><title>proved 2.000° to 14.790°: 1000 cells, smallest margin 4.639u</title></rect>
+<text class="t2" x="118.0" y="322">proved 100% (1,000 cells, margin ≥ 4.64u); sampled 1,431 stops, margin ≥ 5.27u</text>
 <text class="arm" x="106" y="366" text-anchor="end">blue (2,−)</text>
 <rect class="samp" x="118.0" y="352" width="184.4" height="14" rx="3"><title>sampled 1,609 stops, smallest margin 2.299u</title></rect>
-<text class="t2" x="118.0" y="384">not yet proved; sampled 1,609 stops, margin ≥ 2.30u</text>
+<rect class="prov" x="118.0" y="352" width="184.4" height="14" rx="3"><title>proved 2.000° to 15.980°: 804 cells, smallest margin 2.275u</title></rect>
+<text class="t2" x="118.0" y="384">proved 100% (804 cells, margin ≥ 2.28u); sampled 1,609 stops, margin ≥ 2.30u</text>
 <text class="arm" x="106" y="428" text-anchor="end">blue (2,+)</text>
 <rect class="samp" x="118.0" y="414" width="39.5" height="14" rx="3"><title>sampled 415 stops, smallest margin 4.661u</title></rect>
-<rect class="prov" x="118.0" y="414" width="37.9" height="14" rx="3"><title>proved 2.000° to 4.875°: 478 cells, smallest margin 4.661u</title></rect>
-<text class="t2" x="118.0" y="446">proved 96% (478 cells, margin ≥ 4.66u); sampled 415 stops, margin ≥ 4.66u</text>
+<rect class="prov" x="118.0" y="414" width="39.6" height="14" rx="3"><title>proved 2.000° to 5.000°: 498 cells, smallest margin 4.661u</title></rect>
+<text class="t2" x="118.0" y="446">proved 100% (498 cells, margin ≥ 4.66u); sampled 415 stops, margin ≥ 4.66u</text>
 <text class="ax" x="527" y="526" text-anchor="middle">blue's stop angle α (degrees)</text>
 </svg>

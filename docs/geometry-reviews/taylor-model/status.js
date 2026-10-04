@@ -56,13 +56,13 @@ function summarise(a) {
   let con = { cells: 0, comparisons: 0, outside: 0 };
   for (const f of c.contain) {
     for (const line of fs.readFileSync(f, 'utf8').split('\n')) {
-      const m = /(\d+) comparisons at \d+ angles, (\d+) outside/.exec(line);
+      const m = /(\d+) comparisons at \d+ angles(?: \([^)]*\))?, (\d+) outside/.exec(line);
       if (m) { con.cells++; con.comparisons += +m[1]; con.outside += +m[2]; }
     }
   }
   let leg = null;
   if (c.legal) { const o = parseOut(c.legal); if (o) leg = { cells: o.cells, legal: o.legalCells, edge: (o.pivotAtBandEdge || []).length, other: o.smallestClearanceOfOtherPairs }; }
-  const bySym = leaves.reduce((m, l) => { const k = l.sym ? 'sym' : 'std'; m[k] = (m[k] || 0) + 1; return m; }, {});
+  const bySym = leaves.reduce((m, l) => { const k = l.sym ? 'sym' : 'std'; m[k] = (m[k] || 0) + 1; if (l.vtx) m.vtx = (m.vtx || 0) + 1; return m; }, {});
   return { ...a, source: c.source, lo, hi, tiled: gaps.length === 0, gaps, failRecords, cells: leaves.length, widest: Math.max(...leaves.map(l => l.b - l.a)),
     narrowest: Math.min(...leaves.map(l => l.b - l.a)), cpu, minMargin: weakest.m, weakest: [weakest.a, weakest.b], minHub: Math.min(...leaves.map(l => l.hub)), bySym, aud, con, leg };
 }
@@ -74,6 +74,6 @@ console.log('| --- | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- |');
 for (const r of rows) {
   if (!r.cells) { console.log(`| ${nm(r)} | 2 – ${r.B.toFixed(4)} | none | – | 0 | – | – | – | – | – |`); continue; }
   const covered = r.lo <= 2 && r.hi >= r.B;
-  console.log(`| ${nm(r)} | 2 – ${r.B.toFixed(4)} | ${r.lo} – ${r.hi}${covered ? '' : ' (partial)'} | ${r.tiled ? 'yes' : 'NO'} | ${r.cells}${r.bySym.sym ? ` (${r.bySym.sym} with remToSym)` : ''} | ${r.cpu ? (r.cpu / 60).toFixed(0) + ' min' : '–'} | ${r.minMargin.toFixed(4)}u | ${r.aud.cells ? `${r.aud.reproduced}/${r.aud.cells} reproduced` : 'not run'} | ${r.con.cells ? `${r.con.cells} cells, ${r.con.comparisons} comparisons, ${r.con.outside} outside` : 'not run'} | ${r.leg ? `${r.leg.legal}/${r.leg.cells}${r.leg.edge ? ` (${r.leg.edge} pivot-edge)` : ''}` : 'not run'} |`);
+  console.log(`| ${nm(r)} | 2 – ${r.B.toFixed(4)} | ${r.lo} – ${r.hi}${covered ? '' : ' (partial)'} | ${r.tiled ? 'yes' : 'NO'} | ${r.cells}${r.bySym.sym ? ` (${r.bySym.sym} with remToSym${r.bySym.vtx ? `, ${r.bySym.vtx} of them with vertexDedup` : ''})` : ''} | ${r.cpu ? (r.cpu / 60).toFixed(0) + ' min' : '–'} | ${r.minMargin.toFixed(4)}u | ${r.aud.cells ? `${r.aud.reproduced}/${r.aud.cells} reproduced` : 'not run'} | ${r.con.cells ? `${r.con.cells} cells, ${r.con.comparisons} comparisons, ${r.con.outside} outside` : 'not run'} | ${r.leg ? `${r.leg.legal}/${r.leg.cells}${r.leg.edge ? ` (${r.leg.edge} pivot-edge)` : ''}` : 'not run'} |`);
 }
 if (process.argv[2] === '--json') console.log(JSON.stringify(rows, null, 1));

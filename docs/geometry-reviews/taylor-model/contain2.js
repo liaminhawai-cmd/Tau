@@ -16,7 +16,8 @@ const SEED = [-27.3934, -36.4088, 1.2052, -11.7593, -23.2838, 2.9442];
 
 function containment(bp, bd, a0, a1, mode = 'plain', ns = 5, deg = 6) {
   const m = MODES.find(x => x[0] === mode);
-  const base = process.env.SYMREM ? { symRem: true } : {};      // SYMREM=1: the cell was proved with remainders moved into symbols
+  // SYMREM=1 / VTX=1: the cell was proved with remainders moved into symbols / with a hub on a vertex counted once
+  const base = { ...(process.env.SYMREM ? { symRem: true } : {}), ...(process.env.VTX ? { vertexDedup: true } : {}) };
   const r = run2(bp, bd, a0, a1, deg, { push: { ...base, ...(m ? m[2] : {}) }, keepTrace: true });
   const am = 0.5 * a0 + 0.5 * a1, ar = Math.max(a1 - am, am - a0);
   let checks = 0, fails = 0, worst = 0, skipped = 0; const bad = [];
