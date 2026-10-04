@@ -168,6 +168,83 @@ function featureMargins3Interval(p1, q1, p2, q2) {
   return { Delta, s0, s1: sub(Delta, s0), t0, t1: sub(Delta, t0) };
 }
 
+function featureWallState(box, att, pair) {
+  const A = arcPts(att, pair[0]);
+  const V0 = vertexBoxOf(box, pair[1], pair[1] * 0 + 0);
+  const a = pair[0];
+  const b = pair[1];
+  const walls = [];
+  for (let bseg = 0; bseg < NSEG; bseg++) {
+    const vb0 = vertexBoxOf(box, b, bseg);
+    const vb1 = vertexBoxOf(box, b, bseg + 1);
+    const w = featureMargins3Interval(A[a][0], A[a][1], vb0, vb1);
+    walls.push({ b: bseg, ...w });
+  }
+  return walls;
+}
+
+// Isolate exact chord-feature walls by bisection in pose space.  A leaf is:
+//   interior    all four wall lower bounds > 0;
+//   endpoint    at least one wall upper bound <= 0 (interior minimiser impossible);
+//   uncertain   one or more wall intervals straddle zero.
+// The routine never labels an uncertain leaf as interior.  It is therefore a
+// sound refinement primitive; it is not itself a complete contact-regime proof.
+function isolateFeatureWalls(box, att, pair, opts) {
+  opts = opts || {};
+  const maxDepth = opts.maxDepth == null ? 10 : opts.maxDepth;
+  const minX = opts.minX == null ? 1e-5 : opts.minX;
+  const minY = opts.minY == null ? 1e-5 : opts.minY;
+  const minRot = opts.minRot == null ? 1e-7 : opts.minRot;
+  const leaves = [];
+  const visit = (bx, by, brot, depth) => {
+    const walls = [];
+    const A = arcPts(att, pair[0]);
+    const b = pair[1];
+    for (let k = 0; k < NSEG; k++) {
+      const w = featureMargins3Interval(
+        A[pair[0]][k], A[pair[0]][k + 1],
+        vertexBoxOf({x:bx,y:by,rot:brot}, b, k),
+        vertexBoxOf({x:bx,y:by,rot:brot}, b, k + 1)
+      );
+      if (w) walls.push({ b:k, ...w });
+    }
+    const relevant = walls.filter(w => w.s0[1] > 0 && w.s1[1] > 0 && w.t0[1] > 0 && w.t1[1] > 0);
+    if (!relevant.length) {
+      leaves.push({box:{x:bx,y:by,rot:brot}, depth, kind:'endpoint', walls});
+      return;
+    }
+    const interior = relevant.every(w => w.s0[0] > 0 && w.s1[0] > 0 && w.t0[0] > 0 && w.t1[0] > 0);
+    if (interior) {
+      leaves.push({box:{x:bx,y:by,rot:brot}, depth, kind:'interior', walls});
+      return;
+    }
+    const wx=bx[1]-bx[0], wy=by[1]-by[0], wr=brot[1]-brot[0];
+    if (depth >= maxDepth || (wx <= minX && wy <= minY && wr <= minRot)) {
+      leaves.push({box:{x:bx,y:by,rot:brot}, depth, kind:'uncertain', walls});
+      return;
+    }
+    const scales=[wx/Math.max(minX,1e-30), wy/Math.max(minY,1e-30), wr/Math.max(minRot,1e-30)];
+    let d=scales.indexOf(Math.max(...scales));
+    if (wx === 0 && wy === 0 && wr === 0) {
+      leaves.push({box:{x:bx,y:by,rot:brot}, depth, kind:'uncertain', walls});
+      return;
+    }
+    const split = d===0 ? (bx[0]+bx[1])/2 : d===1 ? (by[0]+by[1])/2 : (brot[0]+brot[1])/2;
+    if (d===0) {
+      visit([bx[0],split],by,brot,depth+1);
+      visit([split,bx[1]],by,brot,depth+1);
+    } else if (d===1) {
+      visit(bx,[by[0],split],brot,depth+1);
+      visit(bx,[split,by[1]],brot,depth+1);
+    } else {
+      visit(bx,by,[brot[0],split],depth+1);
+      visit(bx,by,[split,brot[1]],depth+1);
+    }
+  };
+  visit(box.x, box.y, box.rot, 0);
+  return leaves;
+}
+
 function segClosest(a, b, c, d) {
   const d1 = { x: b.x - a.x, y: b.y - a.y }, d2 = { x: d.x - c.x, y: d.y - c.y }, r = { x: a.x - c.x, y: a.y - c.y };
   const A = d1.x * d1.x + d1.y * d1.y, E = d2.x * d2.x + d2.y * d2.y, F = d2.x * r.x + d2.y * r.y;
@@ -1045,7 +1122,7 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
   return { certified, why: certified ? null : `final foot radius bound ${minR.toFixed(3)} <= ${EDGE}`, k: K, K, rows, minR, rc, final: { qc, states: Us }, pair, traj };
 }
 
-module.exports = { certify, analyse, sweep, pushSubstep, parkJacobian, featureMargins3, featureMargins3Interval, LIM_SUB };
+module.exports = { certify, analyse, sweep, pushSubstep, parkJacobian, featureMargins3, featureMargins3Interval, isolateFeatureWalls, LIM_SUB };
 
 if (require.main === module) {
   // POSE=x,y,rot,x,y,rot node nn/throw-cert.js attacker pv dir jF hx hy hRotDeg [--validate N] [--rows] [--engine]
