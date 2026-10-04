@@ -150,6 +150,8 @@ function run2(bp, bd, a0, a1, deg, opts = {}) {
         pusher = P.tmGeometry(rotPoseTM(SEED.blue, bp, bd > 0 ? tot : tot.neg()));
       }
       const before = info.pushes;
+      info.dbg = !!process.env.DBGA && Math.abs(s_ + 1 - +process.env.DBGA) < 0.5;
+      if (info.dbg) console.error(`substep A${s_ + 1}`);
       try { red = P.resolvePushTM(red, pusher, info, push); } catch (e) { e.message = `phase A substep ${s_ + 1}: ` + e.message; throw e; }
       red = foldAll(red, info, before, opts.maxSym || 12);
       if (opts.verbose && info.pushes > pushesA) {

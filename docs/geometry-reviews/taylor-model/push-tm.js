@@ -519,7 +519,7 @@ function runPasses(state, red, info, pass, opts) {
   const slots = passSlots(G, red, info);
   if (info.dbg) {   // DBG=1: one line per pass and per contact candidate
     const wd = m => { const r = m.range(); return (r[1] - r[0]).toExponential(1); };
-    console.error(`  pass ${pass}: x width ${wd(state.x)} y ${wd(state.y)} rot ${wd(state.rot)} symMag ${state.x.symMag().toExponential(1)}`);
+    console.error(`  pass ${pass}: x width ${wd(state.x)} y ${wd(state.y)} rot ${wd(state.rot)} symMag ${state.x.symMag().toExponential(1)} rem ${state.x.remMag().toExponential(1)} polyW ${(() => { const q = state.x.polyRange(); return (q[1] - q[0]).toExponential(1); })()}`);
     for (const sl of slots) {
       if (sl.kind === 'hubhub') { console.error('    slot hubhub'); continue; }
       for (const c of sl.keep) for (const b of c.br) console.error(`    slot ${sl.kind} ${c.u ?? c.k}-${c.v ?? ''} ${b.label || ''} gap [${b.dist.neg().addI(sl.thr).range().map(v => v.toExponential(2))}] hd2 [${b.hd2.range().map(v => v.toFixed(3))}]`);

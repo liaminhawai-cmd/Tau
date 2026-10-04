@@ -14,6 +14,7 @@ function patch(src) {
   rep(/if \(c\.dist<bestD\)\{ best=c; bestD=c\.dist; \}/, 'if (c.dist<bestD){ best=c; c.si=i; c.sj=j; bestD=c.dist; }', 'arcClosest');
   rep(/if \(!best \|\| d<best\.dist\) best=\{pt, dist:d\};/, 'if (!best || d<best.dist) best={pt, dist:d, si:i, t};', 'pointArcClosest');
   rep(/return \{ pa, pb, dist:Math\.sqrt\(dx\*dx\+dy\*dy\+dh\*dh\) \};/, 'return { pa, pb, dist:Math.sqrt(dx*dx+dy*dy+dh*dh), s, t };', 'segClosest3');
+  rep(/const hf = Math\.hypot\(nx3, ny3\);[^\n]*/, 'const hf = Math.hypot(nx3, ny3); if (hf < 0.35) __FL.push(hf);', 'steep contacts');
   rep(/function resolvePush\(active, opp\) \{/, "function resolvePush(active, opp) {\n    __SIG.push('/');", 'resolvePush entry');
   rep(/(const c = arcClosest\(aArc\(i\), oArc\(j\), minD\);\s*if \(!c\) continue;[^\n]*)/, "$1\n            if (minD - c.dist > 1e-3) __SIG.push('L'+i+j+'.'+__fe(c.si,c.s)+'.'+__fe(c.sj,c.t)+(c.dist<0.3?'D':''));", 'leg contact');
   rep(/\{ any=true; noteContact\(c\.dist, H\); push3d\(aHub, c\.pt, c\.dist, hubLegD - c\.dist\); \}/, "{ any=true; if (hubLegD - c.dist > 1e-3) __SIG.push('H'+j+'.'+__fe(c.si,c.t)); noteContact(c.dist, H); push3d(aHub, c.pt, c.dist, hubLegD - c.dist); }", 'pusher hub');
@@ -28,10 +29,10 @@ function createSigEngine() {
   const a = text.indexOf(open), b = text.indexOf(close);
   if (a < 0 || b < 0) throw new Error('could not find the engine wrapper in nn/engine.js');
   const wrapper = text.slice(a + open.length, b);
-  const sandbox = { Math, console, __SIG: [] };
+  const sandbox = { Math, console, __SIG: [], __FL: [] };
   vm.createContext(sandbox);
   vm.runInContext(patch(buildEngineSource()) + wrapper, sandbox, { filename: 'tau-engine-sig.js' });
-  return { eng: sandbox.__exports, sig: sandbox.__SIG };
+  return { eng: sandbox.__exports, sig: sandbox.__SIG, fl: sandbox.__FL };
 }
 
 const SEED = [-27.3934, -36.4088, 1.2052, -11.7593, -23.2838, 2.9442];
@@ -40,16 +41,16 @@ const STEP3 = 3 * Math.PI / 180, DELTA = STEP3 / 8;
 // the contact signature of blue arm (bp, bd) stopped at alpha degrees, then red's (0,-) reply for
 // 123 substeps
 function makeSignature() {
-  const { eng, sig } = createSigEngine();
+  const { eng, sig, fl } = createSigEngine();
   return function signature(bp, bd, alpha) {
-    sig.length = 0;
+    sig.length = 0; fl.length = 0;
     const G = eng.newGame(); const [b, r] = G.pieces;
     b.x = SEED[0]; b.y = SEED[1]; b.rot = SEED[2]; r.x = SEED[3]; r.y = SEED[4]; r.rot = SEED[5]; G.active = 0;
     eng.applyPlanSearch({ pivotIdx: bp, dir: bd, targetRad: alpha * Math.PI / 180 });
     const split = sig.length;
     eng.pinFoot(0);
     for (let k = 0; k < 123 && !G.atLimit; k++) eng.applySwing(-DELTA);
-    return { all: sig.join(','), a: sig.slice(0, split).join(','), b: sig.slice(split).join(',') };
+    return { all: sig.join(','), a: sig.slice(0, split).join(','), b: sig.slice(split).join(','), steep: fl.slice(), deep: (sig.join(',').match(/D/g) || []).length };
   };
 }
 module.exports = { makeSignature, createSigEngine };
