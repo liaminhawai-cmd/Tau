@@ -1,5 +1,7 @@
 // Sample one blue arm of the Brief 6 seed: for each blue stop angle alpha, every red reply.
-//   node arms.js <bluePivot> <blueDir> <stepDeg> [reds] > out.csv     reds: 'all' (default) or e.g. '0,-1'
+//   node arms.js <bluePivot> <blueDir> <stepDeg> [reds] [from] [to] > out.csv     reds: 'all' (default) or e.g. '0,-1'
+// from and to default to the 2 degree minimum and the limit found by swinging in 3 degree calls; the
+// engine in fact executes slightly larger targets in full (see blue-limits.js), so a second run covers those.
 // Columns: alpha, blueOver (blue's reply threw red: immediate win), pushedRed (red's pose changed),
 // then for each red arm (q,e): final margin of blue's worst foot past the edge, the maximum of that
 // margin over the swing (red may stop early), red's legal limit in degrees.
@@ -52,8 +54,9 @@ const hdr = ['alpha', 'blueOver', 'pushedRed'];
 for (const [q, e] of ARMS) { const k = `${q}${e < 0 ? 'm' : 'p'}`; hdr.push(`m${k}`, `x${k}`, `l${k}`); }
 console.log(hdr.join(','));
 const stops = [];
-for (let a = 2; a < lim.deg; a += step) stops.push(a);
-stops.push(lim.deg);
+const from = process.argv[6] !== undefined ? +process.argv[6] : 2, to = process.argv[7] !== undefined ? +process.argv[7] : lim.deg;
+for (let a = from; a < to; a += step) stops.push(a);
+stops.push(to);
 for (const a of stops) {
   const r = at(a, bp, bd);
   console.log(r.over ? [a, 1, 1, ...ARMS.flatMap(() => ['', '', ''])].join(',') : [a, 0, r.pushed ? 1 : 0, ...r.row].join(','));

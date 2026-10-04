@@ -4,9 +4,10 @@
 'use strict';
 const fs = require('fs'), path = require('path');
 const R = path.join(__dirname, 'results');
+// limit: the largest target the engine's plan application executes in full (six-arms/blue-limits.js)
 const ARMS = [
-  { bp: 0, bd: -1, limit: 63.375 }, { bp: 0, bd: 1, limit: 44.25 }, { bp: 1, bd: -1, limit: 16.5 },
-  { bp: 1, bd: 1, limit: 14.625 }, { bp: 2, bd: -1, limit: 15.75 }, { bp: 2, bd: 1, limit: 4.875 },
+  { bp: 0, bd: -1, limit: 63.692659668 }, { bp: 0, bd: 1, limit: 44.343482055 }, { bp: 1, bd: -1, limit: 16.826501816 },
+  { bp: 1, bd: 1, limit: 14.788562189 }, { bp: 2, bd: -1, limit: 15.975495885 }, { bp: 2, bd: 1, limit: 4.996359600 },
 ];
 const tag = a => `${a.bp}_${a.bd > 0 ? 'p' : 'm'}`;
 const name = a => `(${a.bp},${a.bd > 0 ? '+' : '−'})`;
@@ -27,8 +28,12 @@ function proved(a) {
   return { runs, cells: leaves.length, minMargin: leaves.length ? Math.min(...leaves.map(l => l.m)) : null };
 }
 function sampled(a) {
-  const f = path.join(__dirname, 'six-arms', 'data', `red-0m-0.01deg_b${a.bp}_${a.bd}.csv`);
-  const rows = fs.readFileSync(f, 'utf8').trim().split('\n').slice(1).map(r => r.split(',').map(Number));
+  // every 0.01 degrees up to the 3-degree-call limit, then every 0.001 degrees from there to the engine's limit
+  const rows = [];
+  for (const name of [`red-0m-0.01deg_b${a.bp}_${a.bd}.csv`, `red-0m-ext-0.001deg_b${a.bp}_${a.bd}.csv`]) {
+    const f = path.join(__dirname, 'six-arms', 'data', name);
+    if (fs.existsSync(f)) rows.push(...fs.readFileSync(f, 'utf8').trim().split('\n').slice(1).map(r => r.split(',').map(Number)));
+  }
   return { n: rows.length, min: Math.min(...rows.map(r => r[3])) };
 }
 
@@ -37,7 +42,7 @@ const x = deg => L + (deg - 2) / (X1 - 2) * (W - L - Rm);
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
 let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-labelledby="t d">
 <title id="t">Red's (0,−) reply against every blue move: sampled and proved</title>
-<desc id="d">One row per blue arm, stop angle on the horizontal axis. A light bar is the range sampled every 0.01 degrees, with red's reply throwing at every stop. A solid bar is the part covered by proved Taylor-model cells.</desc>
+<desc id="d">One row per blue arm, stop angle on the horizontal axis. A light bar is the range sampled with the engine, with red's reply throwing at every stop. A solid bar is the part covered by proved Taylor-model cells.</desc>
 <style>
   svg { --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --grid:#e6e5e1; --s1:#2a78d6; --light:#b7d3f6; }
   @media (prefers-color-scheme: dark) { svg { --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --grid:#33332f; --s1:#3987e5; --light:#254a78; } }
@@ -47,7 +52,7 @@ let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width
 </style>
 <rect class="bg" width="${W}" height="${H}"/>
 <text class="t1" x="${L}" y="34">Red's (0,−) reply against every blue move</text>
-<text class="t2" x="${L}" y="56">Light bar: sampled every 0.01°, red throws at every stop. Solid bar: proved by Taylor-model cells.</text>
+<text class="t2" x="${L}" y="56">Light bar: sampled (every 0.01°, every 0.001° near the end), red throws at every stop. Solid bar: proved by Taylor-model cells.</text>
 `;
 for (let g = 4; g <= 64; g += 4) svg += `<line class="grid" x1="${x(g).toFixed(1)}" x2="${x(g).toFixed(1)}" y1="${top - 10}" y2="${top + ARMS.length * rowH - 14}"/><text class="ax" x="${x(g).toFixed(1)}" y="${top + ARMS.length * rowH + 4}" text-anchor="middle">${g}°</text>\n`;
 ARMS.forEach((a, i) => {

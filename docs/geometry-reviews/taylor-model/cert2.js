@@ -153,6 +153,7 @@ function run2(bp, bd, a0, a1, deg, opts = {}) {
       info.dbg = !!process.env.DBGA && Math.abs(s_ + 1 - +process.env.DBGA) < 0.5;
       if (info.dbg) console.error(`substep A${s_ + 1}`);
       try { red = P.resolvePushTM(red, pusher, info, push); } catch (e) { e.message = `phase A substep ${s_ + 1}: ` + e.message; throw e; }
+      if (opts.maxPasses && info.passes > opts.maxPasses) throw new Error(`phase A substep ${s_ + 1}: work budget exceeded (${info.passes} solver passes)`);
       red = foldAll(red, info, before, opts.maxSym || 12);
       if (opts.verbose && info.pushes > pushesA) {
         const w = m => { const q = m.range(); return (q[1] - q[0]).toExponential(1); };
@@ -163,6 +164,7 @@ function run2(bp, bd, a0, a1, deg, opts = {}) {
     all.redBranches = Math.max(all.redBranches, red.length);
     const item = { j: reg.j, m: reg.m, red, B: [] };
     if (opts.keepTrace) trace.items.push(item);
+    if (opts.phaseAOnly) continue;      // legal-red.js wants red's pose after blue's reply, nothing else
 
     // ---- phase B: red's reply, one run per red branch ----
     for (const r0raw of red) {
@@ -189,6 +191,7 @@ function run2(bp, bd, a0, a1, deg, opts = {}) {
         info.dbg = !!process.env.DBGB && Math.abs(kk - +process.env.DBGB) <= 1;
         if (info.dbg) console.error(`substep B${kk}`);
         try { st = P.resolvePushTM(st, pusher, info, push); } catch (e) { e.message = `phase B substep ${kk}: ` + e.message; throw e; }
+        if (opts.maxPasses && info.passes > opts.maxPasses) throw new Error(`phase B substep ${kk}: work budget exceeded (${info.passes} solver passes)`);
         if (info.pushes > before && info.firstContact === null) info.firstContact = kk;
         st = foldAll(st, info, before, opts.maxSym || 12, protect);
         if (opts.keepTrace) Bs.push(st);

@@ -678,4 +678,4 @@ function fold(st, protect) {
   return out;
 }
 
-module.exports = { passSlots, hubHubCheck, blueGeometry, segClosestTM, redPose, redGeometry, tmGeometry, resolvePushTM, fold, hullStates, footR, minD, TWO_PI_3, ARC_S, ARC_H, legSegs, Ii };
+module.exports = { passSlots, hubHubCheck, blueGeometry, segClosestTM, redPose, redGeometry, tmGeometry, resolvePushTM, fold, hullStates, remToSym, segDist3Lower, segDist3f, FLOAT_SLACK, footR, minD, TWO_PI_3, ARC_S, ARC_H, legSegs, Ii };
