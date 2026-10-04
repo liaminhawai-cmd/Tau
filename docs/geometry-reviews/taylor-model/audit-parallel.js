@@ -1,13 +1,14 @@
 // Audit one arm on several cores: cut its cells into ranges with about the same number of cells and run
-// audit2.js on each at once.   node audit-parallel.js <bluePivot> <blueDir> [parts=4] [degree=4]
+// audit2.js on each at once.   node audit-parallel.js <bluePivot> <blueDir> [parts=4] [degree=4] [from] [to]
 // Writes results/arm_X/audit_<from>_<to>.{json,out} per range, as audit2.js does on its own.
 'use strict';
 const fs = require('fs'), path = require('path'), { spawn } = require('child_process');
 const [bp, bd] = process.argv.slice(2, 4).map(Number);
 const parts = +(process.argv[4] || 4), deg = +(process.argv[5] || 4);
+const lo = process.argv[6] !== undefined ? +process.argv[6] : -Infinity, hi = process.argv[7] !== undefined ? +process.argv[7] : Infinity;
 const dir = path.join(__dirname, 'results', `arm_${bp}_${bd > 0 ? 'p' : 'm'}`);
 const leaves = [];
-for (const f of fs.readdirSync(dir)) if (/^cover_.*_d\d+\.json$/.test(f)) leaves.push(...JSON.parse(fs.readFileSync(path.join(dir, f))).leaves);
+for (const f of fs.readdirSync(dir)) if (/^cover_.*_d\d+\.json$/.test(f)) leaves.push(...JSON.parse(fs.readFileSync(path.join(dir, f))).leaves.filter(l => l.a >= lo && l.b <= hi));
 leaves.sort((p, q) => p.a - q.a);
 // a cell with a mode costs more than a plain one; weight by the time the cover recorded for it
 const w = leaves.map(l => Math.max(l.ms || 1, 1)), total = w.reduce((s, x) => s + x, 0);
