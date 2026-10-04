@@ -126,3 +126,19 @@ This is precisely the kind of issue that can make a numerically stable enclosure
 ## Therefore
 
 The research branch currently has a stronger and cleaner implementation than the historical checker, but it is not yet entitled to the word theorem. The right standard is to close the analytic lemmas first, then add directed/validated arithmetic, then run the engine falsification suite as an independent correspondence check.
+
+## Contact-regime key correction
+
+A second regime-separation issue was found during audit.
+
+The propagation loop previously grouped `segPairs` using attacker chord `a`, victim vertex `vk`, and normal azimuth. That is insufficient for ordinary interior/interior closest-point contacts: two distinct victim chords `b` can have similar normal azimuth while defining different closest-feature maps and different derivatives.
+
+The branch now uses attacker chord `a`, victim chord `b`, and normal azimuth for ordinary contacts. A parked victim vertex uses `(a, vertex vk)` because the vertex itself is the active feature and its incident chord is not part of the point-contact derivative.
+
+This is a conservative split: it can increase the number of states, but it cannot manufacture a contact regime by merging two different closest-feature maps.
+
+The commit implementing this is `e3282f9`.
+
+The invariant the eventual proof should state explicitly is:
+
+> every propagated state is associated with one fixed closest-feature branch, and no state is allowed to cross a feature boundary without subdivision.
