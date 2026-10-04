@@ -169,3 +169,12 @@ For each proposed response patch we should carry four feature margins for every 
 This is stronger than the existing dmax drift test. The existing test is a useful conservative localisation lemma, but it should not be treated as the final feature-wall certificate until its drift bound is independently derived and checked against the exact parameter margins above.
 
 The next implementation step is to expose these four margins from the geometry layer and make them first-class branch conditions in the response-cover validator.
+
+
+### Feature-wall ownership is now active in throw-cert
+
+Commit 00f088a wires the exact four margins into analyse(). For each candidate chord pair, the centre margins are compared with the certified localisation band dmax/L on the corresponding chord. The interior/interior regime is admitted only when all four margins are strictly beyond that band.
+
+If a wall is reachable inside the localisation allowance, the interior regime is suppressed and the existing endpoint/vertex branches must carry the contact. Thus the certificate no longer silently lets an interior regime smear across a chord feature wall.
+
+This is an important but deliberately limited step: it is a conservative consequence of the current minimiser-drift lemma, not yet a full interval proof of the nonlinear wall functions. The eventual response-patch validator should replace or strengthen this with direct interval enclosures of the four margin functions over the patch.
