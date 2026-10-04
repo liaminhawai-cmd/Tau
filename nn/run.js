@@ -224,6 +224,9 @@ const gateGames = Math.max(2, +arg('gateGames', 80) & ~1);
 const gateMargin = Number.isFinite(+arg('gateMargin', 0)) ? +arg('gateMargin', 0) : 0;
 const gateCandidates = Math.max(1, +arg('gateCandidates', 4));
 const gateLanes = Math.max(1, +arg('gateLanes', 4));
+// A gate panel member plays every candidate and the incumbent, so it is seated at its strongest face
+// costing at most this many times the incumbent face's measured wall clock per game (0 = no cap).
+const panelCostRatio = Math.max(0, +arg('panelCostRatio', 4) || 0);
 const poolLevels = arg('poolLevels', '');
 // Capped model-variety slots. Fixed ladder-rank targets ("1.5, 2.5, 4.5...") break down once nets
 // exceed L11 -- ultra rates 509 against L11's 332, no ladder rank left to even express where it
@@ -2095,13 +2098,35 @@ async function runPoolCycle() {
       // results. orderPanelPool ranks by the incumbent's own cached score against each member --
       // closest to even first -- and keeps a slice of never-played members so the panel still
       // takes in new blood instead of ossifying around what it happened to measure first.
-      const pool = [];
-      for (const r of ranked) {
+      //
+      // A member's cost is paid once per player, every cycle. A model's strongest face can also be
+      // its slowest: 2M-weight nets at D4 took 18-40 minutes per 2-game cell, and two of them on the
+      // panel stretched gates from 15-35 minutes to 56-111 (cycles 655-659). Two games against a
+      // cheap face are as much evidence as two against a slow one, so each model sits at its
+      // strongest face within --panelCostRatio times the incumbent face's measured wall clock per
+      // game. A face with no measurement yet is let in; the league prices it within a window or two.
+      const { cost } = evo.measuredCosts(dir);
+      const costOf = id => { const ms = +cost[id]; return Number.isFinite(ms) && ms > 0 ? ms : null; };
+      const knownCosts = rated.map(r => costOf(r.id)).filter(x => x != null).sort((a, b) => a - b);
+      const refCost = costOf(`${incumbentName}@D${incumbentDepth}`) ??
+                      (knownCosts.length ? knownCosts[knownCosts.length >> 1] : null);
+      const costCap = panelCostRatio > 0 && refCost ? panelCostRatio*refCost : Infinity;
+      const facesOf = {};
+      for (const r of rated) (facesOf[path.basename(r.model, '.json')] ||= []).push(r);
+      const pool = [], reseated = [];
+      for (const top of ranked) {
+        const name = path.basename(top.model, '.json');
+        const r = bestFace((facesOf[name] || [top]).filter(f => (costOf(f.id) ?? 0) <= costCap))[name];
+        if (r !== top) reseated.push(`${name} D${top.depth}->${r ? `D${r.depth}` : 'out'}`);
+        if (!r) continue;
         const p = livePath(r);
         if (!fs.existsSync(p) || excluded.has(p) || isBestTwin(p)) continue;
         if (pool.some(m => m.spec === `nn:0:${p}`)) continue;
-        pool.push({ id: `${path.basename(p, '.json')}@D${r.depth}`, spec: `nn:0:${p}`, depth: r.depth });
+        pool.push({ id: `${name}@D${r.depth}`, spec: `nn:0:${p}`, depth: r.depth });
       }
+      if (reseated.length)
+        log(`pool cycle ${num} — gate panel: ${reseated.length} model(s) seated below their strongest face to stay ` +
+            `within ${panelCostRatio}x the incumbent's ${(refCost/1000).toFixed(0)}s per game (${reseated.join(', ')})`);
       for (const m of gate.orderPanelPool(incumbentName, incumbentDepth, pool)) {
         if (panel.length >= panelN) break;
         panel.push(m);
