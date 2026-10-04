@@ -28,10 +28,16 @@ function cover(bp, bd, a0, a1, deg = 6, minW = 1e-5, log, base = {}) {
     let r = null, err = null;
     try { r = run2(bp, bd, a, b, deg, { push: base, maxPasses: MAX_PASSES, maxOps: MAX_OPS }); } catch (e) { err = e.message; }
     if (r && r.marginLo > 0) { leaves.push({ a, b, m: r.marginLo, hub: r.hubMoveLo, ms: r.ms, branches: 1, mode: 'plain', sym }); return; }
+    const errOf = {};
     for (const [mode, maxW, push] of MODES) {
       if (b - a > maxW) continue;
+      // A 'X+merge' mode differs from mode X only once a forced merge would happen, so it can only succeed
+      // where X failed with 'branch cap reached'; any other failure of X happens at the same point in it.
+      // Skipping those attempts saves the cost of failing at full budget (about 45 seconds each).
+      const base_mode = mode.replace(/\+merge$/, '');
+      if (base_mode !== mode && !/branch cap reached/.test(errOf[base_mode] || '')) continue;
       let r2 = null;
-      try { r2 = run2(bp, bd, a, b, deg, { push: { ...base, ...push }, maxPasses: MAX_PASSES, maxOps: MAX_OPS }); } catch (e) { err = err || e.message; }
+      try { r2 = run2(bp, bd, a, b, deg, { push: { ...base, ...push }, maxPasses: MAX_PASSES, maxOps: MAX_OPS }); } catch (e) { err = err || e.message; errOf[mode] = e.message; }
       if (r2 && r2.marginLo > 0) { leaves.push({ a, b, m: r2.marginLo, hub: r2.hubMoveLo, ms: r2.ms, branches: r2.info.maxBranches || 1, mode, sym }); return; }
     }
     const why = err ? err.replace(/[-\d.e+,]+/g, '#').slice(0, 80) : 'margin not positive';
