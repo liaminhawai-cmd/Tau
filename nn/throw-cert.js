@@ -168,20 +168,6 @@ function featureMargins3Interval(p1, q1, p2, q2) {
   return { Delta, s0, s1: sub(Delta, s0), t0, t1: sub(Delta, t0) };
 }
 
-function featureWallState(box, att, pair) {
-  const A = arcPts(att, pair[0]);
-  const V0 = vertexBoxOf(box, pair[1], pair[1] * 0 + 0);
-  const a = pair[0];
-  const b = pair[1];
-  const walls = [];
-  for (let bseg = 0; bseg < NSEG; bseg++) {
-    const vb0 = vertexBoxOf(box, b, bseg);
-    const vb1 = vertexBoxOf(box, b, bseg + 1);
-    const w = featureMargins3Interval(A[a][0], A[a][1], vb0, vb1);
-    walls.push({ b: bseg, ...w });
-  }
-  return walls;
-}
 
 // Isolate exact chord-feature walls by bisection in pose space.  A leaf is:
 //   interior    all four wall lower bounds > 0;
@@ -189,7 +175,7 @@ function featureWallState(box, att, pair) {
 //   uncertain   one or more wall intervals straddle zero.
 // The routine never labels an uncertain leaf as interior.  It is therefore a
 // sound refinement primitive; it is not itself a complete contact-regime proof.
-function isolateFeatureWalls(box, att, pair, opts) {
+function isolateFeatureWalls(box, att, chord, opts) {
   opts = opts || {};
   const maxDepth = opts.maxDepth == null ? 10 : opts.maxDepth;
   const minX = opts.minX == null ? 1e-5 : opts.minX;
@@ -198,11 +184,11 @@ function isolateFeatureWalls(box, att, pair, opts) {
   const leaves = [];
   const visit = (bx, by, brot, depth) => {
     const walls = [];
-    const A = arcPts(att, pair[0]);
-    const b = pair[1];
-    for (let k = 0; k < NSEG; k++) {
+    const A = arcPts(att, chord[0]);
+    const b = chord[1];
+    for (let k = chord[1]; k < chord[1] + 1; k++) {
       const w = featureMargins3Interval(
-        A[pair[0]][k], A[pair[0]][k + 1],
+        A[chord[0]][k], A[chord[0]][k + 1],
         vertexBoxOf({x:bx,y:by,rot:brot}, b, k),
         vertexBoxOf({x:bx,y:by,rot:brot}, b, k + 1)
       );
