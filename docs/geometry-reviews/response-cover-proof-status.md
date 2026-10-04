@@ -188,7 +188,7 @@ The interior/interior branch is now admitted only when all four interval lower b
 
 This is materially stronger than the previous `dmax/L` ownership test: it certifies the signs of the exact feature-wall functions themselves. It still has the global numerical caveat documented above: the JavaScript interval primitives are real-arithmetic interval formulas, not directed-rounded validated floating-point arithmetic.
 
-The exported helper is also available for a focused audit/regression harness. The next useful test is to compare its enclosure against dense random poses in historically difficult vertex-crossing boxes, checking that every sampled wall value lies inside the corresponding interval. That is a falsification/regression test, not the proof itself.
+The exported helpers are also available for focused audits. `isolateFeatureWalls(box, att, [a,b])` recursively bisects the pose box when a wall interval straddles zero. It produces only three statuses: `interior` (all four wall lower bounds positive), `endpoint` (the interior minimiser is excluded by a wall upper bound), and `uncertain` (the remaining wall-crossing leaf). Crucially, an `uncertain` leaf is never silently promoted to an interior regime. This is a refinement primitive toward explicit event-boundary pieces, not yet the complete response-patch cover.
 
 **Date:** 2026-10-04  
 **Branch:** `codex/rigorous-response-cover`
