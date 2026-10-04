@@ -15,6 +15,9 @@ const MAX_PASSES = +(process.env.MAXPASSES || 8000);
 // not bound the time, because merging several branches after every pass can cost seconds. Accepted cells need
 // at most about 2.8 million (30 seconds); a failing attempt is cut off at 3.5 million.
 const MAX_OPS = +(process.env.MAXOPS || 3.5e6);
+// The '+merge' modes cost the most when they fail. MERGE_MAXW narrows the widest cell they are tried on and
+// MAXOPS_MERGE gives them their own budget (defaults: as modes2.js says, and the common budget).
+const MERGE_MAXW = +(process.env.MERGE_MAXW || Infinity), MAX_OPS_MERGE = +(process.env.MAXOPS_MERGE || MAX_OPS);
 
 // base: push options applied to every run of the cover (the plain run and every mode); { symRem: true }
 // moves the remainders of push amounts into noise symbols (see remToSym in push-tm.js)
@@ -36,8 +39,9 @@ function cover(bp, bd, a0, a1, deg = 6, minW = 1e-5, log, base = {}) {
       // Skipping those attempts saves the cost of failing at full budget (about 45 seconds each).
       const base_mode = mode.replace(/\+merge$/, '');
       if (base_mode !== mode && !/branch cap reached/.test(errOf[base_mode] || '')) continue;
+      if (base_mode !== mode && b - a > MERGE_MAXW) continue;
       let r2 = null;
-      try { r2 = run2(bp, bd, a, b, deg, { push: { ...base, ...push }, maxPasses: MAX_PASSES, maxOps: MAX_OPS }); } catch (e) { err = err || e.message; errOf[mode] = e.message; }
+      try { r2 = run2(bp, bd, a, b, deg, { push: { ...base, ...push }, maxPasses: MAX_PASSES, maxOps: base_mode !== mode ? MAX_OPS_MERGE : MAX_OPS }); } catch (e) { err = err || e.message; errOf[mode] = e.message; }
       if (r2 && r2.marginLo > 0) { leaves.push({ a, b, m: r2.marginLo, hub: r2.hubMoveLo, ms: r2.ms, branches: r2.info.maxBranches || 1, mode, sym }); return; }
     }
     const why = err ? err.replace(/[-\d.e+,]+/g, '#').slice(0, 80) : 'margin not positive';
