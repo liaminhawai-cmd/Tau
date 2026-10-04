@@ -29,16 +29,25 @@ const { Worker, MessageChannel, receiveMessageOnPort } = require('worker_threads
 
 const SAME_STOP_RAD = 0.5*Math.PI/180;   // proposals within half a degree on the same arm are one move
 
-function pickAuto(dir) {
-  const { summaryPath } = require('./machine-id.js');
+// The strongest live ladder rung (plain, not +corner) by this machine's Elo; L11 if none is rated.
+function strongestRung(dir, players) {
   const { activeLadderLevels } = require('./evolution-roster.js');
-  let players = {};
-  try { players = JSON.parse(fs.readFileSync(summaryPath(dir), 'utf8')).players || {}; } catch (_) {}
+  if (!players) {
+    const { summaryPath } = require('./machine-id.js');
+    try { players = JSON.parse(fs.readFileSync(summaryPath(dir), 'utf8')).players || {}; } catch (_) { players = {}; }
+  }
   const live = new Set(activeLadderLevels(dir));
   const rungs = Object.entries(players)
     .filter(([id, r]) => r.kind === 'ladder' && !r.corner && /^L\d+$/.test(id) && live.has(+id.slice(1)) && Number.isFinite(+r.elo))
     .sort((a, b) => b[1].elo - a[1].elo);
-  const chair = rungs.length ? rungs[0][0] : 'L11';
+  return rungs.length ? rungs[0][0] : 'L11';
+}
+
+function pickAuto(dir) {
+  const { summaryPath } = require('./machine-id.js');
+  let players = {};
+  try { players = JSON.parse(fs.readFileSync(summaryPath(dir), 'utf8')).players || {}; } catch (_) {}
+  const chair = strongestRung(dir, players);
   const shapeOf = file => { try { const j = JSON.parse(fs.readFileSync(file, 'utf8')); return Array.isArray(j.sizes) ? j.sizes.slice(1, -1).join(',') : null; } catch (_) { return null; } };
   const nets = Object.entries(players)
     .filter(([id, r]) => r.kind === 'nn' && r.brain === 'nn' && +r.depth === 1 && !r.dualPolicy && Number.isFinite(+r.elo) && (+r.games || 0) >= 6)
@@ -269,158 +278,86 @@ function makeBrain(eng, spec, opts) {
 }
 
 // ---- the league's committee faces ------------------------------------------------------------
-// THREE committees are fielded at once, the same three brains judged at D1, D2 and D3, so the
-// depth question is answered by the league itself instead of by argument. Each is formed ADAPTIVELY
-// (strongest live rung, best-rated net, next-best net of a different hidden shape, as of the pass
-// that forms it) and then PINNED, because a rating has to belong to one thing. While sweeping a
-// committee is immortal: never culled, and the scheduler serves it unplayed opponents ahead of any
-// other pairing until it has met SWEEP_FACES distinct faces. Then it stops being immortal -- a
-// pseudo-model file is written under its own name, evolution-roster admits it like any other model,
-// and the elastic cull, the admission ceiling and the played-pair rule apply to it exactly as to a
-// net. Its games stay in elo-results.json, and the next formation happens once all three are done.
-const SWEEP_FACES = Math.max(2, +(process.env.TAU_COMMITTEE_SWEEP || 20));
-// The variants the league fields. Three of them are one question each, asked the only way this
-// repo ever settles anything -- by rating them against each other on the same field.
-//   d2/d3      how deep should the committee judge? (d1 dropped: the playoff above measured a
-//              depth-1 net as the weakest of the four movers tried, level with L8, so a whole
-//              committee judging at depth 1 is the least worthwhile seat on a shared lane.)
-//   d2w        d2 with position weighting (@posw). Its ONLY difference from d2 is the weights, so
-//              d2w-minus-d2 is exactly what the weighting is worth, and a loss here is a real
-//              answer rather than a wasted seat.
-//   d2pair     d2 with the third seat removed (chair + top net only). Asked because the members
-//              are far less independent than the roster assumes: scoring 48k recorded positions
-//              with each member and correlating their ERRORS gives L10~L11 1.000, L9~L10~L11 0.99+,
-//              and deep~wide~ultra 0.98+, against 0.68-0.74 for any ladder-rung~net pair. Different
-//              hidden shapes -- what pickAuto currently selects the second net for -- buys almost
-//              no independence. If that is right, the third seat is a near-duplicate vote and the
-//              pair should hold its own for two thirds of the compute.
-// Kept to four on purpose. elorank-legacy gives every committee in flight ONE shared lane by
-// default (--committeeLanes), and a committee match runs 10-50 minutes, so each extra variant
-// stretches every other variant's 20-face sweep rather than running beside it: four variants is
-// already 80 matches before any of them finishes. TAU_COMMITTEE_VARIANTS=d2,d2w trims the list to
-// whichever questions matter most, and 'd1' is still available by name.
-const VARIANTS = [
-  { tag: 'd2', depth: 2, opts: '', pair: false },
-  { tag: 'd3', depth: 3, opts: '', pair: false },
-  { tag: 'd2w', depth: 2, opts: ',posw', pair: false },
-  { tag: 'd2pair', depth: 2, opts: '', pair: true },
-  { tag: 'd1', depth: 1, opts: '', pair: false },
-];
-const DEFAULT_VARIANTS = 4;
-// d2 and d2w field no matter what the environment asks for. The weighting is only answerable as a
-// DIFFERENCE -- d2w-minus-d2 over the same members is exactly what it is worth -- so dropping
-// either one leaves the other an unanchored rating that answers nothing. A stale
-// TAU_COMMITTEE_VARIANTS=d1,d2,d3 on a training box did precisely that: d1/d2/d3 accumulated 64-88
-// games each while the weighted committee never played a single rated game on that machine.
-const MANDATORY = ['d2', 'd2w'];
-function leagueVariants() {
-  const want = String(process.env.TAU_COMMITTEE_VARIANTS || '').split(',').map(s => s.trim()).filter(Boolean);
-  const wanted = new Set(want.length ? want : VARIANTS.slice(0, DEFAULT_VARIANTS).map(v => v.tag));
-  for (const t of MANDATORY) wanted.add(t);
-  const out = VARIANTS.filter(v => wanted.has(v.tag));
-  return out.length ? out : VARIANTS.slice(0, DEFAULT_VARIANTS);
-}
-const STATE = dir => path.join(dir, 'models', '.committee-state.json');
-const readState = dir => { try { return JSON.parse(fs.readFileSync(STATE(dir), 'utf8')); } catch (_) { return null; } };
-const writeState = (dir, st) => { const { atomicWrite } = require('./atomic-write.js'); atomicWrite(STATE(dir), JSON.stringify(st, null, 1)); };
-const shortName = spec => /^L\d+/.test(spec) ? spec : path.basename(spec.split(':').slice(2).join(':'), '.json');
-const memberFile = spec => /^L\d+/.test(spec) ? null : spec.split(':').slice(2).join(':');
-function loadState(dir) {
-  const st = readState(dir) || {};
-  st.history = st.history || [];
-  // migrate the single-committee state this replaced
-  if (st.active && !st.actives) { st.actives = [st.active]; delete st.active; }
-  st.actives = st.actives || [];
-  return st;
-}
-// Called by the wrapper (elorank.js) once per pass, before the pass starts: keep the live sweeps,
-// retire any whose member files have gone, and form a fresh set of three when none are left.
-function resolveLeagueCommittees(dir, { log = console.log } = {}) {
-  const st = loadState(dir);
-  const keep = [];
-  for (const cur of st.actives) {
-    if (cur.swept) { st.history.push({ ...cur, endedAt: cur.endedAt || new Date().toISOString() }); continue; }
-    const gone = cur.members.map(memberFile).filter(f => f && !fs.existsSync(f));
-    if (gone.length) {
-      log(`[committee] ${cur.id} retired: member file(s) gone (${gone.map(f => path.basename(f)).join(', ')})`);
-      st.history.push({ ...cur, swept: true, endedAt: new Date().toISOString(), reason: 'member gone' });
-      continue;
-    }
-    keep.push(cur);
-  }
-  st.actives = keep;
-  if (keep.length) {
-    // Top up a missing mandatory variant beside the live ones instead of waiting for the whole
-    // batch to sweep. Without this, a box whose live set predates d2w would not field it until
-    // every current committee had finished its 20-face sweep -- on a shared lane, that is a very
-    // long time to answer a question the run is supposed to be asking. Members are taken from a
-    // LIVE sibling rather than a fresh pickAuto, so the weighted and unweighted committees are the
-    // same brains and their difference stays the measurement.
-    const liveTags = new Set(keep.map(c => c.variant));
-    const donor = keep.find(c => c.variant === 'd2')
-               || keep.find(c => !/pair$/.test(String(c.variant || '')))
-               || keep[0];
-    const added = [];
-    for (const v of leagueVariants()) {
-      if (!MANDATORY.includes(v.tag) || liveTags.has(v.tag)) continue;
-      const mem = v.pair ? donor.members.slice(0, 2) : donor.members;
-      if (mem.length < 2) continue;
-      const name = `committee-${v.tag}[${mem.map(shortName).join(',')}]`;
-      if (st.history.some(h => h.name === name)) continue;
-      added.push({ id: name + '@D1', name, file: path.join(dir, 'models', name + '.json'),
-                   spec: 'committee:' + mem.join(';') + '@d' + v.depth + v.opts, members: mem, depth: v.depth,
-                   variant: v.tag, startedAt: new Date().toISOString(), swept: false });
-    }
-    if (added.length) {
-      st.actives = keep.concat(added);
-      log(`[committee] fielded ${added.map(c => c.variant).join(', ')} beside the live ` +
-          `${[...liveTags].join(', ')} (mandatory variant was missing)`);
-    }
-    writeState(dir, st);
-    return st.actives;
-  }
-  let members;
-  try { members = pickAuto(dir); } catch (e) { log('[committee] not fielded: ' + e.message); writeState(dir, st); return []; }
-  const fresh = [];
-  for (const v of leagueVariants()) {
-    // A pair keeps the chair and the top-rated net; its name carries its own member list so it can
-    // never be confused with the trio's rating.
-    const mem = v.pair ? members.slice(0, 2) : members;
-    if (mem.length < 2) continue;
-    const base = mem.map(shortName).join(',');
-    const name = `committee-${v.tag}[${base}]`;
-    // The same brains in the same configuration again would have nothing left to play, so that
-    // variant waits until the field's top changes rather than replaying its own games.
-    if (st.history.some(h => h.name === name)) continue;
-    fresh.push({ id: name + '@D1', name, file: path.join(dir, 'models', name + '.json'),
-                 spec: 'committee:' + mem.join(';') + '@d' + v.depth + v.opts, members: mem, depth: v.depth,
-                 variant: v.tag, startedAt: new Date().toISOString(), swept: false });
-  }
-  st.actives = fresh;
-  writeState(dir, st);
-  const base = members.map(shortName).join(',');
-  if (fresh.length) log(`[committee] formed ${fresh.length} committee(s) from ${base}: ${fresh.map(f => f.variant).join(', ')}, ` +
-                        `immortal until each has played ${SWEEP_FACES} faces`);
-  else log(`[committee] every variant of ${base} has already swept; seat empty until the best rung/net/next-shape changes`);
-  return fresh;
-}
-// Read-only view for the pass itself.
-function activeLeagueCommittees(dir) { return loadState(dir).actives.filter(c => !c.swept); }
-// Sweep done: stop being immortal and become an ordinary model. The pseudo-model file is what
-// evolution-roster admits (modelMeta -> committee:true) and what elorank-legacy rebuilds the voting
-// brain from (facePlayer), so nothing else has to know this face was ever special.
-function markSwept(dir, id, elo, faces) {
-  const st = loadState(dir);
-  const cur = st.actives.find(c => c.id === id);
-  if (!cur) return;
-  cur.swept = true; cur.endedAt = new Date().toISOString(); cur.facesMet = faces || 0;
-  if (Number.isFinite(elo)) cur.finalElo = +elo.toFixed(1);
-  const { atomicWrite } = require('./atomic-write.js');
-  atomicWrite(cur.file, JSON.stringify({ committee: true, id, spec: cur.spec, members: cur.members, depth: cur.depth,
-                                         startedAt: cur.startedAt, sweptAt: cur.endedAt, facesMet: cur.facesMet,
-                                         finalElo: cur.finalElo }, null, 1));
-  writeState(dir, st);
+// A committee is an ordinary league face. Every time a new champion is promoted, run.js forms one:
+// the champion as chair (ties go to it), a medal net (silver, else bronze, else gold -- the first
+// that is a different plain value net) and the strongest live ladder rung. It is written as a small
+// model file named for its members, and from there evolution-roster treats it like any other model:
+// a D1 seat on arrival, deeper faces (every member searching at that depth) when the frontier
+// promotes it, and the elastic cull when it falls behind. Nothing makes it immortal. Its compute is
+// charged in full: each member searches in its own thread, so elorank-legacy and the cull price a
+// committee face for every member's time rather than the wall clock of one search. Committees of
+// earlier champions stay until the cull retires them, so generations sit side by side.
+//
+// This replaced a sweep that formed committees from the current field, held them immortal until
+// each had met 20 faces, and fielded four variants (d2, d3, d2w, d2pair) of the same members. One
+// shared lane at 10-50 minutes a match, against a field the cull kept churning, meant the first set
+// never finished and no second set ever formed. Depth is now the roster's ordinary frontier
+// question; @posw stays available in a spec and committee-weight-match.js measures it directly.
+const { atomicWrite } = require('./atomic-write.js');
+
+function plainValueNet(file) {
+  try {
+    const j = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return !j.committee && !j.dual && !j.policyEntrant && Array.isArray(j.sizes) && +j.sizes[j.sizes.length - 1] === 1;
+  } catch (_) { return false; }
 }
 
-module.exports = { makeBrain, pickAuto, parseSpec, parseOpts, SWEEP_FACES,
-                   resolveLeagueCommittees, activeLeagueCommittees, markSwept };
+function formForChampion(dir, champPath, { log = console.log } = {}) {
+  const models = path.join(dir, 'models');
+  const champ = path.resolve(champPath), champName = path.basename(champ, '.json');
+  const sameBytes = f => {
+    try { return fs.statSync(f).size === fs.statSync(champ).size && fs.readFileSync(f).equals(fs.readFileSync(champ)); }
+    catch (_) { return false; }
+  };
+  let meta = null;
+  try { meta = JSON.parse(fs.readFileSync(require('./machine-id.js').medalsMetaPath(dir), 'utf8')); } catch (_) {}
+  let medal = null;
+  for (const which of ['silver', 'bronze', 'gold']) {
+    const src = meta && meta.medals && meta.medals[which] && meta.medals[which].source;
+    if (!src || src === champName) continue;
+    const file = path.join(models, src + '.json');
+    if (!fs.existsSync(file) || !plainValueNet(file) || sameBytes(file)) continue;
+    medal = { which, name: src, file };
+    break;
+  }
+  if (!medal) {
+    log(`[committee] none formed for ${champName}: no medal holder is a different value net`);
+    return null;
+  }
+  const rung = strongestRung(dir);
+  const members = ['nn:0:' + champ, 'nn:0:' + medal.file, rung];
+  const name = `committee[${champName},${medal.name},${rung}]`;
+  const file = path.join(models, name + '.json');
+  if (fs.existsSync(file)) { log(`[committee] ${name} already exists; not formed again`); return null; }
+  atomicWrite(file, JSON.stringify({ committee: true, id: name + '@D1', spec: 'committee:' + members.join(';'),
+                                     members, champion: champName, medal: { [medal.which]: medal.name }, rung,
+                                     formedAt: new Date().toISOString() }, null, 1));
+  log(`[committee] formed ${name}: champion ${champName}, ${medal.which} ${medal.name}, ${rung}; an ordinary face from D1 up, ` +
+      `charged for all ${members.length} members' compute`);
+  return file;
+}
+
+// The sweep kept its live committees in models/.committee-state.json with no model file until they
+// finished. Any still listed there are written out as ordinary model files -- their spec keeps its
+// fixed search depth, so each holds its one D1 seat and its rating continues -- and the list clears.
+function releaseLegacyCommittees(dir, { log = console.log } = {}) {
+  const p = path.join(dir, 'models', '.committee-state.json');
+  let st;
+  try { st = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (_) { return 0; }
+  const live = (st.actives || []).filter(c => !c.swept && c.file && c.spec);
+  if (!live.length) return 0;
+  const at = new Date().toISOString();
+  for (const c of live) {
+    if (!fs.existsSync(c.file))
+      atomicWrite(c.file, JSON.stringify({ committee: true, id: c.id, spec: c.spec, members: c.members, depth: c.depth,
+                                           startedAt: c.startedAt, releasedAt: at }, null, 1));
+    Object.assign(c, { swept: true, endedAt: at, reason: 'released: committees are ordinary faces' });
+  }
+  st.history = (st.history || []).concat(st.actives);
+  st.actives = [];
+  atomicWrite(p, JSON.stringify(st, null, 1));
+  log(`[committee] released ${live.length} sweeping committee(s) as ordinary faces: ${live.map(c => c.name).join(', ')}`);
+  return live.length;
+}
+
+module.exports = { makeBrain, pickAuto, parseSpec, parseOpts, formForChampion, releaseLegacyCommittees };

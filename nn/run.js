@@ -2129,6 +2129,10 @@ async function runPoolCycle() {
         atomicCopy(best, path.join(dir, 'models', `best.pre-pool-${Date.now()}.json`));
         atomicCopy(winner.path, best);
         champFace.save(bestFaceFile, best, { name: winner.name, depth: winner.depth, cycle: num, source: 'promotion' });
+        // Every new champion gets a committee of its own (committee.js): the champion, a medal net and
+        // the strongest ladder rung, entering the league as an ordinary face from the next pass.
+        try { require('./committee.js').formForChampion(dir, winner.path, { log: m => log(`pool cycle ${num} — ${m}`) }); }
+        catch (e) { log(`pool cycle ${num} — committee not formed (${e.message})`); }
         gateLine = `promoted ${winner.name}@D${winner.depth}: ${winner.w}-${winner.l}-${winner.d} vs ${incumbentName}@D${incumbentDepth}, ` +
                    `${fmtEloRange(winner.rating)} (lower bound clears +${gateMargin})`;
       } else {

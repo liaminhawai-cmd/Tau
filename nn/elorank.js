@@ -87,20 +87,21 @@ for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])
   if(lock==null){console.log('[rating] official Elo writer already active; skipping this overlapping pass');process.exitCode=WRITER_BUSY;return;}
   heldLock=lock;
   try{
+    // Committees are ordinary model files (committee.js, formed by run.js at each promotion). This
+    // only writes out any the old immortal sweep still listed, before the roster scan seats them.
+    try{require('./committee.js').releaseLegacyCommittees(dir);}catch(e){console.error('[committee] release failed:',e.message);}
     evo.sync(dir);evo.ingestSummary(dir,summary);
     const faces=evo.activeFaceIds(dir,[1,2,3,4]),levels=evo.activeLadderLevels(dir);
-    // The committee seat (committee.js): formed from the current field, immortal until it has met
-    // every face once, then released. --noCommittee leaves the seat empty for this pass.
-    const cms=has(original,'noCommittee')?[]:require('./committee.js').resolveLeagueCommittees(dir);
     const a=['--faces',faces.join(','),'--levels',levels.join(','),'--summary',summary,
       '--out',get(original,'out',path.join(dir,'elo-results.json')),
       '--games',get(original,'ratingGames','2')];
     for(const n of ['budgetHours','workers','saveData','bootstrap','targetGames','openingPlies','committeeLanes'])forward(original,a,n);
-    if(has(original,'refit'))a.push('--refit');if(has(original,'dryrun'))a.push('--dryrun');if(cms.length)a.push('--committee');
+    if(has(original,'refit'))a.push('--refit');if(has(original,'dryrun'))a.push('--dryrun');
     const sd=get(original,'saveData',null);
     // L7 and up are rated twice (as themselves and opening with the corner cross, see elorank-legacy)
     const ladderFaces=levels.length+levels.filter(l=>l>=7).length;
-    console.log(`[rating] unified field: ${faces.length} live model faces + ${ladderFaces} immortal ladder brains (${levels.length} rungs)${cms.length?` + ${cms.length} committee face(s)`:''}${sd?` -> ${path.basename(sd)}`:''}`);
+    const cmFaces=faces.filter(id=>/^committee/.test(id)).length;
+    console.log(`[rating] unified field: ${faces.length} live model faces${cmFaces?` (${cmFaces} committee)`:''} + ${ladderFaces} immortal ladder brains (${levels.length} rungs)${sd?` -> ${path.basename(sd)}`:''}`);
     await run('elorank-legacy.js',a);
     evo.ingestSummary(dir,summary);
 
