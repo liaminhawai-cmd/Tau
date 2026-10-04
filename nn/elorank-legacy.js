@@ -241,7 +241,11 @@ const cmCap=committees.length?Math.max(1,Math.floor(workers/Math.max(1,cmMembers
 // matches an hour -- and everything else gets measured meanwhile. --committeeLanes raises it.
 const cmLanes=committees.length?Math.max(1,Math.min(cmCap,+arg('committeeLanes',1)||1)):0;
 const {SWEEP_FACES}=committees.length?require('./committee.js'):{SWEEP_FACES:20};
-const metWith=cm=>players.filter(o=>o.id!==cm.id&&((store.tsPairs||{})[canonical(cm.id,o.id)]||0)>=PHYSICAL_GAMES_PER_MATCH).length;
+// Faces met counts every opponent the committee has a full match against, retired ones included.
+// Counting only faces still in this pass's field let the cull undo the sweep: the field churns
+// while one shared lane plays ~2 committee matches an hour, so a committee that had met 81 faces
+// read 16/20 and drifted further from the line every pass, immortal indefinitely.
+const metWith=cm=>{let n=0;for(const[k,v]of Object.entries(store.tsPairs||{})){if((+v||0)<PHYSICAL_GAMES_PER_MATCH)continue;const i=k.indexOf('|'),a=k.slice(0,i),b=k.slice(i+1);if(a!==b&&(a===cm.id||b===cm.id))n++;}return n;};
 const unmetFor=cm=>players.filter(o=>o.id!==cm.id&&((store.tsPairs||{})[canonical(cm.id,o.id)]||0)<PHYSICAL_GAMES_PER_MATCH);
 const sweepDone=cm=>metWith(cm)>=SWEEP_FACES||!unmetFor(cm).length;
 // Pairs already handed to a lane. tsPairs only updates when a match FINISHES, so without this two

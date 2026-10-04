@@ -18,7 +18,7 @@ const { createEngine } = require('./engine.js');
 const { features } = require('./features.js');
 const { MLP } = require('./net.js');
 const { DualMLP } = require('./dualnet.js');
-const { nnPlanFor } = require('./nnai.js');
+const { nnPlanFor, planScore } = require('./nnai.js');
 const { playRandomOpening, randomStartPose } = require('./opening.js');
 
 function arg(name, dflt) {
@@ -167,7 +167,8 @@ function playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomS
     const ps = eng.getG().pieces;
     rows.push({ f: features(eng), mover: idx,
                 p: [ps[0].x, ps[0].y, ps[0].rot, ps[1].x, ps[1].y, ps[1].rot] });
-    const plan = (idx === 0 ? brainA : brainB)(idx);
+    const brain = idx === 0 ? brainA : brainB;
+    const plan = brain(idx);
     if (!plan) {
       rows.pop();
       nulls++;
@@ -176,6 +177,11 @@ function playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose, randomS
       continue;
     }
     nulls = 0;
+    // A brain tagged `scored` (a temperature-0 value-net search, e.g. retromine's pool) leaves its
+    // search's own score of the chosen move on the row (nnai.js planScore). Untagged brains --
+    // ladder rungs, temperature-sampled self-play, whose sampled move's score is not the
+    // position's value -- leave rows exactly as before.
+    if (brain.scored) { const sc = planScore(plan, brain.depth); if (sc) Object.assign(rows[rows.length - 1], sc); }
     eng.applyPlan(plan);
     plies++;
   }

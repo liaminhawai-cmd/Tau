@@ -15,7 +15,7 @@ const path = require('path');
 const { createEngine } = require('./engine.js');
 const { features } = require('./features.js');
 const { MLP } = require('./net.js');
-const { nnPlanFor, nnPlanForTimed } = require('./nnai.js');
+const { nnPlanFor, nnPlanForTimed, planScore } = require('./nnai.js');
 const { playRandomOpening, randomStartPose } = require('./opening.js');
 const { eloFromScore, fmtElo } = require('./elo.js');
 const { makeLadderEval } = require('./laddereval.js');
@@ -400,19 +400,12 @@ function main() {
       if (!plan) { if (dataStream) rows.pop(); nulls++; if (nulls > 4) break; eng.clearTurn(); eng.setActive(1 - idx); continue; }
       nulls = 0;
       // The search's own score of the move it chose, saved beside the result as a second label
-      // (torch-train-core.py --svBlend; search-label.js has the argument). Free: the search already
-      // computed it to pick the move. `deep` is the D2+ recursive score, `s` the D1 one, both the
-      // mover's view on the value net's scale; a proven throw (+-1e6) is a sure result, so +-1.
-      // Value-net brains only -- a ladder rung or le: brain scores on a hand-tuned scale that
-      // would mean something else entirely. svd is the depth that score actually came from.
+      // (nnai.js planScore; search-label.js has the argument). Free: the search already computed it
+      // to pick the move. Value-net brains only -- a ladder rung or le: brain scores on a
+      // hand-tuned scale that would mean something else entirely.
       if (dataStream && brain.scored) {
-        const deep = Number.isFinite(plan.deep);
-        const sc = deep ? plan.deep : Number.isFinite(plan.s) ? plan.s : plan.v;
-        if (Number.isFinite(sc)) {
-          const row = rows[rows.length - 1];
-          row.sv = Math.max(-1, Math.min(1, sc));
-          row.svd = deep ? (plan.searchDepth || brain.depth || 2) : 1;
-        }
+        const sc = planScore(plan, brain.depth);
+        if (sc) Object.assign(rows[rows.length - 1], sc);
       }
       eng.applyPlan(plan);
       plies++;
@@ -452,7 +445,7 @@ function main() {
                                           p: rows[i].p.map(v => +v.toFixed(4)), m: rows[i].m,
                                           g: gameId, mv, ...adj,
                                           ...(randomStart ? { src: 'random' } : {}),
-                                          ...(rows[i].sv != null ? { sv: +rows[i].sv.toFixed(4), svd: rows[i].svd } : {}) }) + '\n');
+                                          ...(rows[i].sv != null ? { sv: rows[i].sv, svd: rows[i].svd } : {}) }) + '\n');
         savedRows++;
       }
     }
