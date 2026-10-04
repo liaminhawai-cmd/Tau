@@ -1,8 +1,8 @@
 # Tau NN training status
-_Last updated: 2026-10-04T11:25:14.715Z_
+_Last updated: 2026-10-04T11:28:21.747Z_
 
-**Self-play batch:** 589
-**Stage:** promotion gate: 4 candidate(s) vs ckpt-645 over a 33-member panel (started 2026-10-04T11:25:14.715Z)
+**Self-play batch:** 590
+**Stage:** self-play batch 590 running (started 2026-10-04T11:26:10.672Z)
 **mix:** (see selfplay log: fixed-rung training reference)
 
 **Dual pool:** 4 active (minimum 4) (dual-pop-063-e60, dual-pop-084-e60, dual-pop-096-e60, dual-pop-097-e20)
