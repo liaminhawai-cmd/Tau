@@ -67,18 +67,20 @@ only in chat history and commit messages.
   parallel worker threads, every member then JUDGES every proposal, an engine-proven loss VETOes a
   proposal outright, and the survivors are ranked by log-pooled probability (or Borda with
   `,borda`). Spec: `committee:L11;nn:0:a.json;nn:0:b.json@d2`, where the `@` suffix carries
-  depth (`d1`..`d4`) and options.
+  depth (`d1`..`d4`) and options. In the league, every promotion forms one: the new champion
+  (chair), a medal net (silver, else bronze, else gold) and the strongest live ladder rung, written
+  as an ordinary model file. It starts at a D1 seat, earns deeper faces through the normal frontier
+  (a D*N* face has every member searching at depth *N*), is culled like any face, and is charged
+  for every member's search thread, not one wall clock.
 - **`@posw` / the `d2w` variant** — position-aware member weighting inside a committee: a net
   member's vote counts 1.35× and a ladder member's 0.75× while the **mover's hub sits within 10u
   of the board centre**, ramping linearly back to 1.0 at 21.5u and flat outside it. The one axis
   with unbiased evidence behind it: 432 positions × 4 movers = 1,728 playoff games
   (`nn/playoff/`, 2026-09-18) where a net at depth 2 beat L11 by 12 points of win rate inside
   21.5u and was level further out. The advantage axis ("trust L11 when losing") showed nothing
-  outside its error bar and is deliberately NOT encoded. The league fields `d2` and `d2w` over the same
-  members *as a mandatory pair*, because the weighting is only answerable as a DIFFERENCE —
-  `d2w` minus `d2` — and a lone rating for either answers nothing. A stale
-  `TAU_COMMITTEE_VARIANTS=d1,d2,d3` on a training box did exactly that for weeks: `d1`/`d2`/`d3`
-  accumulated 64-88 rated games each while the weighted committee never played one.
+  outside its error bar and is deliberately NOT encoded. The weighting is only answerable as a
+  DIFFERENCE — `d2w` minus `d2` over the same members — so `committee-weight-match.js` measures it
+  head to head; the league no longer fields variants.
 
 ## Data pipeline
 

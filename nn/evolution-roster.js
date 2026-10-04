@@ -80,10 +80,10 @@ function saveMetaCache(md,present=null){const c=metaCaches.get(md);if(!c||!(c.di
   const entries={...disk,...c.entries};if(present)for(const f of Object.keys(entries))if(!present.has(f))delete entries[f];
   try{atomic(path.join(md,META_CACHE),JSON.stringify({version:1,entries}));c.entries=entries;c.dirty=false;}catch(_){/* another process holds it; recomputed next time */}}
 function modelMeta(p,{defer=false}={}){let st;try{st=fs.statSync(p);}catch(_){return{...UNUSABLE};}const md=path.dirname(p),f=path.basename(p),c=metaCache(md),e=c.entries[f];
-  if(e&&e.size===st.size&&e.mtimeMs===st.mtimeMs)return{...e.meta};
-  const m=readModelMeta(p);if(m.usable&&!m.policy){c.entries[f]={size:st.size,mtimeMs:st.mtimeMs,meta:m};c.dirty=true;if(!defer)saveMetaCache(md);}return m;}
-function readModelMeta(p){try{const j=JSON.parse(fs.readFileSync(p,'utf8'));if(j&&j.committee===true)return{usable:true,committee:true,dual:false,policy:false,shape:'committee'};if(j&&j.policyEntrant===true){const v=path.join(path.dirname(p),j.valueFile||''),q=path.join(path.dirname(p),j.policyFile||'');if(fs.existsSync(v)&&fs.existsSync(q))return{usable:true,dual:false,policy:true,shape:j.shape||null};}if(j&&j.dual===true)return{usable:true,dual:true,policy:false,shape:Array.isArray(j.sizes)?j.sizes.slice(1,-1).join(','):null};if(j&&Array.isArray(j.sizes)&&j.sizes.length>=3&&+j.sizes.at(-1)===1)return{usable:true,dual:false,policy:false,shape:j.sizes.slice(1,-1).join(',')};}catch(_){}return{usable:false,dual:false,policy:false,shape:null};}
-function stableModelEntries(dir){const md=path.join(dir,'models');let files=[];try{files=fs.readdirSync(md);}catch(_){return[];}const out=[];for(const f of files){if(!f.endsWith('.json')||f.startsWith('.')||ALIASES.has(f)||/^pool-slot-\d+\.json$/.test(f)||/^best\.pre-pool-/.test(f)||/^dual-startup-probe-/.test(f)||/\.partial\.json$/.test(f))continue;const p=path.join(md,f),m=modelMeta(p,{defer:true});if(m.usable)out.push({name:path.basename(f,'.json'),file:f,path:p,dual:m.dual,policy:m.policy,committee:!!m.committee,shape:m.shape});}saveMetaCache(md,new Set(files));return out;}
+  if(e&&e.size===st.size&&e.mtimeMs===st.mtimeMs&&!e.meta.committee)return{...e.meta};
+  const m=readModelMeta(p);if(m.usable&&!m.policy&&!m.committee){c.entries[f]={size:st.size,mtimeMs:st.mtimeMs,meta:m};c.dirty=true;if(!defer)saveMetaCache(md);}return m;}
+function readModelMeta(p){try{const j=JSON.parse(fs.readFileSync(p,'utf8'));if(j&&j.committee===true)return{usable:true,committee:true,fixedDepth:+j.depth>0,dual:false,policy:false,shape:'committee'};if(j&&j.policyEntrant===true){const v=path.join(path.dirname(p),j.valueFile||''),q=path.join(path.dirname(p),j.policyFile||'');if(fs.existsSync(v)&&fs.existsSync(q))return{usable:true,dual:false,policy:true,shape:j.shape||null};}if(j&&j.dual===true)return{usable:true,dual:true,policy:false,shape:Array.isArray(j.sizes)?j.sizes.slice(1,-1).join(','):null};if(j&&Array.isArray(j.sizes)&&j.sizes.length>=3&&+j.sizes.at(-1)===1)return{usable:true,dual:false,policy:false,shape:j.sizes.slice(1,-1).join(',')};}catch(_){}return{usable:false,dual:false,policy:false,shape:null};}
+function stableModelEntries(dir){const md=path.join(dir,'models');let files=[];try{files=fs.readdirSync(md);}catch(_){return[];}const out=[];for(const f of files){if(!f.endsWith('.json')||f.startsWith('.')||ALIASES.has(f)||/^pool-slot-\d+\.json$/.test(f)||/^best\.pre-pool-/.test(f)||/^dual-startup-probe-/.test(f)||/\.partial\.json$/.test(f))continue;const p=path.join(md,f),m=modelMeta(p,{defer:true});if(m.usable)out.push({name:path.basename(f,'.json'),file:f,path:p,dual:m.dual,policy:m.policy,committee:!!m.committee,fixedDepth:!!m.fixedDepth,shape:m.shape});}saveMetaCache(md,new Set(files));return out;}
 // The league's immortal ladder set starts at L6: L1-L5 sit 1000-2000 Elo below every net, so
 // their games are foregone conclusions that cost seats and anchor nothing (Liam, 2026-09-11).
 // They stay in the game and in self-play's low rungs; they just are not rated players.
@@ -97,7 +97,7 @@ const LEAGUE_TOP_RUNGS=Math.max(1,+(process.env.TAU_LEAGUE_RUNGS||5));
 function productionLadderLevels(ladderN=null){try{const d=require('./engine.js').createEngine().AI_LADDER,n=ladderN==null?d.length:Math.min(ladderN,d.length);return d.slice(0,n).map((x,i)=>x&&!x.experimental?i+1:null).filter(Boolean);}catch(_){const n=ladderN==null?11:ladderN;return Array.from({length:n},(_,i)=>i+1);}}
 function faceId(name,depth,policy=false){return`${name}${policy?'+P':''}@D${depth}`;}
 function splitFaceId(id){const m=String(id).match(/^(.*?)(\+P)?@D([1-4])$/);return m?{name:m[1],policy:!!m[2],depth:+m[3],key:`D${m[3]}${m[2]?'+P':''}`}:null;}
-function candidateFaces(e,d){if(e.committee)return d===1?[faceId(e.name,1,false)]:[];/* a committee's members search at their own depth; D1 is its one roster seat */if(e.policy&&d===1)return[];const a=[faceId(e.name,d,false)];if(e.dual)a.push(faceId(e.name,d,true));return a;}
+function candidateFaces(e,d){if(e.committee)return e.fixedDepth&&d!==1?[]:[faceId(e.name,d,false)];/* a committee face at depth N has every member searching at depth N, so it climbs the frontier like a net; one whose spec pins a depth (the old sweep's) keeps its single D1 seat */if(e.policy&&d===1)return[];const a=[faceId(e.name,d,false)];if(e.dual)a.push(faceId(e.name,d,true));return a;}
 function ensurePools(s){s.facePools||={};for(let d=1;d<=4;d++)s.facePools[depthKey(d)]||=emptyPool();}
 function poolIds(p){return[...(p.active||[]),...(p.trial?[p.trial]:[])];}
 function activeFaceSet(s){const q=new Set();for(let d=1;d<=4;d++)for(const id of poolIds(s.facePools[depthKey(d)]))q.add(id);return q;}
@@ -324,7 +324,10 @@ function faceRecords(dir){
 // estimate with no margin, which a re-fit later moves. An unbeaten record cannot be argued with.)
 const undefeated=r=>!!r&&r.l===0&&r.d===0&&r.w>0;
 
-function measuredCosts(dir){try{const s=JSON.parse(fs.readFileSync(path.join(dir,'elo-results.json'),'utf8'));return{cost:s.cost||{},unit:+s.costUnitMs>0?+s.costUnitMs:1500};}catch(_){return{cost:{},unit:1500};}}
+// Measured cost is wall clock per game; a committee runs one search thread per member, so its cost
+// is scaled by the member count elorank-legacy records (store.threads) -- the cull and the frontier
+// see a three-member committee as three searches, exactly as the schedule's rent does.
+function measuredCosts(dir){try{const s=JSON.parse(fs.readFileSync(path.join(dir,'elo-results.json'),'utf8')),th=s.threads||{},cost={};for(const[id,ms]of Object.entries(s.cost||{}))cost[id]=+ms*(+th[id]>0?+th[id]:1);return{cost,unit:+s.costUnitMs>0?+s.costUnitMs:1500};}catch(_){return{cost:{},unit:1500};}}
 // The cull draws a depth class in proportion to the rent that class is paying, and rent is now
 // charged BELOW cost for deep faces -- the same discount elorank-legacy.js applies to the schedule,
 // for the same reason. At full price a D4 face pays 27 units against a D1 face's 1, so the cull
