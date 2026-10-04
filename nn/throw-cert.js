@@ -133,6 +133,41 @@ function featureMargins3(p1, q1, p2, q2) {
   return { Delta, s0, s1: Delta-s0, t0, t1: Delta-t0,
     normalised: { s0:s0/Delta, s1:(Delta-s0)/Delta, t0:t0/Delta, t1:(Delta-t0)/Delta } };
 }
+
+/*
+ * Direct interval enclosure of the four exact chord-feature walls.
+ *
+ * For fixed attacker endpoints and a rigid victim endpoint box, each of
+ *   S0 = BF-CE, S1 = Delta-S0, T0 = AF-BC, T1 = Delta-T0
+ * is an interval polynomial in the endpoint coordinates. If every lower
+ * bound is strictly positive, the unconstrained closest point stays
+ * strictly inside both chords throughout the whole pose box.
+ *
+ * This is stronger than the centre-margin + dmax/L test because it encloses
+ * the wall functions themselves rather than inferring wall reach from a
+ * minimiser-drift estimate.
+ *
+ * The interval arithmetic is conservative in the real-arithmetic model.
+ * It does not solve the separate floating-point outward-rounding issue.
+ */
+const ivDot3 = (a, b) => add(add(mul(a.x, b.x), mul(a.y, b.y)), mul(a.h, b.h));
+const ivSubPoint = (a, b) => ({ x: sub(a.x,b.x), y: sub(a.y,b.y), h: sub(a.h,b.h) });
+
+function featureMargins3Interval(p1, q1, p2, q2) {
+  const u = ivSubPoint(q1, p1);
+  const v = ivSubPoint(q2, p2);
+  const r = ivSubPoint(p1, p2);
+  const A = ivDot3(u, u);
+  const E = ivDot3(v, v);
+  const B = ivDot3(u, v);
+  const C = ivDot3(u, r);
+  const F = ivDot3(v, r);
+  const Delta = sub(mul(A, E), mul(B, B));
+  const s0 = sub(mul(B, F), mul(C, E));
+  const t0 = sub(mul(A, F), mul(B, C));
+  return { Delta, s0, s1: sub(Delta, s0), t0, t1: sub(Delta, t0) };
+}
+
 function segClosest(a, b, c, d) {
   const d1 = { x: b.x - a.x, y: b.y - a.y }, d2 = { x: d.x - c.x, y: d.y - c.y }, r = { x: a.x - c.x, y: a.y - c.y };
   const A = d1.x * d1.x + d1.y * d1.y, E = d2.x * d2.x + d2.y * d2.y, F = d2.x * r.x + d2.y * r.y;
@@ -474,14 +509,38 @@ function analyse(box, att, pairWant) {
     // interiority of the centre's own minimiser, in arclength, with the slack it needs
     const sA = sg.s * LA, sV = sg.t * LV;
     const atStartA = sA <= dmax, atEndA = LA - sA <= dmax, atStartV = sV <= dmax, atEndV = LV - sV <= dmax;
-    // Exact feature-wall ownership: the four margins are Delta*s, Delta*(1-s), Delta*t, Delta*(1-t).
-    // If a margin is no larger than the certified dmax/L drift band, the interior regime may cross
-    // a feature wall and cannot own the whole box. The matching vertex regime must carry that wall.
+    // Direct interval feature-wall ownership. The victim chord endpoints are material
+    // points, so vertexBoxOf() gives a genuine enclosure of every endpoint over the whole
+    // pose box. Enclose the four exact wall functions themselves; if all four lower bounds
+    // are positive, this chord pair remains interior/interior everywhere in the box.
+    //
+    // Keep the older dmax/L calculation as a diagnostic/localisation quantity, but do
+    // not use it as the ownership proof. A wall interval containing zero forces the
+    // endpoint/vertex regimes to own the boundary.
     const fm = featureMargins3(A[P.i][sg.a], A[P.i][sg.a + 1], V[P.j][sg.b], V[P.j][sg.b + 1]);
     if (!fm) return { ...out, refuse: 'degenerate feature geometry on candidate segments' };
-    const wallBand = { s0: dmax / Math.max(LA, 1e-12), s1: dmax / Math.max(LA, 1e-12), t0: dmax / Math.max(LV, 1e-12), t1: dmax / Math.max(LV, 1e-12) };
-    const wallReachable = { s0: fm.normalised.s0 <= wallBand.s0, s1: fm.normalised.s1 <= wallBand.s1, t0: fm.normalised.t0 <= wallBand.t0, t1: fm.normalised.t1 <= wallBand.t1 };
+    const VA0 = vertexBoxOf(box, P.j, sg.b);
+    const VA1 = vertexBoxOf(box, P.j, sg.b + 1);
+    const fmi = featureMargins3Interval(
+      A[P.i][sg.a], A[P.i][sg.a + 1],
+      VA0, VA1
+    );
+    const wallReachable = {
+      s0: fmi.s0[0] <= 0,
+      s1: fmi.s1[0] <= 0,
+      t0: fmi.t0[0] <= 0,
+      t1: fmi.t1[0] <= 0
+    };
     const interiorCertified = !Object.values(wallReachable).some(Boolean);
+    if (process.env.DBGWALL) {
+      console.log(
+        '      walls (' + sg.a + ',' + sg.b + ')' +
+        ' S0[' + fmi.s0[0].toExponential(3) + ',' + fmi.s0[1].toExponential(3) + ']' +
+        ' S1[' + fmi.s1[0].toExponential(3) + ',' + fmi.s1[1].toExponential(3) + ']' +
+        ' T0[' + fmi.t0[0].toExponential(3) + ',' + fmi.t0[1].toExponential(3) + ']' +
+        ' T1[' + fmi.t1[0].toExponential(3) + ',' + fmi.t1[1].toExponential(3) + ']'
+      );
+    }
 
     // IS THE INTERIOR/INTERIOR REGIME REACHABLE AT ALL? Its normal is the one perpendicular to both
     // chord tangents, which is a genuine contact only when some pose in the set has its minimiser in
@@ -986,7 +1045,7 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
   return { certified, why: certified ? null : `final foot radius bound ${minR.toFixed(3)} <= ${EDGE}`, k: K, K, rows, minR, rc, final: { qc, states: Us }, pair, traj };
 }
 
-module.exports = { certify, analyse, sweep, pushSubstep, parkJacobian, featureMargins3, LIM_SUB };
+module.exports = { certify, analyse, sweep, pushSubstep, parkJacobian, featureMargins3, featureMargins3Interval, LIM_SUB };
 
 if (require.main === module) {
   // POSE=x,y,rot,x,y,rot node nn/throw-cert.js attacker pv dir jF hx hy hRotDeg [--validate N] [--rows] [--engine]
