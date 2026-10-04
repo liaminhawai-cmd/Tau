@@ -119,6 +119,20 @@ const aabbOf = (c, M, U) => { const v = matVecIv(M, U); return { x: add([c.x, c.
 // ---- geometry: the engine's, verbatim from contact-law.js ----
 const arcPts = (p, i) => { const a = p.rot + i * 2 * Math.PI / 3, ca = Math.cos(a), sa = Math.sin(a), pts = []; for (let k = 0; k <= NSEG; k++) { const ph = (k / NSEG) * Math.PI / 2, s = Math.sin(ph) * R; pts.push({ x: p.x + ca * s, y: p.y + sa * s, h: Math.cos(ph) * H }); } return pts; };
 const chordsOf = p => feetOf(p).map(f => [{ x: p.x, y: p.y }, f]);
+// Exact closest-feature margins for two nonparallel 3D chord segments.
+// Positive mS0,mS1,mT0,mT1 means the unconstrained minimiser is strictly interior.
+// Zero is an exact feature wall: endpoint 0 or endpoint 1 becomes active.
+function featureMargins3(p1, q1, p2, q2) {
+  const u = [q1.x-p1.x, q1.y-p1.y, q1.h-p1.h];
+  const v = [q2.x-p2.x, q2.y-p2.y, q2.h-p2.h];
+  const r = [p1.x-p2.x, p1.y-p2.y, p1.h-p2.h];
+  const A = dot3(u,u), E = dot3(v,v), B = dot3(u,v), C = dot3(u,r), F = dot3(v,r);
+  const Delta = A*E-B*B;
+  if (!(Delta > 0)) return null;
+  const s0 = B*F-C*E, t0 = A*F-B*C;
+  return { Delta, s0, s1: Delta-s0, t0, t1: Delta-t0,
+    normalised: { s0:s0/Delta, s1:(Delta-s0)/Delta, t0:t0/Delta, t1:(Delta-t0)/Delta } };
+}
 function segClosest(a, b, c, d) {
   const d1 = { x: b.x - a.x, y: b.y - a.y }, d2 = { x: d.x - c.x, y: d.y - c.y }, r = { x: a.x - c.x, y: a.y - c.y };
   const A = d1.x * d1.x + d1.y * d1.y, E = d2.x * d2.x + d2.y * d2.y, F = d2.x * r.x + d2.y * r.y;
@@ -964,7 +978,7 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
   return { certified, why: certified ? null : `final foot radius bound ${minR.toFixed(3)} <= ${EDGE}`, k: K, K, rows, minR, rc, final: { qc, states: Us }, pair, traj };
 }
 
-module.exports = { certify, analyse, sweep, pushSubstep, parkJacobian, LIM_SUB };
+module.exports = { certify, analyse, sweep, pushSubstep, parkJacobian, featureMargins3, LIM_SUB };
 
 if (require.main === module) {
   // POSE=x,y,rot,x,y,rot node nn/throw-cert.js attacker pv dir jF hx hy hRotDeg [--validate N] [--rows] [--engine]
