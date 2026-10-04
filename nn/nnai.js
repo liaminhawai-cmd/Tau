@@ -494,4 +494,16 @@ function nnPlanForTimed(eng, net, idx, opts) {
   }
 }
 
-module.exports = { nnPlanFor, nnPlanForTimed, opponentHasThrow };
+// The search's own score of the move it chose, saved beside the result as a second training label
+// (torch-train-core.py --svBlend). `deep` is the D2+ recursive score, `s` the D1 one, both the
+// mover's view on the value net's scale; a proven throw (+-1e6) is a sure result, so +-1. svd is
+// the depth the score actually came from. Null when the plan carries no usable score.
+function planScore(plan, depth) {
+  if (!plan) return null;
+  const deep = Number.isFinite(plan.deep);
+  const sc = deep ? plan.deep : Number.isFinite(plan.s) ? plan.s : plan.v;
+  if (!Number.isFinite(sc)) return null;
+  return { sv: +Math.max(-1, Math.min(1, sc)).toFixed(4), svd: deep ? (plan.searchDepth || depth || 2) : 1 };
+}
+
+module.exports = { nnPlanFor, nnPlanForTimed, opponentHasThrow, planScore };

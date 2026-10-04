@@ -135,6 +135,11 @@ function main() {
   }
 
   const eng = createEngine();
+  // Value-net searches play at temperature 0 here, so the score each gives its chosen move is a
+  // fair label for the position, written beside the result as sv/svd (nnai.js planScore). Ladder
+  // rungs score on a hand-tuned scale and dual nets play through a different head, so neither is
+  // tagged and their rows keep the result alone.
+  const scored = (fn, depth, ok) => ok ? Object.assign(fn, { scored: true, depth }) : fn;
 
   // --- build the strength axis from the pool ----------------------------------------------------
   let summary;
@@ -165,7 +170,7 @@ function main() {
       // net around (rather than only fn) is what lets the ultimate-guns escape hatch below load
       // and reuse weights without a second, separate model-loading pass.
       pool.push({ id, elo: v.elo || 0, name: id, kind: 'nn', net, depth: v.depth || 1,
-                  fn: idx => nnPlanFor(eng, net, idx, { depth: v.depth || 1 }) });
+                  fn: scored(idx => nnPlanFor(eng, net, idx, { depth: v.depth || 1 }), v.depth || 1, v.brain !== 'dual') });
     }
   }
   pool.sort((a, b) => a.elo - b.elo);
@@ -198,7 +203,8 @@ function main() {
         let gnet;
         try { gnet = MLP.fromJSON(JSON.parse(fs.readFileSync(mp, 'utf8'))); } catch (e) { return null; }
         return { id: globalBest.id, elo: globalBest.elo || 0,
-                fn: idx => nnPlanFor(eng, gnet, idx, { depth: globalBest.depth || 1 }) };
+                fn: scored(idx => nnPlanFor(eng, gnet, idx, { depth: globalBest.depth || 1 }),
+                           globalBest.depth || 1, globalBest.brain !== 'dual') };
       })()
     : null;
   // floor[] values are allowed to reach pool.length (one past the ordinary top) to mean "proven at
@@ -260,7 +266,8 @@ function main() {
       ws.write(JSON.stringify({ f: rows[i].f.map(v => +v.toFixed(5)), z: +z.toFixed(4),
                                 p: rows[i].p.map(v => +v.toFixed(4)), m: rows[i].mover,
                                 g: gameId, src: 'retro', fam,
-                                mv: rows[i].mover === 0 ? idBlue : idRed }) + '\n');
+                                mv: rows[i].mover === 0 ? idBlue : idRed,
+                                ...(rows[i].sv != null ? { sv: rows[i].sv, svd: rows[i].svd } : {}) }) + '\n');
       positions++;
     }
   }
