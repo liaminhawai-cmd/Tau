@@ -29,7 +29,7 @@ for (const { c, why } of picked.values()) {
   try {
     const r = containment(bp, bd, c.a, c.b, c.mode, ns, +(process.env.DEG || 4));
     comparisons += r.checks; outside += r.fails;
-    line = `arm (${bp},${bd}) cell [${c.a}, ${c.b}] ${c.mode}${c.sym ? '+sym' : ''} (${why}): margin >= ${r.margin.toFixed(5)}; ${r.checks} comparisons at ${ns} angles, ${r.fails} outside; worst excess ${r.worst.toExponential(2)}${r.bad.length ? ' | ' + r.bad.join(' ; ') : ''}`;
+    line = `arm (${bp},${bd}) cell [${c.a}, ${c.b}] ${c.mode}${c.sym ? '+sym' : ''} (${why}): margin >= ${r.margin.toFixed(5)}; ${r.checks} comparisons at ${ns - r.skipped} angles${r.skipped ? ` (${r.skipped} beyond the engine's limit skipped)` : ''}, ${r.fails} outside; worst excess ${r.worst.toExponential(2)}${r.bad.length ? ' | ' + r.bad.join(' ; ') : ''}`;
   } catch (e) { stopped++; line = `arm (${bp},${bd}) cell [${c.a}, ${c.b}] ${c.mode}${c.sym ? '+sym' : ''} (${why}): model stopped: ${e.message.slice(0, 120)}`; }
   lines.push(line); console.log(line);
 }

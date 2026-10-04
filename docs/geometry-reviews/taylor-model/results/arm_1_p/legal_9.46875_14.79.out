@@ -4,16 +4,16 @@
   1
  ],
  "range": [
-  2,
+  9.46875,
   14.79
  ],
- "cells": 1000,
- "legalCells": 1000,
+ "cells": 500,
+ "legalCells": 500,
  "notShown": 0,
  "stopped": 0,
  "pivotAtBandEdge": [],
  "crossingKinds": {
-  "foot 1 / r1 ": 1001
+  "foot 1 / r1 ": 500
  },
  "smallestClearanceOfOtherPairs": 1.573698470900545,
  "firstBad": []

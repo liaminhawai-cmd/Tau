@@ -19,7 +19,7 @@ function containment(bp, bd, a0, a1, mode = 'plain', ns = 5, deg = 6) {
   const base = process.env.SYMREM ? { symRem: true } : {};      // SYMREM=1: the cell was proved with remainders moved into symbols
   const r = run2(bp, bd, a0, a1, deg, { push: { ...base, ...(m ? m[2] : {}) }, keepTrace: true });
   const am = 0.5 * a0 + 0.5 * a1, ar = Math.max(a1 - am, am - a0);
-  let checks = 0, fails = 0, worst = 0; const bad = [];
+  let checks = 0, fails = 0, worst = 0, skipped = 0; const bad = [];
   for (let i = 0; i < ns; i++) {
     const alpha = a0 + (a1 - a0) * i / Math.max(1, ns - 1), t = (alpha - am) / ar;
     // blue's reply exactly as the engine's plan application plays it: full 3 degree calls, then one call
@@ -35,6 +35,9 @@ function containment(bp, bd, a0, a1, mode = 'plain', ns = 5, deg = 6) {
       if (rem >= STEP3) fullCalls++;
       eng.applySwing(bd * Math.min(STEP3, rem));
     }
+    // a target past the largest one the engine executes in full is cut short at the last legal substep: that
+    // play is the play for its own, smaller, final angle (covered by another cell), not one for this alpha
+    if (G.atLimit) { skipped++; continue; }
     const j = fullCalls;
     const red0 = [R.x, R.y, R.rot];
     const items = r.trace.items.filter(it => it.j === j || it.j === j - 1);
@@ -68,7 +71,7 @@ function containment(bp, bd, a0, a1, mode = 'plain', ns = 5, deg = 6) {
       worst = Math.max(worst, Math.min(best, 1e9));
     }
   }
-  return { margin: r.marginLo, checks, fails, bad, worst, regimes: r.regimes, redBranches: r.redBranches };
+  return { margin: r.marginLo, checks, fails, bad, worst, skipped, regimes: r.regimes, redBranches: r.redBranches };
 }
 module.exports = { containment };
 
@@ -77,6 +80,6 @@ if (require.main === module) {
   const mode = process.argv[6] || 'plain', ns = +(process.argv[7] || 5);
   try {
     const c = containment(bp, bd, a0, a1, mode, ns, +(process.env.DEG || 4));
-    console.log(`arm (${bp},${bd}) cell [${a0}, ${a1}] ${mode}: margin >= ${c.margin.toFixed(5)}; ${c.checks} comparisons at ${ns} angles, ${c.fails} outside; worst excess ${c.worst.toExponential(2)}${c.bad.length ? ' | ' + c.bad.join(' ; ') : ''}`);
+    console.log(`arm (${bp},${bd}) cell [${a0}, ${a1}] ${mode}: margin >= ${c.margin.toFixed(5)}; ${c.checks} comparisons at ${ns - c.skipped} angles${c.skipped ? ` (${c.skipped} beyond the engine's limit skipped)` : ''}, ${c.fails} outside; worst excess ${c.worst.toExponential(2)}${c.bad.length ? ' | ' + c.bad.join(' ; ') : ''}`);
   } catch (e) { console.log(`arm (${bp},${bd}) cell [${a0}, ${a1}] ${mode}: model stopped: ${e.message.slice(0, 120)}`); }
 }

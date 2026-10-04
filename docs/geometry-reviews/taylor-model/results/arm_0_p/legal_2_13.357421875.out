@@ -1,20 +1,20 @@
 {
  "arm": [
-  1,
+  0,
   1
  ],
  "range": [
   2,
-  14.79
+  13.357421875
  ],
- "cells": 1000,
- "legalCells": 1000,
+ "cells": 579,
+ "legalCells": 579,
  "notShown": 0,
  "stopped": 0,
  "pivotAtBandEdge": [],
  "crossingKinds": {
-  "foot 1 / r1 ": 1001
+  "foot 1 / r1 ": 579
  },
- "smallestClearanceOfOtherPairs": 1.573698470900545,
+ "smallestClearanceOfOtherPairs": 2.798928614275112,
  "firstBad": []
 }

@@ -1,0 +1,22 @@
+arm (1,1) cell [2, 2.00390625] plain (weakest): margin >= 4.63932; 2625 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [2.0625, 2.125] plain (widest): margin >= 4.65398; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [2.005859375, 2.0078125] branch+merge (branch+merge): margin >= 4.64043; 2751 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [2.125, 2.140625] branch (branch): margin >= 4.66647; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [6, 6.015625] plain (weakest): margin >= 5.32207; 2622 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [6.0625, 6.125] plain (widest): margin >= 5.32870; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [6.017578125, 6.0185546875] branch+merge (branch+merge): margin >= 5.32502; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [6.0390625, 6.046875] branch (branch): margin >= 5.32566; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [7.750862121582031, 7.750885009765625] straddle+merge+sym (straddle+merge): margin >= 5.59816; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [8.21875, 8.2265625] straddle+sym (straddle): margin >= 5.66369; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [10, 10.0625] plain+sym (weakest): margin >= 5.91449; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [10.0859375, 10.08984375] straddle+sym (straddle): margin >= 5.92499; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [10.22265625, 10.224609375] straddle+merge+sym (straddle+merge): margin >= 5.93801; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [10.24609375, 10.248046875] branch+merge+sym (branch+merge): margin >= 5.94110; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [10.40625, 10.421875] branch+sym (branch): margin >= 5.96185; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [14, 14.03125] plain+sym (weakest): margin >= 6.54168; 2625 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [14.625, 14.66625] plain+sym (widest): margin >= 6.59933; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [14.03125, 14.0390625] straddle+sym (straddle): margin >= 6.54600; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [14.04296875, 14.044921875] branch+merge+sym (branch+merge): margin >= 6.54695; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [14.10546875, 14.107421875] straddle+merge+sym (straddle+merge): margin >= 6.55532; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [14.4375, 14.46875] branch+sym (branch): margin >= 6.58436; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+TOTAL: 21 cells, 54891 comparisons, 0 outside, 0 stopped

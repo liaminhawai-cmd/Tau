@@ -1,0 +1,20 @@
+arm (1,-1) cell [5.875, 6] branch (weakest): margin >= 3.50978; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,-1) cell [4.75, 4.875] plain (widest): margin >= 3.66937; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,-1) cell [2, 2.015625] plain (plain): margin >= 3.99700; 2625 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,-1) cell [2.140625, 2.15625] straddle (straddle): margin >= 3.95700; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,-1) cell [4.65625, 4.6875] branch (branch): margin >= 3.68475; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,-1) cell [9.9375, 10] straddle (weakest): margin >= 3.01136; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,-1) cell [6.375, 6.5] branch (widest): margin >= 3.44968; 2625 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,-1) cell [6, 6.0625] straddle (straddle): margin >= 3.50200; 2622 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,-1) cell [6.0625, 6.09375] plain (plain): margin >= 3.49813; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,-1) cell [6.3125, 6.34375] branch (branch): margin >= 3.46709; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,-1) cell [7.083984375, 7.0859375] branch+merge (branch+merge): margin >= 3.37801; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,-1) cell [13.9375, 14] plain (weakest): margin >= 2.48032; 2625 comparisons at 7 angles, 0 outside; worst excess 5.55e-16
+arm (1,-1) cell [10, 10.125] plain (widest): margin >= 2.99652; 2604 comparisons at 7 angles, 0 outside; worst excess 4.44e-16
+arm (1,-1) cell [10.21875, 10.25] straddle (straddle): margin >= 2.97987; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,-1) cell [10.869140625, 10.87109375] straddle+merge (straddle+merge): margin >= 2.89318; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,-1) cell [12.5, 12.625] branch (branch): margin >= 2.65992; 2604 comparisons at 7 angles, 0 outside; worst excess 4.44e-16
+arm (1,-1) cell [15.25, 15.5] plain (weakest): margin >= 2.28819; 2625 comparisons at 7 angles, 0 outside; worst excess 7.77e-16
+arm (1,-1) cell [14, 14.125] plain (plain): margin >= 2.46401; 2625 comparisons at 7 angles, 0 outside; worst excess 3.33e-16
+arm (1,-1) cell [14.4375, 14.46875] straddle (straddle): margin >= 2.41914; 2604 comparisons at 7 angles, 0 outside; worst excess 2.22e-16
+TOTAL: 19 cells, 49599 comparisons, 0 outside, 0 stopped
