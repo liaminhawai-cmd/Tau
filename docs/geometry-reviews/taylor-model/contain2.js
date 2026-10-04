@@ -22,19 +22,23 @@ function containment(bp, bd, a0, a1, mode = 'plain', ns = 5, deg = 6) {
   let checks = 0, fails = 0, worst = 0; const bad = [];
   for (let i = 0; i < ns; i++) {
     const alpha = a0 + (a1 - a0) * i / Math.max(1, ns - 1), t = (alpha - am) / ar;
-    // which regime the engine follows at this alpha
-    const A = alpha * Math.PI / 180;
-    let j = Math.floor(A / STEP3); let rr = A - j * STEP3;
-    if (rr <= 1e-12 && j > 0) { j -= 1; rr = STEP3; }
-    const mm = Math.max(1, Math.ceil(rr / STEP_MAX - 1e-12));
+    // blue's reply exactly as the engine's plan application plays it: full 3 degree calls, then one call
+    // for the remainder (the engine splits it into substeps itself; at a boundary between two partial
+    // schedules float rounding decides which, so any regime of the same j may be the one it followed)
+    const A = alpha * Math.PI / 180, target = A;
     const G = eng.newGame(); const [B, R] = G.pieces;
     B.x = SEED[0]; B.y = SEED[1]; B.rot = SEED[2]; R.x = SEED[3]; R.y = SEED[4]; R.rot = SEED[5]; G.active = 0;
     eng.pinFoot(bp);
-    for (let k = 0; k < 8 * j; k++) eng.applySwing(bd * DELTA);
-    for (let k = 0; k < mm; k++) eng.applySwing(bd * (rr / mm));
+    let guard = 0, fullCalls = 0;
+    while (!G.atLimit && Math.abs(G.netRad) < target && guard++ < 5000) {
+      const rem = target - Math.abs(G.netRad);
+      if (rem >= STEP3) fullCalls++;
+      eng.applySwing(bd * Math.min(STEP3, rem));
+    }
+    const j = fullCalls;
     const red0 = [R.x, R.y, R.rot];
-    const items = r.trace.items.filter(it => it.j === j && it.m === mm);
-    if (!items.length) { fails++; bad.push(`alpha ${alpha}: regime (${j},${mm}) not modelled`); continue; }
+    const items = r.trace.items.filter(it => it.j === j || it.j === j - 1);
+    if (!items.length) { fails++; bad.push(`alpha ${alpha}: no regime with ${j} full calls modelled`); continue; }
     const inside = (tm, v) => { const e = tm.at(t); return Math.max(e[0] - v, v - e[1], 0); };
     // red branch that contains the engine's red pose
     let found = null;

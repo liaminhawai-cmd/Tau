@@ -74,6 +74,6 @@ console.log('| --- | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- |');
 for (const r of rows) {
   if (!r.cells) { console.log(`| ${nm(r)} | 2 – ${r.B.toFixed(4)} | none | – | 0 | – | – | – | – | – |`); continue; }
   const covered = r.lo <= 2 && r.hi >= r.B;
-  console.log(`| ${nm(r)} | 2 – ${r.B.toFixed(4)} | ${r.lo} – ${r.hi}${covered ? '' : ' (partial)'} | ${r.tiled ? 'yes' : 'NO'} | ${r.cells} | ${r.cpu ? (r.cpu / 60).toFixed(0) + ' min' : '–'} | ${r.minMargin.toFixed(4)}u | ${r.aud.cells ? `${r.aud.reproduced}/${r.aud.cells} reproduced` : 'not run'} | ${r.con.cells ? `${r.con.cells} cells, ${r.con.comparisons} comparisons, ${r.con.outside} outside` : 'not run'} | ${r.leg ? `${r.leg.legal}/${r.leg.cells}${r.leg.edge ? ` (${r.leg.edge} pivot-edge)` : ''}` : 'not run'} |`);
+  console.log(`| ${nm(r)} | 2 – ${r.B.toFixed(4)} | ${r.lo} – ${r.hi}${covered ? '' : ' (partial)'} | ${r.tiled ? 'yes' : 'NO'} | ${r.cells}${r.bySym.sym ? ` (${r.bySym.sym} with remToSym)` : ''} | ${r.cpu ? (r.cpu / 60).toFixed(0) + ' min' : '–'} | ${r.minMargin.toFixed(4)}u | ${r.aud.cells ? `${r.aud.reproduced}/${r.aud.cells} reproduced` : 'not run'} | ${r.con.cells ? `${r.con.cells} cells, ${r.con.comparisons} comparisons, ${r.con.outside} outside` : 'not run'} | ${r.leg ? `${r.leg.legal}/${r.leg.cells}${r.leg.edge ? ` (${r.leg.edge} pivot-edge)` : ''}` : 'not run'} |`);
 }
 if (process.argv[2] === '--json') console.log(JSON.stringify(rows, null, 1));
