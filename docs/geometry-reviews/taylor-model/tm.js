@@ -13,6 +13,7 @@ const iv = require('./iv.js');
 const { dn, up } = iv;
 const U = 1.1102230246251565e-16;   // 2^-53: half an ulp, relative
 
+let OPS = 0;          // number of linear combinations and products so far: a work measure for budgets
 let N = 6;            // polynomial degree in t
 let KSUB = 16;        // subintervals for tight range bounds
 let symCount = 0;
@@ -58,6 +59,7 @@ class TM {
 
   // ---- linear operations ----
   static lin(A, ka, B, kb) {    // ka*A + kb*B, ka and kb exact doubles
+    OPS++;
     const out = new TM(); let err = 0;
     for (let k = 0; k <= N; k++) { const v = ka * A.c[k] + kb * B.c[k]; out.c[k] = v; err += Math.abs(v) + Math.abs(ka * A.c[k]) + Math.abs(kb * B.c[k]); }
     const keys = new Set([...A.s.keys(), ...B.s.keys()]);
@@ -98,6 +100,7 @@ class TM {
 
   // ---- multiplication ----
   mul(B) {
+    OPS++;
     const A = this;
     if (B.isConst() && B.lo === 0 && B.hi === 0) return A.scale(B.c[0]);
     if (A.isConst() && A.lo === 0 && A.hi === 0) return B.scale(A.c[0]);
@@ -244,4 +247,4 @@ class TM {
   sin() { return this.trig('sin'); }
 }
 
-module.exports = { TM, setDegree, newSym, norm1, getN: () => N, setKsub: k => { KSUB = k; } };
+module.exports = { TM, setDegree, newSym, norm1, getN: () => N, opCount: () => OPS, setKsub: k => { KSUB = k; } };

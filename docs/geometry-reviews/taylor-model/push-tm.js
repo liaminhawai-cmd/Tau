@@ -16,7 +16,7 @@
 // uniformly, or the run stops.
 'use strict';
 const iv = require('./iv.js');
-const { TM, newSym, norm1, getN } = require('./tm.js');
+const { TM, newSym, norm1, getN, opCount } = require('./tm.js');
 const { dn, up } = iv;
 
 // ---- constants, as the engine defines them (CFG in index.html) ----
@@ -532,7 +532,14 @@ function hubHubCheck(cur, red) {
   const hh = Math.hypot(cx.mid - midf(hr.x), cy.mid - midf(hr.y)) - Math.hypot(cx.rad, cy.rad) - Math.hypot(iv.rad(hr.x), iv.rad(hr.y)) - FLOAT_SLACK;
   if (!(hh > hubHub[1])) throw new Error('hub-hub contact not excluded: ' + hh);
 }
+// A run may be given a budget of Taylor-model operations (opts.maxOps, counted from info.ops0). The number of
+// solver passes is no guard: in the modes that carry several branches the merging after every pass costs
+// seconds, and a failing attempt can run for minutes. Throwing here only ever abandons an attempt.
+function overBudget(info, opts) {
+  if (opts.maxOps && opCount() - info.ops0 > opts.maxOps) throw new Error('work budget exceeded');
+}
 function runPasses(state, red, info, pass, opts) {
+  overBudget(info, opts);
   if (pass >= 10) return [state];
   const G = blueGeometry(state);
   const slots = passSlots(G, red, info);
@@ -557,6 +564,7 @@ function mergeBranches(list, opts, info) {
   if (list.length <= 1) return list;
   let L = clusterHull(list, opts.tolHull || 0);
   while (L.length > (opts.maxBranches || 1)) {
+    overBudget(info, opts);
     let best = null;
     for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) {
       const d = stateDiff(L[i], L[j]); if (!best || d < best.d) best = { i, j, d };

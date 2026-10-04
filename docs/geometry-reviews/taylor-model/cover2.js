@@ -6,10 +6,15 @@ const fs = require('fs'), path = require('path');
 const { run2 } = require('./cert2.js');
 const { MODES } = require('./modes2.js');
 // An attempt that needs more than this many solver passes is given up on and the cell is split. Accepted
-// cells use at most about 3,700 (a pathological attempt in a mode that carries up to eight branches can
-// run for tens of minutes before failing). A cell is only accepted by a run that finished, so the budget
-// can change which cells a cover picks but never what a picked cell proves; audit2 re-runs without it.
-const MAX_PASSES = 40000;
+// cells use at most about 3,700 (a failing attempt in a mode that carries up to eight branches can otherwise
+// run for many minutes before it gives up, and wide cells fail more often than not). A cell is only accepted
+// by a run that finished, so the budget can change which cells a cover picks but never what a picked cell
+// proves; audit2 re-runs without it.
+const MAX_PASSES = +(process.env.MAXPASSES || 8000);
+// The same for the number of Taylor-model operations (linear combinations and products): the passes alone do
+// not bound the time, because merging several branches after every pass can cost seconds. Accepted cells need
+// at most about 2.8 million (30 seconds); a failing attempt is cut off at 3.5 million.
+const MAX_OPS = +(process.env.MAXOPS || 3.5e6);
 
 // base: push options applied to every run of the cover (the plain run and every mode); { symRem: true }
 // moves the remainders of push amounts into noise symbols (see remToSym in push-tm.js)
@@ -21,12 +26,12 @@ function cover(bp, bd, a0, a1, deg = 6, minW = 1e-5, log, base = {}) {
   function go(a, b) {
     runs++;
     let r = null, err = null;
-    try { r = run2(bp, bd, a, b, deg, { push: base, maxPasses: MAX_PASSES }); } catch (e) { err = e.message; }
+    try { r = run2(bp, bd, a, b, deg, { push: base, maxPasses: MAX_PASSES, maxOps: MAX_OPS }); } catch (e) { err = e.message; }
     if (r && r.marginLo > 0) { leaves.push({ a, b, m: r.marginLo, hub: r.hubMoveLo, ms: r.ms, branches: 1, mode: 'plain', sym }); return; }
     for (const [mode, maxW, push] of MODES) {
       if (b - a > maxW) continue;
       let r2 = null;
-      try { r2 = run2(bp, bd, a, b, deg, { push: { ...base, ...push }, maxPasses: MAX_PASSES }); } catch (e) { err = err || e.message; }
+      try { r2 = run2(bp, bd, a, b, deg, { push: { ...base, ...push }, maxPasses: MAX_PASSES, maxOps: MAX_OPS }); } catch (e) { err = err || e.message; }
       if (r2 && r2.marginLo > 0) { leaves.push({ a, b, m: r2.marginLo, hub: r2.hubMoveLo, ms: r2.ms, branches: r2.info.maxBranches || 1, mode, sym }); return; }
     }
     const why = err ? err.replace(/[-\d.e+,]+/g, '#').slice(0, 80) : 'margin not positive';

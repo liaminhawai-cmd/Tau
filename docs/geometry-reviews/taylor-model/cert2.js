@@ -17,6 +17,7 @@
 const iv = require('./iv.js');
 const { TM, setDegree } = require('./tm.js');
 const P = require('./push-tm.js');
+const { opCount } = require('./tm.js');
 
 const R = P.footR, TWO_PI_3 = P.TWO_PI_3;
 const SEED = { blue: { x: -27.3934, y: -36.4088, rot: 1.2052 }, red: { x: -11.7593, y: -23.2838, rot: 2.9442 } };
@@ -115,10 +116,11 @@ function redPath(r0, pivotIdx, dir) {
 function run2(bp, bd, a0, a1, deg, opts = {}) {
   setDegree(deg);
   const push = opts.push || {};
+  if (opts.maxOps) push.maxOps = opts.maxOps;       // the work budget travels with the push options to the solver
   const t0 = Date.now();
   const am = 0.5 * a0 + 0.5 * a1, ar = iv.up(Math.max(a1 - am, am - a0));
   if (!(am - ar <= a0 && am + ar >= a1)) throw new Error('alpha map does not cover the interval');
-  const info = { dbg: !!(opts.dbgFrom && 0), pushes: 0, relaxed: 0, hulls: 0, passes: 0, maxCand: 0, folds: 0, firstContact: null, maxBranches: 1 };
+  const info = { ops0: opCount(), dbg: !!(opts.dbgFrom && 0), pushes: 0, relaxed: 0, hulls: 0, passes: 0, maxCand: 0, folds: 0, firstContact: null, maxBranches: 1 };
   const all = { marginLo: Infinity, marginHi: -Infinity, hubMoveLo: Infinity, foot: -1, regimes: 0, redBranches: 0, aPushes: 0 };
   const trace = { items: [] };
 
