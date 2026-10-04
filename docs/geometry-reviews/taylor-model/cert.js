@@ -4,7 +4,7 @@
 const iv = require('./iv.js');
 const tmmod = require('./tm.js');
 const { TM, setDegree } = tmmod;
-const P = require('./push-tm.js');
+const P = require('./push-tm-v1.js');
 
 function run(a0, a1, deg, opts = {}) {
   setDegree(deg);

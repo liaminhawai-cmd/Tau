@@ -2,7 +2,7 @@
 // Taylor-model screen finds no possible leg-leg, hub-leg or hub-hub contact with red at its seed pose.
 //   node freemotion.js <p0deg> <p1deg>
 'use strict';
-const iv = require('./iv.js'); const { TM, setDegree } = require('./tm.js'); const P = require('./push-tm.js');
+const iv = require('./iv.js'); const { TM, setDegree } = require('./tm.js'); const P = require('./push-tm-v1.js');
 setDegree(6);
 const [p0, p1] = process.argv.slice(2).map(Number);
 const red = P.redGeometry(P.redPose({ x: -11.7593, y: -23.2838, rot: 2.9442 }, 0, -1, 0, [0, 0]));

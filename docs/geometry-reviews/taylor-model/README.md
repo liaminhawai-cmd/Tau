@@ -159,6 +159,34 @@ smallest margin of 2.18u. The proof so far covers arm (1,−) only. On the other
 pushes red (arm (0,+) only after 43.83°), so red starts its reply from a pose that depends on
 blue's stop angle; the cover above assumes red starts from the seed pose.
 
+## Proving the pushed arms: in progress
+
+No pushed-arm result is claimed yet. The code for it is here and checked, and the covers are running.
+
+- `cert2.js` generalises the certificate to any blue arm in two phases. In phase A blue plays the
+  engine planner's call schedule (full 3° calls of 8 substeps, then one partial call of equal
+  substeps) and red is the free body; in phase B red swings its (0,−) reply from the pushed pose.
+  `push-tm.js` now takes the pusher's pose as a Taylor model too, models the engine's hub-hub push
+  and carries the horizontal-fraction floor and separation cap. `cover2.js` and `modes2.js` cut an
+  arm into cells; `summary2.js` and `audit2.js` check the tiling and re-run every cell.
+- Red's start-pose uncertainty after phase A is kept as three shared noise symbols and `fold` leaves
+  them alone. Collapsing it into an interval remainder instead inflated the enclosure about 270
+  times over a 123-substep swing (1e-4 against a true spread of 4e-7), because every substep then
+  treats the same uncertainty as a fresh independent error.
+- Checks: on arm (1,−) cell [8°, 8.01°] it reproduces the earlier margin to 1e-11. `contain2.js`
+  replays the engine substep by substep and finds 0 of 1,860 comparisons outside the model on a
+  pushed-arm cell; the same replay caught my own mistake in handing the turn to red.
+- The cost is the obstacle. `sig-engine.js` logs which contact pair the engine picks at each substep:
+  arm (2,+) changes its contact program about 160 times per degree, against about 3 on arm (1,−).
+  Cells shrink to about 0.003°, so a 0.1° slice takes 22 cells and 45 s, and the long arm (0,−)
+  would need on the order of 10,000 cells. A gap that straddles zero when contact begins or
+  switches pair is the weak spot: the model's relaxation of it widens the enclosure about 3 times
+  per pass of the solver, and the alternatives I tried (carrying both outcomes, hulling them) were
+  not better. A rigorous bound on the solver's remaining passes would remove the growth.
+- The arm (1,−) results above were produced with the earlier model, kept as `push-tm-v1.js`, which
+  `cert.js`, `cover.js`, `audit.js`, `contain.js` and `freemotion.js` still use so those results
+  reproduce exactly. They will be regenerated with `cert2.js` once the other arms are done.
+
 ## Not shown
 
 Proofs for blue's other five arms (sampled above, not covered), any bound relating the

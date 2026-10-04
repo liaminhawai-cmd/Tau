@@ -1,3 +1,6 @@
+// FROZEN: the model version the arm (1,-) results in results/ were produced with (commit 978a1a4).
+// cert.js, cover.js, audit.js, contain.js and freemotion.js use this file so those results keep
+// reproducing exactly. New work uses push-tm.js (Taylor-model pushers, hub-hub pushes) via cert2.js.
 // The engine's push (resolvePush in index.html) run on Taylor models.
 //
 // Model: the engine's program in exact real arithmetic, with its numeric constants taken as their
@@ -64,17 +67,6 @@ function redGeometry(P) {
 }
 
 // ---- float helpers (for candidate screening only; every screen is made rigorous by a margin) ----
-// legs and hub of a pusher whose pose {x, y, rot} is made of Taylor models
-function tmGeometry(pose) {
-  const legs = [];
-  for (let i = 0; i < 3; i++) {
-    const a = pose.rot.addI(iv.mul([i, i], TWO_PI_3)), ca = a.cos(), sa = a.sin();
-    const pts = [];
-    for (let k = 0; k <= legSegs; k++) pts.push({ x: pose.x.add(ca.scaleI(ARC_S[k])), y: pose.y.add(sa.scaleI(ARC_S[k])), h: ARC_H[k] });
-    legs.push(pts);
-  }
-  return { hub: { x: pose.x, y: pose.y, h: [hubHeight, hubHeight] }, legs };
-}
 function segDist3f(p1, q1, p2, q2) {
   const d1 = { x: q1.x - p1.x, y: q1.y - p1.y, h: q1.h - p1.h }, d2 = { x: q2.x - p2.x, y: q2.y - p2.y, h: q2.h - p2.h };
   const r = { x: p1.x - p2.x, y: p1.y - p2.y, h: p1.h - p2.h };
@@ -147,49 +139,46 @@ function blueGeometry(st, needArcs) {
   };
   return g;
 }
-// the pusher's points may carry x and y as Taylor models (a pose that depends on the cell's angle)
-// or as plain intervals; every consumer goes through asTM or the cached ranges
-const asTM = v => (v instanceof TM ? v : TM.constI(v));
-const rangeOf = p => ({ x: p._xr || (p._xr = (p.x instanceof TM ? p.x.rangeCrude() : p.x)), y: p._yr || (p._yr = (p.y instanceof TM ? p.y.rangeCrude() : p.y)) });
-function redPointF(p) { const r = rangeOf(p); return { x: midf(r.x), y: midf(r.y), h: midf(p.h), r: up(Math.hypot(iv.rad(r.x), iv.rad(r.y)) + iv.rad(p.h)) }; }
+function redPointF(p) { return { x: midf(p.x), y: midf(p.y), h: midf(p.h), r: up(Math.hypot(iv.rad(p.x), iv.rad(p.y)) + iv.rad(p.h)) }; }
 
 // ---- closest points between a red segment (constant) and a blue segment (models) ----
 // Returns every branch of segClosest3 that is possible somewhere on the model.
 function segClosestTM(p1, q1, j, v, G, stats) {
   const leg = G.legModels(j);
-  const P1x = asTM(p1.x), P1y = asTM(p1.y), Q1x = asTM(q1.x), Q1y = asTM(q1.y);
-  const d1 = { x: Q1x.sub(P1x), y: Q1y.sub(P1y), h: iv.sub(q1.h, p1.h) };
+  const C = a => TM.constI(a);
+  const d1 = { x: iv.sub(q1.x, p1.x), y: iv.sub(q1.y, p1.y), h: iv.sub(q1.h, p1.h) };
   const dS = iv.sub(ARC_S[v + 1], ARC_S[v]), dH = iv.sub(ARC_H[v + 1], ARC_H[v]);
   const d2 = { x: leg.ca.scaleI(dS), y: leg.sa.scaleI(dS), h: dH };
   const p2 = leg.pts[v];
-  const r = { x: P1x.sub(p2.x), y: P1y.sub(p2.y), h: iv.sub(p1.h, p2.h) };
-  const a = d1.x.sqr().add(d1.y.sqr()).addI(iv.sqr(d1.h));
+  const r = { x: p2.x.neg().addI(p1.x), y: p2.y.neg().addI(p1.y), h: iv.sub(p1.h, p2.h) };
+  const a = iv.add(iv.add(iv.sqr(d1.x), iv.sqr(d1.y)), iv.sqr(d1.h));
   const e = iv.add(iv.sqr(dS), iv.sqr(dH));               // |d2|^2: cos^2 + sin^2 = 1 exactly
-  const b = d2.x.mul(d1.x).add(d2.y.mul(d1.y)).addI(iv.mul(d1.h, dH));
+  const b = d2.x.scaleI(d1.x).add(d2.y.scaleI(d1.y)).addI(iv.mul(d1.h, dH));
   const f = d2.x.mul(r.x).add(d2.y.mul(r.y)).addI(iv.mul(dH, r.h));
-  const c = r.x.mul(d1.x).add(r.y.mul(d1.y)).addI(iv.mul(d1.h, r.h));
-  const denom = a.scaleI(e).sub(b.sqr());
+  const c = r.x.scaleI(d1.x).add(r.y.scaleI(d1.y)).addI(iv.mul(d1.h, r.h));
+  const denom = b.sqr().neg().addI(iv.mul(a, e));
   const dr = denom.range();
   if (!(dr[0] > 1e-12)) throw new Error('near-parallel segments: denom range ' + dr);
   const sraw = b.mul(f).sub(c.scaleI(e)).div(denom);
   const out = [];
-  const opts = (m) => {                // clamp(m, 0, 1) options: each [model-or-const, label]
+  const opts = (m, lo, hi) => {        // clamp(m, 0, 1) options: each [model-or-const, label]
     const R = m.range(), o = [];
     if (R[0] < 0) o.push([TM.const(0), 'lo']);
     if (R[1] >= 0 && R[0] <= 1) o.push([m, 'in']);
     if (R[1] > 1) o.push([TM.const(1), 'hi']);
+    void lo; void hi;
     return o;
   };
-  const invE = iv.div([1, 1], e), invA = a.inv();
+  const invE = iv.div([1, 1], e), invA = iv.div([1, 1], a);
   for (const [s0, l0] of opts(sraw)) {
     const traw = b.mul(s0).add(f).scaleI(invE);
     const TR = traw.range();
     const cases = [];
-    if (TR[0] < 0) for (const [s1, l1] of opts(c.neg().mul(invA))) cases.push([s1, TM.const(0), `s${l0}/t0/s${l1}`]);
-    if (TR[1] > 1) for (const [s1, l1] of opts(b.sub(c).mul(invA))) cases.push([s1, TM.const(1), `s${l0}/t1/s${l1}`]);
+    if (TR[0] < 0) for (const [s1, l1] of opts(c.neg().scaleI(invA))) cases.push([s1, TM.const(0), `s${l0}/t0/s${l1}`]);
+    if (TR[1] > 1) for (const [s1, l1] of opts(b.sub(c).scaleI(invA))) cases.push([s1, TM.const(1), `s${l0}/t1/s${l1}`]);
     if (TR[1] >= 0 && TR[0] <= 1) cases.push([s0, traw, `s${l0}/tin`]);
     for (const [s, t, label] of cases) {
-      const pa = { x: s.mul(d1.x).add(P1x), y: s.mul(d1.y).add(P1y), h: s.scaleI(d1.h).addI(p1.h) };
+      const pa = { x: s.scaleI(d1.x).addI(p1.x), y: s.scaleI(d1.y).addI(p1.y), h: s.scaleI(d1.h).addI(p1.h) };
       const pb = { x: p2.x.add(d2.x.mul(t)), y: p2.y.add(d2.y.mul(t)), h: t.scaleI(dH).addI(p2.h) };
       const dx = pb.x.sub(pa.x), dy = pb.y.sub(pa.y), dh = pb.h.sub(pa.h);
       const hd2 = dx.sqr().add(dy.sqr());
@@ -202,15 +191,14 @@ function segClosestTM(p1, q1, j, v, G, stats) {
   return out;
 }
 
-// pusher hub (a point) vs blue leg j segment k: closest point on the segment, every clamp branch
+// red hub (constant point) vs blue leg j segment k: closest point on the segment, every clamp branch
 function hubLegBranches(p, j, k, G) {
   const leg = G.legModels(j);
   const A = leg.pts[k];
-  const Px = asTM(p.x), Py = asTM(p.y);
   const dS = iv.sub(ARC_S[k + 1], ARC_S[k]), dH = iv.sub(ARC_H[k + 1], ARC_H[k]);
   const dx = leg.ca.scaleI(dS), dy = leg.sa.scaleI(dS);
   const len2 = iv.add(iv.sqr(dS), iv.sqr(dH));
-  const wx = Px.sub(A.x), wy = Py.sub(A.y), wh = iv.sub(p.h, A.h);
+  const wx = A.x.neg().addI(p.x), wy = A.y.neg().addI(p.y), wh = iv.sub(p.h, A.h);
   const traw = wx.mul(dx).add(wy.mul(dy)).addI(iv.mul(wh, dH)).scaleI(iv.div([1, 1], len2));
   const R = traw.range(), ts = [];
   if (R[0] < 0) ts.push(TM.const(0));
@@ -218,27 +206,26 @@ function hubLegBranches(p, j, k, G) {
   if (R[1] >= 0 && R[0] <= 1) ts.push(traw);
   return ts.map(t => {
     const pb = { x: A.x.add(dx.mul(t)), y: A.y.add(dy.mul(t)), h: t.scaleI(dH).addI(A.h) };
-    // push3d(aHub, c.pt, ...): pa = pusher hub, pb = the point on the pushed leg
-    const ddx = pb.x.sub(Px), ddy = pb.y.sub(Py), ddh = pb.h.addI(iv.neg(p.h));
+    // push3d(aHub, c.pt, ...): pa = red hub, pb = the point on blue's leg
+    const ddx = pb.x.addI(iv.neg(p.x)), ddy = pb.y.addI(iv.neg(p.y)), ddh = pb.h.addI(iv.neg(p.h));
     const hd2 = ddx.sqr().add(ddy.sqr());
     return { pb, dx: ddx, dy: ddy, dh: ddh, hd2, dist: hd2.add(ddh.sqr()).sqrt() };
   });
 }
-// pushed hub (models, snapshot) vs pusher leg segment a->b
+// blue hub (models, snapshot) vs red leg segment a->b (constants)
 function blueHubBranches(a, b, G) {
   const hx = G.st.x, hy = G.st.y, hh = [hubHeight, hubHeight];
-  const Ax = asTM(a.x), Ay = asTM(a.y), Bx = asTM(b.x), By = asTM(b.y);
-  const d = { x: Bx.sub(Ax), y: By.sub(Ay), h: iv.sub(b.h, a.h) };
-  const len2 = d.x.sqr().add(d.y.sqr()).addI(iv.sqr(d.h));
-  const wx = hx.sub(Ax), wy = hy.sub(Ay), wh = iv.sub(hh, a.h);
-  const traw = wx.mul(d.x).add(wy.mul(d.y)).addI(iv.mul(wh, d.h)).mul(len2.inv());
+  const d = { x: iv.sub(b.x, a.x), y: iv.sub(b.y, a.y), h: iv.sub(b.h, a.h) };
+  const len2 = iv.add(iv.add(iv.sqr(d.x), iv.sqr(d.y)), iv.sqr(d.h));
+  const wx = hx.addI(iv.neg(a.x)), wy = hy.addI(iv.neg(a.y)), wh = iv.sub(hh, a.h);
+  const traw = wx.scaleI(d.x).add(wy.scaleI(d.y)).addI(iv.mul(wh, d.h)).scaleI(iv.div([1, 1], len2));
   const R = traw.range(), ts = [];
   if (R[0] < 0) ts.push(TM.const(0));
   if (R[1] > 1) ts.push(TM.const(1));
   if (R[1] >= 0 && R[0] <= 1) ts.push(traw);
   return ts.map(t => {
-    // push3d(c.pt, oHub, ...): pa = the point on the pusher's leg, pb = the pushed (snapshot) hub
-    const qx = t.mul(d.x).add(Ax), qy = t.mul(d.y).add(Ay), qh = t.scaleI(d.h).addI(a.h);
+    // push3d(c.pt, oHub, ...): pa = the point on red's leg, pb = blue's (snapshot) hub
+    const qx = t.scaleI(d.x).addI(a.x), qy = t.scaleI(d.y).addI(a.y), qh = t.scaleI(d.h).addI(a.h);
     const ddx = hx.sub(qx), ddy = hy.sub(qy), ddh = qh.neg().addI(hh);
     const hd2 = ddx.sqr().add(ddy.sqr());
     return { pb: { x: hx, y: hy }, dx: ddx, dy: ddy, dh: ddh, hd2, dist: hd2.add(ddh.sqr()).sqrt() };
@@ -301,7 +288,7 @@ function pushAlternative(st, br, info, thr = [minD, minD], deepRule = true, opts
     }
     return capped;
   };
-  if (GR[0] < 0 && (opts.branchStraddle || opts.hullStraddle) && Math.min(-GR[0], GR[1]) > (opts.tolRelax || 1e-9)) {
+  if (GR[0] < 0 && opts.branch && opts.branchStraddle && Math.min(-GR[0], GR[1]) > (opts.tolRelax || 1e-9)) {
     // exact outcomes: this pair pushes (raw gap) or it does not touch
     info.pushes++; info.straddleSplits = (info.straddleSplits || 0) + 1;
     return [...sepsOf(gap).map(s => applyPush(st, br.pb.x, br.pb.y, nx, ny, s)), null];
@@ -319,7 +306,6 @@ function pushAlternative(st, br, info, thr = [minD, minD], deepRule = true, opts
   }
   info.pushes++;
   const seps = sepsOf(gp);
-  if (info.dbg && seps.length > 1) console.error(`      pushAlternative: ${seps.length} separations; HF [${HF}] sep ranges ${seps.map(q => q.range().map(v => v.toExponential(3)))} gap [${GR}]`);
   if (seps.length === 1) return applyPush(st, br.pb.x, br.pb.y, nx, ny, seps[0]);
   return seps.map(s => applyPush(st, br.pb.x, br.pb.y, nx, ny, s));
 }
@@ -366,8 +352,7 @@ function passSlots(G, red, info) {
       if (keep) slots.push({ keep, thr: [minD, minD], deep: true, kind: 'leg' });
     }
   }
-  const hr = rangeOf(red.hub);
-  const rhub = { x: midf(hr.x), y: midf(hr.y), h: hubHeight, r: Math.hypot(iv.rad(hr.x), iv.rad(hr.y)) };
+  const rhub = { x: midf(red.hub.x), y: midf(red.hub.y), h: hubHeight, r: Math.hypot(iv.rad(red.hub.x), iv.rad(red.hub.y)) };
   for (let j = 0; j < 3; j++) {
     const cand = []; let Umin = Infinity;
     for (let k = 0; k < legSegs; k++) {
@@ -397,13 +382,6 @@ function passSlots(G, red, info) {
     const keep = screenCandidates(C, hubLegD, info);
     if (keep) slots.push({ keep, thr: hubLegD, deep: false, kind: 'bluehub' });
   }
-  // hub against hub: a slot unless the hubs are clear by a wide margin (earlier pushes in the pass
-  // can still move the pushed hub, so the screen is generous)
-  {
-    const gx = G.hubBox.x, gy = G.hubBox.y;
-    const dd = Math.hypot(gx.mid - midf(hr.x), gy.mid - midf(hr.y)) - Math.hypot(gx.rad, gy.rad) - Math.hypot(iv.rad(hr.x), iv.rad(hr.y)) - FLOAT_SLACK;
-    if (dd < hubHub[1] + 9) slots.push({ kind: 'hubhub', hub: red.hub, keep: [] });
-  }
   return slots;
 }
 function screenCandidates(C, thr, info) {
@@ -414,47 +392,6 @@ function screenCandidates(C, thr, info) {
   info.maxCand = Math.max(info.maxCand, keep.length);
   return keep;
 }
-// hub against hub, the engine's last contact of a pass: if the hubs are closer than 2 hubR the pushed
-// hub slides away along the line between them by the shortfall (capped at 0.8u), and does not turn.
-// It reads the pushed piece's LIVE position, so it is evaluated when the slot is applied.
-function hubHubAlt(st, hub, info, opts) {
-  const Hx = asTM(hub.x), Hy = asTM(hub.y);
-  const dx = st.x.sub(Hx), dy = st.y.sub(Hy);
-  const d2 = dx.sqr().add(dy.sqr());
-  const R2 = d2.range();
-  if (R2[0] >= iv.sqr(hubHub)[1]) return null;                      // hubs clear of each other everywhere
-  if (!(R2[0] > 1e-6)) throw new Error('hub-hub: hubs may coincide: d2 range ' + R2 + ' dx ' + dx.range() + ' dy ' + dy.range() + ' st.x ' + st.x.range() + ' H ' + Hx.range() + ',' + Hy.range());
-  const d = d2.sqrt();
-  const gap = d.neg().addI(hubHub);
-  const GR = gap.range();
-  if (GR[1] <= 0) return null;
-  const inv = d.inv(), nx = dx.mul(inv), ny = dy.mul(inv);
-  const capped = g => {                                              // min(g, 0.8)
-    const SR = g.range();
-    if (SR[1] <= 0.8) return [g];
-    if (SR[0] >= 0.8) { info.capUsed = (info.capUsed || 0) + 1; return [TM.const(0.8)]; }
-    info.capUsed = (info.capUsed || 0) + 1; return [g, TM.const(0.8)];
-  };
-  const move = sep => ({ x: st.x.add(sep.mul(nx)), y: st.y.add(sep.mul(ny)), rot: st.rot });
-  info.hubHubPushes = (info.hubHubPushes || 0) + 1;
-  if (GR[0] < 0 && (opts.branchStraddle || opts.hullStraddle) && Math.min(-GR[0], GR[1]) > (opts.tolRelax || 1e-9)) {
-    info.pushes++; info.straddleSplits = (info.straddleSplits || 0) + 1;
-    return [...capped(gap).map(move), null];
-  }
-  let gp = gap;
-  if (GR[0] < 0) {
-    const l = GR[0], u = GR[1], a = u / (u - l);
-    const W = up(Math.max(-a * l, (1 - a) * u) * (1 + 1e-12));
-    const e = newSym();
-    gp = gap.scale(a).addC(0.5 * W).widen(up(0.5 * W * 4 * 1.2e-16));
-    const pp = new Float64Array(getN() + 1); pp[0] = 0.5 * W; gp.s.set(e, pp);
-    gp.widen(up(Math.abs(0.5 * W) * 2.3e-16));
-    info.relaxed++;
-  }
-  info.pushes++;
-  const seps = capped(gp);
-  return seps.length === 1 ? move(seps[0]) : seps.map(move);
-}
 // push every outcome of every slot onto cur, slot by slot in the engine's order; returns
 // [{ cur, pushed }], merged after each slot so the branch count stays bounded
 function applySlots(cur, slots, info, opts) {
@@ -463,16 +400,10 @@ function applySlots(cur, slots, info, opts) {
     const next = [];
     for (const st of states) {
       const alts = []; let anyPush = false;
-      const take = r => {
+      for (const c of slot.keep) for (const b of c.br) {
+        const r = pushAlternative(st.cur, b, info, slot.thr, slot.deep, opts);
         if (Array.isArray(r)) { for (const s of r) { if (s) { alts.push(s); anyPush = true; } else alts.push(st.cur); } }
         else if (r) { alts.push(r); anyPush = true; } else alts.push(st.cur);
-      };
-      if (slot.kind === 'hubhub') take(hubHubAlt(st.cur, slot.hub, info, opts));
-      else for (const c of slot.keep) for (const b of c.br) take(pushAlternative(st.cur, b, info, slot.thr, slot.deep, opts));
-      if (info.dbg) {
-        const wd = m => { const r = m.range(); return (r[1] - r[0]).toExponential(1); };
-        console.error(`      slot ${slot.kind} candidates ${slot.keep.map(c => `${c.u ?? c.k}-${c.v ?? ''}x${c.br.length}`).join(',')} thr ${slot.thr}`);
-        for (const a of alts) console.error(`      after slot ${slot.kind}: ${alts.length} alts; x width ${wd(a.x)} symMag ${a.x.symMag().toExponential(1)} rem ${a.x.remMag().toExponential(1)} nsym ${a.x.s.size}`);
       }
       if (slot.kind === 'redhub' && anyPush) info.hubPushes = (info.hubPushes || 0) + 1;
       const uniq = []; for (const s of alts) if (!uniq.includes(s)) uniq.push(s);
@@ -509,26 +440,19 @@ function mergeTagged(list, opts, info) {
   return L;
 }
 function hubHubCheck(cur, red) {
-  const cx = boxOf(cur.x), cy = boxOf(cur.y), hr = rangeOf(red.hub);
-  const hh = Math.hypot(cx.mid - midf(hr.x), cy.mid - midf(hr.y)) - Math.hypot(cx.rad, cy.rad) - Math.hypot(iv.rad(hr.x), iv.rad(hr.y)) - FLOAT_SLACK;
+  const cx = boxOf(cur.x), cy = boxOf(cur.y);
+  const hh = Math.hypot(cx.mid - midf(red.hub.x), cy.mid - midf(red.hub.y)) - Math.hypot(cx.rad, cy.rad) - Math.hypot(iv.rad(red.hub.x), iv.rad(red.hub.y)) - FLOAT_SLACK;
   if (!(hh > hubHub[1])) throw new Error('hub-hub contact not excluded: ' + hh);
 }
 function runPasses(state, red, info, pass, opts) {
   if (pass >= 10) return [state];
   const G = blueGeometry(state);
   const slots = passSlots(G, red, info);
-  if (info.dbg) {   // DBG=1: one line per pass and per contact candidate
-    const wd = m => { const r = m.range(); return (r[1] - r[0]).toExponential(1); };
-    console.error(`  pass ${pass}: x width ${wd(state.x)} y ${wd(state.y)} rot ${wd(state.rot)} symMag ${state.x.symMag().toExponential(1)}`);
-    for (const sl of slots) {
-      if (sl.kind === 'hubhub') { console.error('    slot hubhub'); continue; }
-      for (const c of sl.keep) for (const b of c.br) console.error(`    slot ${sl.kind} ${c.u ?? c.k}-${c.v ?? ''} ${b.label || ''} gap [${b.dist.neg().addI(sl.thr).range().map(v => v.toExponential(2))}] hd2 [${b.hd2.range().map(v => v.toFixed(3))}]`);
-    }
-  }
-  if (!slots.length) return [state];
+  if (!slots.length) { hubHubCheck(state, red); return [state]; }
   const res = applySlots(state, slots, info, opts);
   const out = [];
   for (const r of res) {
+    hubHubCheck(r.cur, red);
     if (!r.pushed) out.push(r.cur);       // a pass without contact leaves this branch unchanged for good
     else { info.passes++; out.push(...runPasses(r.cur, red, info, pass + 1, opts)); }
   }
@@ -590,15 +514,12 @@ function gramSchmidt(cols) {   // orthonormal basis, dominant columns first, com
   }
   return Q;   // rows are basis vectors
 }
-// protect: ids of noise symbols that must keep their identity (they also appear in the pusher's pose,
-// so re-basing them would lose the relation between the pushed piece and the pusher)
-function fold(st, protect) {
+function fold(st) {
   const N = getN();
   const keys = ['x', 'y', 'rot'];
   // weight rotation by the foot radius so the basis treats one unit of foot motion alike
   const W = [1, 1, footR];
   const S = keys.map(k => st[k].clone());
-  const kept = S.map(m => { const o = new Map(); if (protect) for (const id of protect) if (m.s.has(id)) { o.set(id, m.s.get(id)); m.s.delete(id); } return o; });
   // centre the interval parts
   const rho = [];
   for (let i = 0; i < 3; i++) {
@@ -653,10 +574,9 @@ function fold(st, protect) {
     }
     // B[i][k] * v[k] in reals equals val within half an ulp; enlarge v by that amount via the remainder
     m.widen(up(err * 2.3e-16));
-    for (const [id, pp] of kept[i]) m.s.set(id, pp);
     out[keys[i]] = m;
   }
   return out;
 }
 
-module.exports = { passSlots, hubHubCheck, blueGeometry, segClosestTM, redPose, redGeometry, tmGeometry, resolvePushTM, fold, hullStates, footR, minD, TWO_PI_3, ARC_S, ARC_H, legSegs, Ii };
+module.exports = { passSlots, hubHubCheck, blueGeometry, segClosestTM, redPose, redGeometry, resolvePushTM, fold, hullStates, footR, minD, TWO_PI_3, ARC_S, ARC_H, legSegs, Ii };
