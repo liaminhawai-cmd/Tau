@@ -70,8 +70,8 @@ only in chat history and commit messages.
   depth (`d1`..`d4`) and options. In the league, every promotion forms one: the new champion
   (chair), a medal net (silver, else bronze, else gold) and the strongest live ladder rung, written
   as an ordinary model file. It starts at a D1 seat, earns deeper faces through the normal frontier
-  (a D*N* face has every member searching at depth *N*), is culled like any face, and is charged
-  for every member's search thread, not one wall clock.
+  (a D*N* face has every member searching at depth *N*), is culled like any face, and is priced
+  by measured wall clock per game like any face -- its members search in parallel threads.
 - **`@posw` / the `d2w` variant** — position-aware member weighting inside a committee: a net
   member's vote counts 1.35× and a ladder member's 0.75× while the **mover's hub sits within 10u
   of the board centre**, ramping linearly back to 1.0 at 21.5u and flat outside it. The one axis

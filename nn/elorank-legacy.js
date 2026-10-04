@@ -53,7 +53,7 @@ const uniq=[],seen=new Set();for(const p of players)if(!seen.has(p.id)){seen.add
 
 const store=read(outPath,{ratingSemanticsVersion:ratingState.VERSION,semantics:ratingState.SEMANTICS,seedWeightMatches:1,seedElo:{},results:{},recent:[]});store.ratingSemanticsVersion=ratingState.VERSION;store.semantics=ratingState.SEMANTICS;store.seedWeightMatches=Math.max(.01,+store.seedWeightMatches||1);store.seedElo||={};store.results||={};store.recent||=[];
 const saveStore=()=>atomic(outPath,JSON.stringify(store,null,1)),canonical=(a,b)=>a<b?`${a}|${b}`:`${b}|${a}`;
-store.threads||={};for(const p of players)if(p.kind==='committee')store.threads[p.id]=threadsOf(p);
+delete store.threads;
 function matchN(r){return(+r.w||0)+(+r.l||0)+(+r.d||0);}
 function physicalN(r){return Number.isFinite(+r.physical)?+r.physical:PHYSICAL_GAMES_PER_MATCH*matchN(r);}
 function totals(){const g={},pair={};for(const[k,r]of Object.entries(store.results)){const z=k.indexOf('|');if(z<1)continue;const a=k.slice(0,z),b=k.slice(z+1),n=physicalN(r);g[a]=(g[a]||0)+n;g[b]=(g[b]||0)+n;pair[canonical(a,b)]=(pair[canonical(a,b)]||0)+n;}return{g,pair};}
@@ -153,12 +153,11 @@ function costMs(p){const m=store.cost&&+store.cost[p.id];if(Number.isFinite(m)&&
 // deep faces still cost more seats and more schedule than shallow ones -- just not the full one.
 // TAU_RENT_POW overrides it without an edit.
 const RENT_POW=(()=>{const v=+process.env.TAU_RENT_POW;return Number.isFinite(v)&&v>0&&v<=1?v:0.5;})();
-// A committee's members search in parallel threads, so its wall clock (costMs, which timeouts and
-// cost attribution need) understates its compute by its member count. Rent charges every thread:
-// the compute budget sees a three-member committee as three searches, not one.
-function threadsOf(p){return p.kind==='committee'?Math.max(1,(p.members||[]).length):1;}
+// Wall clock is the budget for every brain, committees included: a player across the board feels
+// how long a move takes, not how many cores it took. A committee's members search in parallel
+// threads, so it pays for being slow, not for being wide.
 function rentMs(p){const u=Number.isFinite(+store.costUnitMs)&&+store.costUnitMs>0?+store.costUnitMs:1500;
-  return u*Math.pow(Math.max(1e-9,costMs(p)*threadsOf(p))/u,RENT_POW);}
+  return u*Math.pow(Math.max(1e-9,costMs(p))/u,RENT_POW);}
 function noteCost(a,b,elapsedMs){
   const per=Math.max(1,elapsedMs)/PHYSICAL_GAMES_PER_MATCH;store.cost||={};
   const ca=costMs(a),cb=costMs(b),shareA=ca/Math.max(1e-9,ca+cb);

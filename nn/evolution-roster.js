@@ -324,10 +324,9 @@ function faceRecords(dir){
 // estimate with no margin, which a re-fit later moves. An unbeaten record cannot be argued with.)
 const undefeated=r=>!!r&&r.l===0&&r.d===0&&r.w>0;
 
-// Measured cost is wall clock per game; a committee runs one search thread per member, so its cost
-// is scaled by the member count elorank-legacy records (store.threads) -- the cull and the frontier
-// see a three-member committee as three searches, exactly as the schedule's rent does.
-function measuredCosts(dir){try{const s=JSON.parse(fs.readFileSync(path.join(dir,'elo-results.json'),'utf8')),th=s.threads||{},cost={};for(const[id,ms]of Object.entries(s.cost||{}))cost[id]=+ms*(+th[id]>0?+th[id]:1);return{cost,unit:+s.costUnitMs>0?+s.costUnitMs:1500};}catch(_){return{cost:{},unit:1500};}}
+// Measured cost is wall clock per game for every brain, a committee's parallel members included:
+// what a game costs is how long it takes.
+function measuredCosts(dir){try{const s=JSON.parse(fs.readFileSync(path.join(dir,'elo-results.json'),'utf8'));return{cost:s.cost||{},unit:+s.costUnitMs>0?+s.costUnitMs:1500};}catch(_){return{cost:{},unit:1500};}}
 // The cull draws a depth class in proportion to the rent that class is paying, and rent is now
 // charged BELOW cost for deep faces -- the same discount elorank-legacy.js applies to the schedule,
 // for the same reason. At full price a D4 face pays 27 units against a D1 face's 1, so the cull

@@ -283,9 +283,9 @@ function makeBrain(eng, spec, opts) {
 // that is a different plain value net) and the strongest live ladder rung. It is written as a small
 // model file named for its members, and from there evolution-roster treats it like any other model:
 // a D1 seat on arrival, deeper faces (every member searching at that depth) when the frontier
-// promotes it, and the elastic cull when it falls behind. Nothing makes it immortal. Its compute is
-// charged in full: each member searches in its own thread, so elorank-legacy and the cull price a
-// committee face for every member's time rather than the wall clock of one search. Committees of
+// promotes it, and the elastic cull when it falls behind. Nothing makes it immortal. It is priced
+// like every face, by measured wall clock per game: its members search in parallel threads, and a
+// player across the board feels how slow a move is, not how many cores it used. Committees of
 // earlier champions stay until the cull retires them, so generations sit side by side.
 //
 // This replaced a sweep that formed committees from the current field, held them immortal until
@@ -332,8 +332,7 @@ function formForChampion(dir, champPath, { log = console.log } = {}) {
   atomicWrite(file, JSON.stringify({ committee: true, id: name + '@D1', spec: 'committee:' + members.join(';'),
                                      members, champion: champName, medal: { [medal.which]: medal.name }, rung,
                                      formedAt: new Date().toISOString() }, null, 1));
-  log(`[committee] formed ${name}: champion ${champName}, ${medal.which} ${medal.name}, ${rung}; an ordinary face from D1 up, ` +
-      `charged for all ${members.length} members' compute`);
+  log(`[committee] formed ${name}: champion ${champName}, ${medal.which} ${medal.name}, ${rung}; an ordinary face from D1 up`);
   return file;
 }
 
