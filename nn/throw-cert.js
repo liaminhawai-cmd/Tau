@@ -119,6 +119,118 @@ const aabbOf = (c, M, U) => { const v = matVecIv(M, U); return { x: add([c.x, c.
 // ---- geometry: the engine's, verbatim from contact-law.js ----
 const arcPts = (p, i) => { const a = p.rot + i * 2 * Math.PI / 3, ca = Math.cos(a), sa = Math.sin(a), pts = []; for (let k = 0; k <= NSEG; k++) { const ph = (k / NSEG) * Math.PI / 2, s = Math.sin(ph) * R; pts.push({ x: p.x + ca * s, y: p.y + sa * s, h: Math.cos(ph) * H }); } return pts; };
 const chordsOf = p => feetOf(p).map(f => [{ x: p.x, y: p.y }, f]);
+// Exact closest-feature margins for two nonparallel 3D chord segments.
+// Positive mS0,mS1,mT0,mT1 means the unconstrained minimiser is strictly interior.
+// Zero is an exact feature wall: endpoint 0 or endpoint 1 becomes active.
+function featureMargins3(p1, q1, p2, q2) {
+  const u = [q1.x-p1.x, q1.y-p1.y, q1.h-p1.h];
+  const v = [q2.x-p2.x, q2.y-p2.y, q2.h-p2.h];
+  const r = [p1.x-p2.x, p1.y-p2.y, p1.h-p2.h];
+  const A = dot3(u,u), E = dot3(v,v), B = dot3(u,v), C = dot3(u,r), F = dot3(v,r);
+  const Delta = A*E-B*B;
+  if (!(Delta > 0)) return null;
+  const s0 = B*F-C*E, t0 = A*F-B*C;
+  return { Delta, s0, s1: Delta-s0, t0, t1: Delta-t0,
+    normalised: { s0:s0/Delta, s1:(Delta-s0)/Delta, t0:t0/Delta, t1:(Delta-t0)/Delta } };
+}
+
+/*
+ * Direct interval enclosure of the four exact chord-feature walls.
+ *
+ * For fixed attacker endpoints and a rigid victim endpoint box, each of
+ *   S0 = BF-CE, S1 = Delta-S0, T0 = AF-BC, T1 = Delta-T0
+ * is an interval polynomial in the endpoint coordinates. If every lower
+ * bound is strictly positive, the unconstrained closest point stays
+ * strictly inside both chords throughout the whole pose box.
+ *
+ * This is stronger than the centre-margin + dmax/L test because it encloses
+ * the wall functions themselves rather than inferring wall reach from a
+ * minimiser-drift estimate.
+ *
+ * The interval arithmetic is conservative in the real-arithmetic model.
+ * It does not solve the separate floating-point outward-rounding issue.
+ */
+const ivDot3 = (a, b) => add(add(mul(a.x, b.x), mul(a.y, b.y)), mul(a.h, b.h));
+const ivSubPoint = (a, b) => ({ x: sub(a.x,b.x), y: sub(a.y,b.y), h: sub(a.h,b.h) });
+
+function featureMargins3Interval(p1, q1, p2, q2) {
+  const u = ivSubPoint(q1, p1);
+  const v = ivSubPoint(q2, p2);
+  const r = ivSubPoint(p1, p2);
+  const A = ivDot3(u, u);
+  const E = ivDot3(v, v);
+  const B = ivDot3(u, v);
+  const C = ivDot3(u, r);
+  const F = ivDot3(v, r);
+  const Delta = sub(mul(A, E), mul(B, B));
+  const s0 = sub(mul(B, F), mul(C, E));
+  const t0 = sub(mul(A, F), mul(B, C));
+  return { Delta, s0, s1: sub(Delta, s0), t0, t1: sub(Delta, t0) };
+}
+
+
+// Isolate exact chord-feature walls by bisection in pose space.  A leaf is:
+//   interior    all four wall lower bounds > 0;
+//   endpoint    at least one wall upper bound <= 0 (interior minimiser impossible);
+//   uncertain   one or more wall intervals straddle zero.
+// The routine never labels an uncertain leaf as interior.  It is therefore a
+// sound refinement primitive; it is not itself a complete contact-regime proof.
+function isolateFeatureWalls(box, att, chord, opts) {
+  opts = opts || {};
+  const maxDepth = opts.maxDepth == null ? 10 : opts.maxDepth;
+  const minX = opts.minX == null ? 1e-5 : opts.minX;
+  const minY = opts.minY == null ? 1e-5 : opts.minY;
+  const minRot = opts.minRot == null ? 1e-7 : opts.minRot;
+  const leaves = [];
+  const visit = (bx, by, brot, depth) => {
+    const walls = [];
+    const A = arcPts(att, chord[0]);
+    const b = chord[1];
+    for (let k = chord[1]; k < chord[1] + 1; k++) {
+      const w = featureMargins3Interval(
+        A[chord[0]][k], A[chord[0]][k + 1],
+        vertexBoxOf({x:bx,y:by,rot:brot}, b, k),
+        vertexBoxOf({x:bx,y:by,rot:brot}, b, k + 1)
+      );
+      if (w) walls.push({ b:k, ...w });
+    }
+    const relevant = walls.filter(w => w.s0[1] > 0 && w.s1[1] > 0 && w.t0[1] > 0 && w.t1[1] > 0);
+    if (!relevant.length) {
+      leaves.push({box:{x:bx,y:by,rot:brot}, depth, kind:'endpoint', walls});
+      return;
+    }
+    const interior = relevant.every(w => w.s0[0] > 0 && w.s1[0] > 0 && w.t0[0] > 0 && w.t1[0] > 0);
+    if (interior) {
+      leaves.push({box:{x:bx,y:by,rot:brot}, depth, kind:'interior', walls});
+      return;
+    }
+    const wx=bx[1]-bx[0], wy=by[1]-by[0], wr=brot[1]-brot[0];
+    if (depth >= maxDepth || (wx <= minX && wy <= minY && wr <= minRot)) {
+      leaves.push({box:{x:bx,y:by,rot:brot}, depth, kind:'uncertain', walls});
+      return;
+    }
+    const scales=[wx/Math.max(minX,1e-30), wy/Math.max(minY,1e-30), wr/Math.max(minRot,1e-30)];
+    let d=scales.indexOf(Math.max(...scales));
+    if (wx === 0 && wy === 0 && wr === 0) {
+      leaves.push({box:{x:bx,y:by,rot:brot}, depth, kind:'uncertain', walls});
+      return;
+    }
+    const split = d===0 ? (bx[0]+bx[1])/2 : d===1 ? (by[0]+by[1])/2 : (brot[0]+brot[1])/2;
+    if (d===0) {
+      visit([bx[0],split],by,brot,depth+1);
+      visit([split,bx[1]],by,brot,depth+1);
+    } else if (d===1) {
+      visit(bx,[by[0],split],brot,depth+1);
+      visit(bx,[split,by[1]],brot,depth+1);
+    } else {
+      visit(bx,by,[brot[0],split],depth+1);
+      visit(bx,by,[split,brot[1]],depth+1);
+    }
+  };
+  visit(box.x, box.y, box.rot, 0);
+  return leaves;
+}
+
 function segClosest(a, b, c, d) {
   const d1 = { x: b.x - a.x, y: b.y - a.y }, d2 = { x: d.x - c.x, y: d.y - c.y }, r = { x: a.x - c.x, y: a.y - c.y };
   const A = d1.x * d1.x + d1.y * d1.y, E = d2.x * d2.x + d2.y * d2.y, F = d2.x * r.x + d2.y * r.y;
@@ -271,18 +383,20 @@ function footOnFixedSeg(pB, q0, q1) {
 // attacker's chord is fixed, so w = P_perp (p - A0) with P_perp = I - u u^T, and everything below is
 // the chain rule on that. Returns B = da/dq at the centre, and the same over the whole box so the
 // mean-value remainder (B_box - B_centre) dq can be bounded.
-function parkJacobian(att, q, pair, vk, box) {
+function parkJacobian(att, q, pair, vk, box, segWant) {
   const A = arcPts(att, pair[0]), V = arcPts(q, pair[1]);
   const p = V[vk];
-  // the attacker chord holding the perpendicular foot.
-  // The degenerate point segment goes FIRST -- see the note at the bottom of this file:
-  // segClosest3 solves for the SECOND segment's parameter, so passing the point second returns
-  // the first segment's start, not the perpendicular foot, and this loop then picks the nearest
-  // chord START. Over the studied park that selected chord 2 where the perpendicular foot is on
-  // chord 1, and a derivative interval for the wrong chord cannot justify the mean-value
-  // enclosure for the real contact direction (Brief 4 section 2.1).
-  let seg = null, bestd = Infinity;
-  for (let a = 0; a < NSEG; a++) { const c = segClosest3(p, p, A[a], A[a + 1]); if (c.dist < bestd) { bestd = c.dist; seg = a; } }
+  // Bind the Jacobian to the attacker's chord carried by the park regime. If two nearby attacker
+  // chords can see the same victim vertex, rediscovering the chord from the vertex alone is not a
+  // valid regime enclosure. The caller therefore supplies segWant = the regime's attacker chord.
+  const seg = Number.isInteger(segWant) ? segWant : null;
+  if (seg == null || seg < 0 || seg >= NSEG) return null;
+  // The interval vertex must project strictly into this SAME attacker segment for every pose in the
+  // box. This turns "the centre uses this chord" into the local feature assumption required by the
+  // mean-value Jacobian calculation; if the projection can leave the segment, refuse the linearised
+  // step and let the conservative interval propagation handle it.
+  const vbCheck = vertexBoxOf(box, pair[1], vk);
+  if (!footOnFixedSeg(vbCheck, A[seg], A[seg + 1])) return null;
   const e = [A[seg + 1].x - A[seg].x, A[seg + 1].y - A[seg].y, A[seg + 1].h - A[seg].h], eL = Math.hypot(...e), u = e.map(v => v / eL);
   const Pp = [0, 1, 2].map(i => [0, 1, 2].map(j => (i === j ? 1 : 0) - u[i] * u[j]));
   // ONE builder, evaluated in interval arithmetic throughout. Degenerate intervals give the centre's
@@ -458,6 +572,38 @@ function analyse(box, att, pairWant) {
     // interiority of the centre's own minimiser, in arclength, with the slack it needs
     const sA = sg.s * LA, sV = sg.t * LV;
     const atStartA = sA <= dmax, atEndA = LA - sA <= dmax, atStartV = sV <= dmax, atEndV = LV - sV <= dmax;
+    // Direct interval feature-wall ownership. The victim chord endpoints are material
+    // points, so vertexBoxOf() gives a genuine enclosure of every endpoint over the whole
+    // pose box. Enclose the four exact wall functions themselves; if all four lower bounds
+    // are positive, this chord pair remains interior/interior everywhere in the box.
+    //
+    // Keep the older dmax/L calculation as a diagnostic/localisation quantity, but do
+    // not use it as the ownership proof. A wall interval containing zero forces the
+    // endpoint/vertex regimes to own the boundary.
+    const fm = featureMargins3(A[P.i][sg.a], A[P.i][sg.a + 1], V[P.j][sg.b], V[P.j][sg.b + 1]);
+    if (!fm) return { ...out, refuse: 'degenerate feature geometry on candidate segments' };
+    const VA0 = vertexBoxOf(box, P.j, sg.b);
+    const VA1 = vertexBoxOf(box, P.j, sg.b + 1);
+    const fmi = featureMargins3Interval(
+      A[P.i][sg.a], A[P.i][sg.a + 1],
+      VA0, VA1
+    );
+    const wallReachable = {
+      s0: fmi.s0[0] <= 0,
+      s1: fmi.s1[0] <= 0,
+      t0: fmi.t0[0] <= 0,
+      t1: fmi.t1[0] <= 0
+    };
+    const interiorCertified = !Object.values(wallReachable).some(Boolean);
+    if (process.env.DBGWALL) {
+      console.log(
+        '      walls (' + sg.a + ',' + sg.b + ')' +
+        ' S0[' + fmi.s0[0].toExponential(3) + ',' + fmi.s0[1].toExponential(3) + ']' +
+        ' S1[' + fmi.s1[0].toExponential(3) + ',' + fmi.s1[1].toExponential(3) + ']' +
+        ' T0[' + fmi.t0[0].toExponential(3) + ',' + fmi.t0[1].toExponential(3) + ']' +
+        ' T1[' + fmi.t1[0].toExponential(3) + ',' + fmi.t1[1].toExponential(3) + ']'
+      );
+    }
 
     // IS THE INTERIOR/INTERIOR REGIME REACHABLE AT ALL? Its normal is the one perpendicular to both
     // chord tangents, which is a genuine contact only when some pose in the set has its minimiser in
@@ -577,7 +723,7 @@ function analyse(box, att, pairWant) {
     // ... and the interior entry itself, once. It used to be pushed twice, identically but for the
     // annotation; the hull is idempotent so the duplicate changed no bound, but it doubled this
     // pair's contribution to the regime and state counts that MAXSTATES caps.
-    if (!interiorImpossible) segPairs.push({ a: sg.a, b: sg.b, aBox, vBox, psiN, hf, fanA, fanV, rn, dmax, cth, atStartV, atEndV, why: `(${sg.a},${sg.b}) d ${sg.dist.toFixed(4)} cross ${(Math.acos(cth) / DEG).toFixed(1)}deg mu ${mu.toFixed(3)} dmax ${dmax.toFixed(3)} sA ${sA.toFixed(2)}/${LA.toFixed(2)} sV ${sV.toFixed(2)}/${LV.toFixed(2)} ends ${[atStartA, atEndA, atStartV, atEndV].map(v => (v ? 1 : 0)).join('')} n ${(psiN[0] / DEG).toFixed(2)}..${(psiN[1] / DEG).toFixed(2)}` });
+    if (!interiorImpossible && interiorCertified) segPairs.push({ a: sg.a, b: sg.b, aBox, vBox, psiN, hf, fanA, fanV, rn, dmax, cth, atStartV, atEndV, featureMargins: fm, wallReachable, why: `(${sg.a},${sg.b}) d ${sg.dist.toFixed(4)} cross ${(Math.acos(cth) / DEG).toFixed(1)}deg mu ${mu.toFixed(3)} dmax ${dmax.toFixed(3)} sA ${sA.toFixed(2)}/${LA.toFixed(2)} sV ${sV.toFixed(2)}/${LV.toFixed(2)} ends ${[atStartA, atEndA, atStartV, atEndV].map(v => (v ? 1 : 0)).join('')} n ${(psiN[0] / DEG).toFixed(2)}..${(psiN[1] / DEG).toFixed(2)}` });
   }
   // A PARK IS ONE REGIME, NOT TWO. While the closest point dwells on the vertex shared by victim
   // chords k-1 and k, both chord pairs report their minimiser AT that vertex: the same physical
@@ -785,9 +931,14 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
       const groups = [];
       for (const sp of pre.segPairs) {
         const spvk = (sp.vertex === 'V' && sp.vk !== null && sp.vk !== undefined) ? sp.vk : null;
-        const g = groups.find(gr => gr.vk === spvk && Math.abs(gr.seed - (sp.psiN[0] + sp.psiN[1]) / 2) < 1.5 * DEG);
+        // A non-park closest pair is identified by BOTH chord indices. For a parked victim vertex,
+        // the dwelling vertex is the feature itself, so the victim-chord index is immaterial and is
+        // deliberately collapsed to null. Keeping b for non-parks prevents two different victim
+        // chords with similar normal azimuths from being merged into one fictitious contact regime.
+        const spb = spvk === null ? sp.b : null;
+        const g = groups.find(gr => gr.a === sp.a && gr.b === spb && gr.vk === spvk && Math.abs(gr.seed - (sp.psiN[0] + sp.psiN[1]) / 2) < 1.5 * DEG);
         if (g) { g.psiN = [Math.min(g.psiN[0], sp.psiN[0]), Math.max(g.psiN[1], sp.psiN[1])]; g.rn = hull(g.rn, sp.rn); g.hf = hull(g.hf, sp.hf); }
-        else groups.push({ psiN: sp.psiN.slice(), rn: sp.rn.slice(), hf: sp.hf.slice(), seed: (sp.psiN[0] + sp.psiN[1]) / 2, vk: spvk });
+        else groups.push({ a: sp.a, b: spb, psiN: sp.psiN.slice(), rn: sp.rn.slice(), hf: sp.hf.slice(), seed: (sp.psiN[0] + sp.psiN[1]) / 2, vk: spvk });
       }
       for (const g of groups) { g.n = [cosRange(g.psiN), sinRange(g.psiN)]; g.G = [mul(g.hf, g.n[0]), mul(g.hf, g.n[1]), mul(g.hf, g.rn)]; }
       ngroups += groups.length;
@@ -811,7 +962,7 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
         // During a park the push direction is an exactly differentiable function of the pose, so its
         // variation over the set is a LINEAR map plus a second-order remainder rather than an
         // independent interval. Absorb the linear part into the basis, where it costs nothing.
-        const JB = grp.vk !== null && grp.vk !== undefined && grp.vk >= 0 ? parkJacobian(att, qc, pair, grp.vk, aabbOf(qc, M, U)) : null;
+        const JB = grp.vk !== null && grp.vk !== undefined && grp.vk >= 0 ? parkJacobian(att, qc, pair, grp.vk, aabbOf(qc, M, U), grp.a) : null;
         for (let round = 1; round <= 32; round++) {
           rounds = Math.max(rounds, round);
           const da = [sub(cone.n[0], [a_c[0], a_c[0]]), sub(cone.n[1], [a_c[1], a_c[1]]), scale(sub(cone.rn, [cc.rn, cc.rn]), 1 / I)];
@@ -957,7 +1108,7 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
   return { certified, why: certified ? null : `final foot radius bound ${minR.toFixed(3)} <= ${EDGE}`, k: K, K, rows, minR, rc, final: { qc, states: Us }, pair, traj };
 }
 
-module.exports = { certify, analyse, sweep, pushSubstep, LIM_SUB };
+module.exports = { certify, analyse, sweep, pushSubstep, parkJacobian, featureMargins3, featureMargins3Interval, isolateFeatureWalls, LIM_SUB };
 
 if (require.main === module) {
   // POSE=x,y,rot,x,y,rot node nn/throw-cert.js attacker pv dir jF hx hy hRotDeg [--validate N] [--rows] [--engine]
