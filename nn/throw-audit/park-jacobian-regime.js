@@ -5,7 +5,8 @@
 //   1. replay the historical ndpxhts24 post-reply position,
 //   2. find the exact victim-vertex park regimes selected by analyse(),
 //   3. require parkJacobian() to use the same attacker chord that produced the regime,
-//   4. require its interval projection to remain strictly inside that chord.
+//   4. require the touching leg pair (from the sweep's pushes, not from segPairs — those
+//      carry chord indices a/b and vertex vk, never leg indices i/j).
 //
 // A future enclosure change that silently re-discovers a different chord will fail here.
 //
@@ -44,7 +45,12 @@ for (let k = 0; k < tr.length; k++) {
   if (!an.segPairs) continue;
   for (const sp of an.segPairs.filter(s => s.exact && s.vertex === 'V' && s.vk >= 0)) {
     parks++;
-    const j = TC.parkJacobian(t.att, v, [sp.i, sp.j], sp.vk, box, sp.a);
+    const pair = [t.pushes[0].i, t.pushes[0].j];
+    if (!Number.isInteger(pair[0]) || !Number.isInteger(pair[1])) {
+      failures.push({ k: k + 1, a: sp.a, b: sp.b, vk: sp.vk, why: 'probe pair is not integer' });
+      continue;
+    }
+    const j = TC.parkJacobian(t.att, v, pair, sp.vk, box, sp.a);
     if (!j) {
       failures.push({ k: k + 1, a: sp.a, b: sp.b, vk: sp.vk, why: 'parkJacobian refused its regime chord' });
       continue;

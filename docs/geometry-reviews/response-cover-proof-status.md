@@ -368,3 +368,19 @@ Commit 00f088a wires the exact four margins into analyse(). For each candidate c
 If a wall is reachable inside the localisation allowance, the interior regime is suppressed and the existing endpoint/vertex branches must carry the contact. Thus the certificate no longer silently lets an interior regime smear across a chord feature wall.
 
 This is an important but deliberately limited step: it is a conservative consequence of the current minimiser-drift lemma, not yet a full interval proof of the nonlinear wall functions. The eventual response-patch validator should replace or strengthen this with direct interval enclosures of the four margin functions over the patch.
+
+### Probe fix: sp.i/sp.j did not exist on segPairs entries
+
+The probe `nn/throw-audit/park-jacobian-regime.js` originally called `parkJacobian` with `[sp.i, sp.j]` — fields that do not exist on `segPairs` entries (they carry chord indices `a`/`b` and vertex `vk`, never leg indices). `parkJacobian` received `[undefined, undefined]`, hit its NaN guard, and returned null. The probe reported these as "parkJacobian refused its regime chord" — 8 events across the arm (0,-1) replay on the historical `ndpxhts24` pose. This went unnoticed for several commit cycles; the probe had never actually exercised its chord-match assertion.
+
+**Fix:** replace `[sp.i, sp.j]` with `[t.pushes[0].i, t.pushes[0].j]` — the touching leg pair that the probe already passes to `analyse`. An integer guard prevents silent NaN artifacts from recurring.
+
+With the fix the probe passes:
+
+```json
+"parks": 8, "checked": 8, "failures": [], "status": "PASS"
+```
+
+All 8 park regimes produce valid Jacobians on the expected attacker chord. The regime-bound park Jacobian is now genuinely verified on the historical `ndpxhts24` post-reply arm (0,-1).
+
+**Causal story corrected.** The certificate's refusal at substep 83 on arm (0,-1) is NOT driven by park-Jacobian failures (the tiny-box replay validates all 8). The refusal comes from the enclosure width at k83 -- "after the push: two leg pairs can touch: (0,0) 3.15, (1,2) 3.56" -- consistent with Brief 4's ablation where adding the missing frame term `lambda * (a_c - m3)` tightens the enclosure, and the two-pairs-touchable guard fires at k83. Arm (2,-1) certifies exactly as documented (substep 112, foot 1 radius 67.2047u), matching the brief's reproduction table. The first proof anchor per the design document remains arm (2,-1).
