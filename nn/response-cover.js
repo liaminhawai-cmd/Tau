@@ -12,6 +12,27 @@ function replyTube(pieces, m, rpv, rd, a, b) {
   // a validated derivative/event enclosure is supplied, refuse to call this a proof tube.
   const fam = FW.replyFamily(pieces, m, rpv, rd, K);
   if (!fam || !fam.out || !Array.isArray(fam.out.record) || fam.out.record.length < 2) return null;
+  // If the reply sweep never moves the opponent, it is contact-free.  In that regime the
+  // replying piece itself is an exact rigid curve and can be enclosed analytically.
+  const rec0 = fam.out.record[0], recN = fam.out.record[fam.out.record.length - 1];
+  const staticVictim = Math.abs(recN.x - rec0.x) < 1e-12 &&
+    Math.abs(recN.y - rec0.y) < 1e-12 &&
+    Math.abs(recN.rot - rec0.rot) < 1e-12;
+  if (staticVictim) {
+    const base = pieces[m];
+    const foot = CL.feetOf(base)[rpv];
+    const box = exactRigidReplyBox(base, foot, rd, a, b);
+    return {
+      centre: { x: (box.x[0] + box.x[1]) / 2, y: (box.y[0] + box.y[1]) / 2,
+        rot: (box.rot[0] + box.rot[1]) / 2, alpha: (a + b) / 2 },
+      hx: (box.x[1] - box.x[0]) / 2,
+      hy: (box.y[1] - box.y[0]) / 2,
+      hr: (box.rot[1] - box.rot[0]) / 2,
+      exactReplyBox: box,
+      validated: true,
+      method: 'exact-rigid-rotation'
+    };
+  }
   const rec = fam.out.record;
   const lo = rec.find(r => r.alpha >= a - 1e-9);
   const hi = rec.find(r => r.alpha >= b - 1e-9) || rec[rec.length - 1];
@@ -38,6 +59,37 @@ function replyTube(pieces, m, rpv, rd, a, b) {
     reason: 'sampled reply records do not prove a continuous interval enclosure'
   };
 }
+// Exact coordinate enclosure for a rigid rotation about a fixed foot.
+// For a contact-free reply, every stop alpha in [a,b] is exactly this curve.  The bounds
+// below are analytic: each coordinate is A + B cos(theta) + C sin(theta), whose extrema
+// on an interval occur at an endpoint or where atan2(C,B) (plus pi) lies in the interval.
+// No sampled record is used to establish the enclosure.
+function trigRange(A, B, C, lo, hi) {
+  const vals = [A + B * Math.cos(lo) + C * Math.sin(lo), A + B * Math.cos(hi) + C * Math.sin(hi)];
+  const t = Math.atan2(C, B), two = 2 * Math.PI;
+  const k0 = Math.ceil((lo - t) / two), k1 = Math.floor((hi - t) / two);
+  for (let k = k0; k <= k1; k++) vals.push(A + B * Math.cos(t + k * two) + C * Math.sin(t + k * two));
+  const t2 = t + Math.PI;
+  const j0 = Math.ceil((lo - t2) / two), j1 = Math.floor((hi - t2) / two);
+  for (let k = j0; k <= j1; k++) vals.push(A + B * Math.cos(t2 + k * two) + C * Math.sin(t2 + k * two));
+  return [Math.min(...vals), Math.max(...vals)];
+}
+function exactRigidReplyBox(base, pivotFoot, rd, a, b) {
+  const dx = base.x - pivotFoot.x, dy = base.y - pivotFoot.y;
+  const lo = rd * a, hi = rd * b;
+  const tlo = Math.min(lo, hi), thi = Math.max(lo, hi);
+  const x = trigRange(pivotFoot.x, dx, -dy, tlo, thi);
+  const y = trigRange(pivotFoot.y, dy,  dx, tlo, thi);
+  const r0 = base.rot + lo, r1 = base.rot + hi;
+  return {
+    x, y, rot: [Math.min(r0, r1), Math.max(r0, r1)],
+    validated: true,
+    method: 'exact-rigid-rotation',
+    domain: [a, b],
+    parameter: 'reply-stop-angle'
+  };
+}
+
 function rotAbout(base, foot, s, d) {
   const c = Math.cos(d * s), sn = Math.sin(d * s);
   return { x: foot.x + (base.x - foot.x) * c - (base.y - foot.y) * sn, y: foot.y + (base.x - foot.x) * sn + (base.y - foot.y) * c, rot: base.rot + d * s };
