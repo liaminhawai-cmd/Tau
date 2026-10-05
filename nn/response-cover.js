@@ -7,13 +7,36 @@ function emptyPatch(r, a, b, w) {
     proof: { status: 'refused', method: 'interval-tube', noEventCrossing: false } };
 }
 function replyTube(pieces, m, rpv, rd, a, b) {
+  // DISCOVERY ONLY: replyFamily records are sampled at the replica integrator's 0.4deg
+  // ladder.  They are not, by themselves, an enclosure of every stop in [a,b].  Until
+  // a validated derivative/event enclosure is supplied, refuse to call this a proof tube.
   const fam = FW.replyFamily(pieces, m, rpv, rd, K);
-  if (!fam) return null;
-  const s0 = (a + b) / 2;
-  const r0 = fam.out.record.find(r => r.alpha >= s0 - 1e-6) || fam.out.record[fam.out.record.length - 1];
-  const lo = fam.out.record.find(r => r.alpha >= a - 1e-6) || fam.out.record[0];
-  const hi = fam.out.record.find(r => r.alpha >= b - 1e-6) || fam.out.record[fam.out.record.length - 1];
-  return { centre: r0, hx: Math.max(0.002, Math.abs(hi.x - lo.x) / 2 + 0.01), hy: Math.max(0.002, Math.abs(hi.y - lo.y) / 2 + 0.01), hr: Math.max(0.002 * DEG, Math.abs(hi.rot - lo.rot) / 2 + 0.01 * DEG) };
+  if (!fam || !fam.out || !Array.isArray(fam.out.record) || fam.out.record.length < 2) return null;
+  const rec = fam.out.record;
+  const lo = rec.find(r => r.alpha >= a - 1e-9);
+  const hi = rec.find(r => r.alpha >= b - 1e-9) || rec[rec.length - 1];
+  if (!lo || !hi) return null;
+  const samples = rec.filter(r => r.alpha >= a - 1e-9 && r.alpha <= b + 1e-9);
+  if (samples.length < 2) return null;
+  const span = Math.max(1e-12, b - a);
+  let Lx = 0, Ly = 0, Lr = 0;
+  for (let i = 1; i < samples.length; i++) {
+    const da = Math.max(1e-12, samples[i].alpha - samples[i - 1].alpha);
+    Lx = Math.max(Lx, Math.abs(samples[i].x - samples[i - 1].x) / da);
+    Ly = Math.max(Ly, Math.abs(samples[i].y - samples[i - 1].y) / da);
+    Lr = Math.max(Lr, Math.abs(samples[i].rot - samples[i - 1].rot) / da);
+  }
+  // A finite-difference maximum is evidence, not a derivative bound.  Therefore this object is
+  // explicitly marked unvalidated and cannot be passed to certifyPatch as a proof enclosure.
+  return {
+    centre: samples[Math.floor(samples.length / 2)],
+    hx: Math.max(0.002, Math.abs(hi.x - lo.x) / 2 + 0.01),
+    hy: Math.max(0.002, Math.abs(hi.y - lo.y) / 2 + 0.01),
+    hr: Math.max(0.002 * DEG, Math.abs(hi.rot - lo.rot) / 2 + 0.01 * DEG),
+    empiricalLipschitz: { x: Lx, y: Ly, rot: Lr },
+    validated: false,
+    reason: 'sampled reply records do not prove a continuous interval enclosure'
+  };
 }
 function rotAbout(base, foot, s, d) {
   const c = Math.cos(d * s), sn = Math.sin(d * s);
@@ -22,6 +45,7 @@ function rotAbout(base, foot, s, d) {
 function certifyPatch(pieces, m, rpv, rd, a, b, wpv, wd, opts) {
   const tube = replyTube(pieces, m, rpv, rd, a, b);
   if (!tube) return { certified: false, why: 'no reply family' };
+  if (!tube.validated) return { certified: false, why: tube.reason };
   const att = 1 - m, foot = CL.feetOf(pieces[m])[rpv];
   const mPos = rotAbout(pieces[m], foot, tube.centre.alpha, rd);
   const aPos = { x: tube.centre.x, y: tube.centre.y, rot: tube.centre.rot };
