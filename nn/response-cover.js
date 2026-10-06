@@ -54,9 +54,10 @@ function validatePatch(pieces,m,rpv,rd,a,b,wpv,wd,N,log){log=log||console.log;le
     const pcs=m===0?[mPos,aPos]:[aPos,mPos];const box={x:[mPos.x-0.002,mPos.x+0.002],y:[mPos.y-0.002,mPos.y+0.002],rot:[mPos.rot-0.002*DEG,mPos.rot+0.002*DEG]};
     const r=TC.certify(pcs,1-m,wpv,wd,box,1,{log:()=>{}});if(r.certified)ok++;else bad.push({stop:s,why:r.why});}
   log(bad.length===0?'# ok '+ok+'/'+N:'# FAIL '+ok+'/'+N);bad.slice(0,5).forEach(v=>log('#   stop '+v.stop.toFixed(4)+': '+v.why));return bad.length;}
-const row={p:[12.2195,37.7663,11.0497,2.8121,28.9609,-13.703],mover:0},rpv=2,rd=1,wpv=0,wd=-1;
-const lim=FW.replyFamily(FW.piecesOf(row.p),row.mover,rpv,rd,K).lim,a=0.99*lim,b=lim;
+const row={p:[12.2195,37.7663,11.0497,2.8121,28.9609,-13.703],mover:0},rpv=2,rd=1;let wpv=0,wd=-1;
 const args=process.argv.slice(2),vi=args.indexOf('--validate'),N=vi>=0?+(args[vi+1]||100):0;
+if(args.includes('--target2')){row.p=[1.7957,-26.9125,0.469,-8.4345,-41.2701,1.9721];row.mover=1;wpv=0;wd=1;}
+const lim=FW.replyFamily(FW.piecesOf(row.p),row.mover,rpv,rd,K).lim,a=0.99*lim,b=lim;
 const pieces=FW.piecesOf(row.p),tube=replyTube(pieces,row.mover,rpv,rd,a,b);
 if(!tube){console.log('NO TUBE');process.exit(1);}
 const res=certifyPatch(pieces,row.mover,rpv,rd,a,b,wpv,wd);
