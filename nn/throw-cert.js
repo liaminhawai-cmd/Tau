@@ -797,12 +797,19 @@ function mergeStates(list) {
 function certify(pieces, attacker, pv, dir, box0, jF, opts) {
   opts = opts || {}; const log = opts.log || (() => {}), victim = 1 - attacker;
   const lim = FW.limitAt(pieces, attacker, pv, dir).lim, K = Math.round(lim / LIM_SUB);
-  const c0 = { x: (box0.x[0] + box0.x[1]) / 2, y: (box0.y[0] + box0.y[1]) / 2, rot: (box0.rot[0] + box0.rot[1]) / 2 };
+  // opts.seed = { centre, M, U }: an initial enclosure of the victim set as centre + M u, u in U,
+  // with M's columns in pose coordinates (x/y in units, rot in radians). The caller guarantees
+  // every true victim pose is contained; the default is the axis-aligned box0. response-cover uses
+  // it to carry a reply arc's tangent in the basis, so only the quadratic remainder widens the
+  // box rather than the full linear term per axis -- the moving-basis principle of
+  // docs/geometry-reviews/rigorous-response-patch-cover.md.
+  const seed = opts.seed || null;
+  const c0 = seed ? { x: seed.centre.x, y: seed.centre.y, rot: seed.centre.rot } : { x: (box0.x[0] + box0.x[1]) / 2, y: (box0.y[0] + box0.y[1]) / 2, rot: (box0.rot[0] + box0.rot[1]) / 2 };
   const pcs = pieces.map((p, i) => (i === victim ? c0 : { ...p }));
   const traj = sweep(pcs, attacker, pv, dir, K);
   log(`throw arm (${pv},${dir}) limit ${(lim / DEG).toFixed(2)} deg = ${K} substeps of ${(LIM_SUB / DEG).toFixed(4)} deg; centre thrown ${traj.findIndex(t => t.maxFootR > EDGE) + 1 || 'never'}`);
   // the parallelotope: centre q_c (the centre trajectory), columns M, coefficient box U
-  let qc = c0, M = colsOf([(box0.x[1] - box0.x[0]) / 2, 0, 0], [0, (box0.y[1] - box0.y[0]) / 2, 0], [0, 0, (box0.rot[1] - box0.rot[0]) / 2]);
+  let qc = c0, M = seed ? seed.M : colsOf([(box0.x[1] - box0.x[0]) / 2, 0, 0], [0, (box0.y[1] - box0.y[0]) / 2, 0], [0, 0, (box0.rot[1] - box0.rot[0]) / 2]);
   const M00 = M;
   // The enclosure is a LIST of coefficient boxes, all in the same (q_c, M) frame. One box per live
   // contact regime, because hulling the regimes into a single box at the end of every substep is
@@ -812,7 +819,7 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
   // Each state carries its OWN basis, because the point of the linearised park step is to put the
   // push's linear part into the basis; rebuilding every state onto one shared contact-aligned frame
   // each substep would transform it straight back into the box and undo it.
-  let Us = [{ M: null, U: [[-1, 1], [-1, 1], [-1, 1]], keep: false }], pair = null;
+  let Us = [{ M: null, U: seed ? seed.U.map(u => u.slice()) : [[-1, 1], [-1, 1], [-1, 1]], keep: false }], pair = null;
   const rows = [], fail = (why, k) => ({ certified: false, traj, pair, why: `substep ${k} (${(k * LIM_SUB / DEG).toFixed(2)} deg): ${why}`, k, rows, K });
   // The exposed foot's radius over one state: F = hub + R e(rot + jF 120deg), linear in u up to
   // R (drot)^2 / 2, bounded below by its projection on the CENTRE foot's direction.
@@ -1097,6 +1104,12 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
       log(`  thrown at substep ${k} (${(k * LIM_SUB / DEG).toFixed(2)} deg): foot ${jF} radius >= ${minRk.toFixed(4)}u over the whole set (centre ${t.maxFootR.toFixed(4)}u), rim ${EDGE}`);
       return { certified: true, why: null, k, K, rows, minR: minRk, rc: Math.hypot(qc.x + R * Math.cos(qc.rot + jF * 2 * Math.PI / 3), qc.y + R * Math.sin(qc.rot + jF * 2 * Math.PI / 3)), final: { qc, states: Us }, pair, traj, thrownAt: k };
     }
+    // Every state individually free this substep while their hull was not (the hull can add area
+    // between disjoint states): the per-state propagation that ran in the state loop is the sound
+    // one, so record a free row and carry on. post is only assigned inside contact-regime
+    // processing; reading it here without the guard crashes on wide/seeded boxes where the
+    // all-free-per-state case first becomes reachable.
+    if (!post) { rows.push({ k, deg: +(k * LIM_SUB / DEG).toFixed(2), free: true, box: { x: bb.x.map(v => +v.toFixed(3)), y: bb.y.map(v => +v.toFixed(3)), rot: bb.rot.map(v => +(v / DEG).toFixed(3)) }, bbRaw: bb, footR: +t.maxFootR.toFixed(3) }); continue; }
     rows.push({ k, deg: +(k * LIM_SUB / DEG).toFixed(2), pad: +post.pad.toFixed(3), psiN: post.psiN.map(v => +(v / DEG).toFixed(2)), hf: post.hf.map(v => +v.toFixed(3)), rn: post.rn.map(v => +v.toFixed(2)), fPre: fPre.map(v => +v.toFixed(4)), LamC: +LamC.toFixed(4), U: U.map(u => u.map(v => +v.toFixed(5))), Mlen: [0, 1, 2].map(j => +Math.hypot(M[0][j], M[1][j], M[2][j] * R).toFixed(3)), box: { x: bb.x.map(v => +v.toFixed(3)), y: bb.y.map(v => +v.toFixed(3)), rot: bb.rot.map(v => +(v / DEG).toFixed(3)) }, bbRaw: bb, footR: +t.maxFootR.toFixed(3), segs: post.segPairs.map(s => `${s.a},${s.b}`).join(' ') });
   }
   const th = qc.rot + jF * 2 * Math.PI / 3, rc = Math.hypot(qc.x + R * Math.cos(th), qc.y + R * Math.sin(th));

@@ -384,3 +384,35 @@ With the fix the probe passes:
 All 8 park regimes produce valid Jacobians on the expected attacker chord. The regime-bound park Jacobian is now genuinely verified on the historical `ndpxhts24` post-reply arm (0,-1).
 
 **Causal story corrected.** The certificate's refusal at substep 83 on arm (0,-1) is NOT driven by park-Jacobian failures (the tiny-box replay validates all 8). The refusal comes from the enclosure width at k83 -- "after the push: two leg pairs can touch: (0,0) 3.15, (1,2) 3.56" -- consistent with Brief 4's ablation where adding the missing frame term `lambda * (a_c - m3)` tightens the enclosure, and the two-pairs-touchable guard fires at k83. Arm (2,-1) certifies exactly as documented (substep 112, foot 1 radius 67.2047u), matching the brief's reproduction table. The first proof anchor per the design document remains arm (2,-1).
+
+## 2026-10-06 update: soundness fix, tangent seed, outward-rounded analytic layer
+
+Three changes land on this branch (details and honest negatives in
+`docs/geometry-reviews/solving-tau-roadmap.md`):
+
+1. **The exact-circle clearance margin was unsound and is fixed.** It assumed the leg's farthest
+   point from the pivot foot sits at `hypot(R, R/2)` and that a rotation by half-width `hi`
+   displaces points by `|p-foot|*sin(hi)`. In this game `hubHeight = footR`, so the true values are
+   `hypot(R, H) = R*sqrt(2)` and `2*|p-foot|*sin(hi/2)`; the old margin was ~15% small for every
+   `hi`. The corrected margin keeps both committed patches valid (clearance 5.6245 and 3.8360
+   against MIND 2.88, engine falsification still 3/3).
+
+2. **`nn/rigorous-fp.js` addresses the "Fundamental numerical issue" below directly**, with one
+   explicit premise left: outward-rounded interval primitives with safe transcendental bounds under
+   a *tested* 4-ulp libm axiom (self-test: 200k double-double references, 0 containment failures,
+   Math.sin/cos observed at 1.00 ulp). The `--fp` report shows the leaf's analytic enclosures are
+   FP-robust (box gap ~1.6e-12 u; clearance lower bound still clears MIND). The claim for the
+   analytic layer is upgraded from "derived, falsification-tested" to "outward-rounded under an
+   explicit, tested libm axiom"; the REPLICA sweep remains falsification-tested, and the axiom is
+   the remaining named gap to "machine-verified".
+
+3. **Tangent-frame seeding is in (`opts.seed`)** and is a validated architecture with an honest
+   negative: it does not widen patches for the parked witness, because the binding refusal is
+   contact-phase enclosure smearing (the two-pairs-touchable guard), not the initial box. The
+   next width lever is the Brief-4 frame term `lambda*(a_c - m3)`.
+
+Also fixed here: a latent null-`post` crash in `throw-cert.js`'s substep bookkeeping (reachable
+only when every state is individually free while their hull is not -- first hit by wide boxes),
+and a sub-interval staticness check so a contact elsewhere in a reply family no longer refuses a
+contact-free patch.
+

@@ -1,0 +1,129 @@
+# Solving Tau: the roadmap and where the leaf stands
+
+**Date:** 2026-10-06
+**Branch:** `claude/board-game-video-adaptation-cf8a93`
+**Goal:** solve Tau the way checkers was solved -- a stored, independently checkable proof,
+not a strong player.
+
+## The ladder (checkers/Chinook analogue)
+
+| Rung | What it is | Status |
+|---|---|---|
+| Leaf atom | rigorous throw proof over a continuous pose set (a reply-stop interval), no sampling inside | **done** -- validated patch certificates, `nn/response-cover.js` |
+| Dead position | all six reply families covered by patches -> "every legal move loses" | machinery done (`--dead`); first family measured: 46 patches prove the limit-end 37% (below) |
+| Retrograde | WIN/LOST recursion over the game graph consuming proven leaves | exists (forced-win.js) but leaves are sampled; wiring point identified (below) |
+| Solution | proof tree from the initial position + formal FP rigor + independent verifier | not started |
+
+Strategy: make the leaf provable, then let the existing recursion inherit soundness bottom-up.
+
+## What the 2026-10-06 session changed
+
+1. **Soundness fix in `certifiedClearance`.** The angular soundness margin was
+   `hypot(R, 0.5R)*|sin(hi)|*1.1`, but the farthest leg point from the pivot foot is the hub end of
+   the arc at `hypot(R, H)`, and `H = hubHeight = footR` in the engine CFG (not `R/2`); rotating the
+   leg by a half-width `hi` displaces points by `2*|p-foot|*sin(hi/2)`, not `|p-foot|*sin(hi)`. The
+   old margin was ~15% below the true bound for every `hi` -- unsound. Corrected to
+   `2*hypot(R,H)*sin(min(hi,pi)/2)*1.02 + 1e-9`. Both committed CERT targets still clear MIND
+   (5.6245 and 3.8360 vs 2.88) and still validate 3/3 against engine replays.
+
+2. **Tangent-frame seeding (`opts.seed` in `throw-cert.js`, `tangentSeed` in response-cover.js).**
+   The reply over [a,b] is an exact rigid rotation; its tangent enters the enclosure basis and only
+   the quadratic remainder `R*tau^2/2` widens the box. Architecture in and validated (margins equal
+   or a hair better: 67.227 vs 67.226 at the probe width). **Honest negative:** it does NOT widen
+   patches for the parked-geometry witness. Measured by `--width`: both the axis box and the seed
+   certify at the same first-halving width (~0.112 deg at the limit end). Reason: the AABB entering
+   the first contact is the arc's own hull either way; the binding refusal is the two-pairs-touchable
+   guard *mid-contact* (enclosure smearing through ~60 push substeps), which no initial frame can
+   shrink. The next lever for patch width is the missing frame term `lambda*(a_c - m3)` in the
+   contact-phase enclosure (the Brief-4 ablation), not the seed.
+
+3. **Sub-interval contact-freeness (`staticOn`).** A contact elsewhere in the reply family no
+   longer refuses a contact-free patch: staticness is now proven on [a,b] alone, from the family
+   record's per-step poses (steps <= 0.4 deg; a push is visible in the next entry and never reverts).
+
+4. **Family and dead-point cover machinery.** `coverFamily` (greedy right-to-left, halving gallop
+   with width locality, one doubling attempt, shared endpoints between adjacent patches = the
+   boundary protocol; no sliver exceptions), `witnessPrescreen` (ranks the six witness arms by the
+   REPLICA's own throw margin at sampled stops and picks the exposed foot), `coverDeadPoint` (six
+   families; an illegal arm is covered trivially; an engine-exact escape -- a reply that pushes the
+   opponent off -- is reported, not papered over), `rigorousCellSample` (the leaf in
+   `cellSample`'s verdict shape). CLI: `--family <pv> <dir>`, `--dead`, `--retro [--write]`,
+   `--try <a> <b> [--all] [--noseed]` (diagnose a width with all six witnesses), `--width` (A/B
+   axis box vs seed with bisection refinement), `--fp`.
+
+5. **Formal-FP layer (`nn/rigorous-fp.js`).** Outward-rounded interval arithmetic: IEEE ops widened
+   by 4 ulp per endpoint (one for the op's rounding, one for the rounding of the widening itself),
+   transcendental-tainted values by 8 ulp under an explicit, tested 4-ulp libm axiom.
+   Self-test (double-double reference, ~106 bits): 200k cases, **0 containment failures**;
+   Math.sin/cos measured at worst **1.00 ulp** vs the reference. The `--fp` report re-derives the
+   leaf's analytic enclosures with it: the exact reply box differs from the fast endpoint+extremum
+   box by ~1.6e-12 u, and the exact-circle clearance's rigorous lower bound (5.6245 u) still clears
+   MIND -- the leaf's analytic layer is FP-robust. The self-test also caught and killed an inverted
+   zero-check in `divI` on its first run.
+
+6. **A latent crash in `throw-cert.js`** (null `post` in the per-substep row bookkeeping when every
+   state is individually free while their hull is not) -- unreachable on the thin committed patches,
+   first hit by wide/seeded boxes; now records a free row and carries on with the per-state
+   propagation (the sound path).
+
+## The first family-cover measurement (2026-10-06, family (2,1) of CERT target 1)
+
+`node nn/response-cover.js --family 2 1` covered the limit end of the family -- [9.73 deg, lim =
+14.33 deg] -- with **46 validated patches** (shared endpoints throughout, the boundary protocol;
+half-widths 0.025-0.096 deg; clearances >= 4.905 u over MIND 2.88; worst throw margin +0.0021 u
+over the rim). The legal domain is [MIN_MOVE = 2 deg, lim], so ~37% of this family is now *proven*;
+the record is saved at `docs/dead-regions/response-cover-family-2-1-target1.json`. The remaining [2, 9.73] deg
+is not covered, and a six-witness `--try` census at three depths says exactly why:
+
+* **hub-leg grazing** (gap 3): the two best witnesses refuse almost immediately -- substep 2 for
+  (0,-1) at 2.5 deg -- because the opponent's foot lies ~0.03 u outside the hub-ball grazing
+  threshold 4.18 u on the witness's own path; the current lemmas cover leg-leg contact only;
+* **deep-park smearing** (gap 1): other witnesses smear their enclosures through 60-100+ push
+  substeps until `vertex cone too wide` or `contact point not localised` (slack up to 7.2 u, one
+  pad reaching 120 u);
+* **real geometry**: two arms genuinely do not throw from there (prescreen margins -2 to -6 u) --
+  correctly refused, not an enclosure issue.
+
+So milestone 2's remaining distance is precisely gaps 1 and 3 -- the same two levers the honest
+negative on tangent seeding points at. The full six-family `--dead` run was launched the same day
+and reports each family the same way.
+
+## The wiring point (rung 3)
+
+`forced-win.js:1611 cellSample -> deadCertificate` is the sampled leaf the retrograde currently
+consumes. `response-cover.rigorousCellSample(pieces, victim, opts)` returns the same
+`{status: dead|escape|unresolved, worstMargin, why, samples}` shape with the stop axis proven
+inside every patch, so `cellSample` can delegate to it per point; the sampled Lipschitz gap rule
+then only has to carry the pose axis. `--retro` emits the graph-compatible point-node record
+(`{kind:'point', plies:2, side, pose, eps:0, proof:{method:'response-patch-cover', families}}`);
+`lookup` consumes it once `certifyStar` grows an eps>0 ball around the point with the rigorous leaf
+swapped in. `--retro --write` appends to `nn/data/rigorous-dead-points.jsonl`.
+
+## The honest claim ladder
+
+What a "validated patch" means today: mathematically derived enclosures in a real-arithmetic
+model, whose analytic layer (boxes, clearance margins) has now been re-derived under outward
+rounding with a tested libm axiom, falsified against the engine at random stops. What it is NOT
+yet: a machine-verified theorem. The remaining FP distance is (a) the cos/sin axiom -- replace with
+a correctly-rounded implementation or a proved per-function error budget, and (b) the REPLICA
+sweep itself, which stays falsification-tested rather than enclosed. See
+`response-cover-proof-status.md` for the standing statement.
+
+## Open gaps, in dependency order
+
+1. **Patch width** (the parked-witness bottleneck): the contact-phase enclosure needs the Brief-4
+   frame term `lambda*(a_c - m3)`; alternative scalar route per the design doc: a positive
+   lower bound on radial gain per contact substep, summed.
+2. **Varying-attacker bridge**: replies that push the opponent (staticness fails on part of the
+   family) need the witness phase with both pieces varying.
+3. **Hub-contact lemmas**: witnesses whose contact is hub-leg; current lemmas cover leg-leg.
+4. **Region growth**: certifyStar with the rigorous leaf (eps-ball around a proven point).
+5. **Full-graph retrograde + proof storage + independent verifier** -- the actual "solved" gates.
+
+## Reversibility (asked 2026-10-06: "do we have a reversible collision formula?")
+
+Yes for kinematics, no closed form for collisions. The rigid swing is exactly invertible
+(`hubFromFoot` in forced-win.js round-trips to 1e-14); the collision response (Gauss-Seidel pushes)
+is forward-only, and its inverse is the sampled, Lipschitz-bounded `fibre` scan -- which is exactly
+where the sampled-leaf soundness debt lives. Making the leaf rigorous (`response-cover.js`) is what
+makes the backward walk (`unwindArcs -> fibre -> arcPose`) inherit soundness.
