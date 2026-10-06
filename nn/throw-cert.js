@@ -456,11 +456,43 @@ function analyse(box, att, pairWant) {
     pairs.push({ i, j, dist: best, segs });
   }
   const touchable = pairs.filter(p => p.dist - pad < D);
-  const hubA = { x: att.x, y: att.y, h: H }, hubV = { x: c.x, y: c.y, h: H };
-  const hubLeg = Math.min(...[0, 1, 2].map(j => pointArcClosest(hubA, V[j]).dist), ...[0, 1, 2].map(i => pointArcClosest(hubV, A[i]).dist));
-  const hubHub = Math.hypot(att.x - c.x, att.y - c.y);
-  if (hubLeg - pad < HUBLEGD) return { ...out, refuse: `hub-leg contact possible (${hubLeg.toFixed(2)} - pad ${pad.toFixed(2)} < ${HUBLEGD.toFixed(2)})` };
-  if (hubHub - pad < 2 * HUBR) return { ...out, refuse: `hub-hub contact possible` };
+  // ---- hub contacts, TIGHTLY (2026-10-07; replaces centre - pad) ----
+  // The old guard subtracted the full pose pad from centre distances: it charged the victim's
+  // rotation for its own hub (a hub point does not turn with the piece) and padded the leg sweep
+  // where the endpoint boxes are exact. The measured blocker was exactly that waste -- hub-leg
+  // refusals like 4.21 - 0.08 < 4.18 with the true minimum above the 4.18 threshold. Three tight
+  // lower bounds over the WHOLE box:
+  //   hub-hub: both hubs sit at height H, so the distance is planar and the minimum over the box
+  //     is EXACTLY the point-to-rectangle distance -- no interval loss at all;
+  //   victim hub vs attacker legs: an interval point {box.x, box.y, H} against the attacker's
+  //     exact fixed arc segments (the attacker is exact within a substep);
+  //   attacker hub vs victim legs: a fixed point against vertexBoxOf endpoint-box segments.
+  // The segment bound is the interval evaluation of the point-to-segment distance: the clamped
+  // projection parameter t* = clamp((P-A).(B-A)/|B-A|^2, 0, 1) is contained by the interval
+  // quotient clamped to [0,1] (sound superset), the foot A + t(B-A) by the interval affine form,
+  // and the distance by sqrt of the LOWER end of |P - foot|^2 -- an evaluation over a superset of
+  // the true pairs, so that lower end is a valid lower bound of the true minimum over the box.
+  // The degenerate-segment branch falls back to |P-A| - |B-A| (triangle inequality, also sound).
+  const ivP = (x, y, h) => ({ x: [x, x], y: [y, y], h: [h, h] });
+  const ivSegLB = (P, A0, A1) => {
+    const ux = sub(A1.x, A0.x), uy = sub(A1.y, A0.y), uh = sub(A1.h, A0.h);
+    const dx = sub(P.x, A0.x), dy = sub(P.y, A0.y), dh = sub(P.h, A0.h);
+    const L2 = add(add(mul(ux, ux), mul(uy, uy)), mul(uh, uh));
+    if (L2[0] < 1e-12) return Math.max(0, Math.sqrt(Math.max(0, add(add(mul(dx, dx), mul(dy, dy)), mul(dh, dh))[0])) - Math.sqrt(L2[1]));
+    const num = add(add(mul(dx, ux), mul(dy, uy)), mul(dh, uh));
+    let t = [num[0] / L2[1], num[1] / L2[0]];
+    if (t[1] < 0) t = [0, 0]; else if (t[0] > 1) t = [1, 1]; else t = [Math.max(0, t[0]), Math.min(1, t[1])];
+    const ex = sub(P.x, add(A0.x, mul(ux, t))), ey = sub(P.y, add(A0.y, mul(uy, t))), eh = sub(P.h, add(A0.h, mul(uh, t)));
+    return Math.sqrt(Math.max(0, add(add(mul(ex, ex), mul(ey, ey)), mul(eh, eh))[0]));
+  };
+  const hubIv = { x: box.x, y: box.y, h: [H, H] }, hubAttIv = ivP(att.x, att.y, H);
+  let hubLegLB = Infinity;
+  for (let i = 0; i < 3; i++) for (let k = 0; k < NSEG; k++) { const d = ivSegLB(hubIv, ivP(A[i][k].x, A[i][k].y, A[i][k].h), ivP(A[i][k + 1].x, A[i][k + 1].y, A[i][k + 1].h)); if (d < hubLegLB) hubLegLB = d; }
+  for (let j = 0; j < 3; j++) for (let k = 0; k < NSEG; k++) { const d = ivSegLB(hubAttIv, vertexBoxOf(box, j, k), vertexBoxOf(box, j, k + 1)); if (d < hubLegLB) hubLegLB = d; }
+  const hubHubMin = Math.hypot(Math.max(box.x[0] - att.x, 0, att.x - box.x[1]), Math.max(box.y[0] - att.y, 0, att.y - box.y[1]));
+  out.hubLegLB = hubLegLB; out.hubHubMin = hubHubMin;
+  if (hubLegLB < HUBLEGD) return { ...out, refuse: `hub-leg contact possible (tight LB ${hubLegLB.toFixed(3)} < ${HUBLEGD.toFixed(2)})` };
+  if (hubHubMin < 2 * HUBR) return { ...out, refuse: `hub-hub contact possible (tight ${hubHubMin.toFixed(3)} < ${(2 * HUBR).toFixed(2)})` };
   if (touchable.length === 0) return { ...out, free: true, minDist: Math.min(...pairs.map(p => p.dist)) - pad };
   if (touchable.length > 1) return { ...out, refuse: `two leg pairs can touch: ${touchable.map(p => `(${p.i},${p.j}) ${p.dist.toFixed(2)}`).join(', ')}` };
   const P = touchable[0];

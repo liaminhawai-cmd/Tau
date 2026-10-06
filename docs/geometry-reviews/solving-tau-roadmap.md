@@ -66,6 +66,47 @@ Strategy: make the leaf provable, then let the existing recursion inherit soundn
    first hit by wide/seeded boxes; now records a free row and carries on with the per-state
    propagation (the sound path).
 
+## The hub-leg clearance fix (2026-10-07) and what it revealed
+
+The 2026-10-07 act session replaced `analyse()`'s hub guards (previously `centre distance − full
+pose pad`) with three tight bounds over the whole box:
+
+* **hub-hub**: both hubs sit at height H, so the distance is planar and the minimum over the box is
+  EXACTLY the point-to-rectangle distance (no interval loss);
+* **victim hub vs attacker legs**: the interval point `{box.x, box.y, H}` against the attacker's
+  exact arc segments (the hub does not rotate with the piece, so the old pad charged rotation for
+  a point that never turns);
+* **attacker hub vs victim legs**: a fixed point against `vertexBoxOf` endpoint-box segments,
+  via an interval evaluation of the point-to-segment distance (clamped projection parameter,
+  interval affine foot, sqrt of the lower end of |P−foot|² over a superset — sound lower bound).
+
+Falsified by `nn/throw-audit/hub-guard-falsify.js`: 4500 random near-graze/pass geometries × 150
+sampled poses, **0 containment violations (LB never exceeds the sampled true minimum), 0 false
+passes**; both the passing side (2921) and the refusing side (1426+3000) exercised; median LB
+slack 0.86u under the true minimum. Both committed CERT targets revalidate unchanged (3/3 each).
+
+**What it revealed (the honest new census of family (2,1) of CERT target 1, `--try` at 2.5/5/9.5 deg):**
+the deep range [2, ~9.7] deg is *genuinely* hub-contact territory, not a clearance artifact:
+
+* at 2.5 deg the best witness now passes the clearance guard and refuses one substep later because
+  *the centre's own replay uses a hub contact* (throw-cert.js:868 refuses on `flags.hub` in the
+  replica sweep) — the push itself engages the attacker's hub;
+* mid-contact, the post-push box contains the contact (tight LB 0.000) — the interval legitimately
+  spans a hub push the propagation cannot model;
+* the near-graze LBs hover at 4.165–4.173 through the whole deep range: the opponent is parked at
+  hub-grazing distance from the witness's swing (which is why the position is dead at all).
+
+So the next mathematical target is now named with unusual precision: a **hub-leg push regime**
+for the interval propagation. Structural note for whoever derives it: a hubA contact (attacker's
+fixed hub vs the victim's moving leg polyline) mirrors the existing vertex-contact machinery
+(fixed point vs moving polyline; the replica's push is closed-form per Gauss-Seidel iteration,
+`push3d(aHub, c.pt, dist, HUBLEGD − dist)` in both contact-law.js and throw-cert.js's replica
+sweep), so the localisation/normal-cone/lever-arm pattern of the chord regime carries over with
+the hub as the "vertex". A hubV contact (victim's moving hub vs the attacker's fixed leg) is the
+`footOnFixedSeg` shape exactly.
+
+
+
 ## The first family-cover measurement (2026-10-06, family (2,1) of CERT target 1)
 
 `node nn/response-cover.js --family 2 1` covered the limit end of the family -- [9.73 deg, lim =
