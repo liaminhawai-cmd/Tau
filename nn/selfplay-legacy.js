@@ -334,6 +334,13 @@ function main() {
   // play from the true start (see --openingPlies).
   const seedFrom = Math.max(0, Math.min(1, +arg('seedFrom', 0)));
   const seedPoolFile = arg('seedPool', null);
+  // --humanOpeningFrac F: this fraction of games starts from the position after the first
+  // --humanOpeningPlies moves of a game you won in the league (human-openings.js has the argument),
+  // with the normal brains playing on from there. Nothing happens until you have won one. Rows carry
+  // src:'human-opening', and like every non-standard start these games never feed the Elo inbox.
+  const humanOpeningFrac = Math.max(0, Math.min(1, +arg('humanOpeningFrac', 0.2)));
+  const humanOpeningPlies = Math.max(0, Math.floor(+arg('humanOpeningPlies', 3)));
+  const humanOpeningsFile = arg('humanOpenings', null);
   // Real lookahead (nnai.js's `depth`) measurably strengthens play (a same-net depth-2 vs depth-1
   // A/B went 19-5) but costs roughly keepForDepth x per extra ply (measured ~5.6x for depth 2, ~20x
   // for depth 3), so depth 5 everywhere would be a ~300x non-starter for bulk data generation.
@@ -401,6 +408,18 @@ function main() {
     // hundred poses. Under ~50 usable poses, seeding is skipped for this run -- a tiny pool would
     // just replay the same handful of positions with deterministic ladder brains.
     let seedFile = null;
+    // Your league wins' openings: read once here and handed to the workers as a small file.
+    let humanFile = null;
+    if (humanOpeningFrac > 0) {
+      const openings = require('./human-openings.js').loadHumanOpenings(__dirname, humanOpeningPlies);
+      if (openings.length) {
+        humanFile = out + '.human';
+        fs.mkdirSync(path.dirname(out), { recursive: true });
+        fs.writeFileSync(humanFile, JSON.stringify(openings));
+        console.log(`human openings: ~${Math.round(humanOpeningFrac*100)}% of games start after move ${humanOpeningPlies} of ` +
+                    `${openings.length} league game(s) you won`);
+      }
+    }
     if (seedFrom > 0) {
       const pool = loadSeedPoses(path.join(__dirname, 'data'), 400);
       if (pool.length >= 50) {
@@ -432,6 +451,7 @@ function main() {
       '--openingPlies', String(openingPlies), '--maxPlies', String(maxPlies),
       '--randomStartFrac', String(randomStartFrac), '--repeatGuard', String(repeatGuard),
       ...(seedFile ? ['--seedFrom', String(seedFrom), '--seedPool', seedFile] : ['--seedFrom', '0']),
+      ...(humanFile ? ['--humanOpeningFrac', String(humanOpeningFrac), '--humanOpenings', humanFile] : ['--humanOpeningFrac', '0']),
       ...(novel && novel.length ? ['--novelStartFrac', String(novelStartFrac), '--novelStarts', JSON.stringify(novel)]
           : ['--novelStartFrac', '0']),
       '--nnDepthMix', nnDepthMix.map(m => m.depth + ':' + m.weight).join(','),
@@ -497,6 +517,7 @@ function main() {
                 (coverageQueue.length ? `; ${coverageQueue.length} first-coverage face(s) queued` : ''));
     Promise.all(Array.from({ length: laneCount }, (_, i) => lane(i))).then(() => {
       if (seedFile) { try { fs.unlinkSync(seedFile); } catch (e) {} }
+      if (humanFile) { try { fs.unlinkSync(humanFile); } catch (e) {} }
       ws.end(() => console.log(`all ${games} games done: ${positions} positions -> ${out} ` +
                                `(${((Date.now() - t0)/1000).toFixed(0)}s)`));
     });
@@ -564,6 +585,16 @@ function main() {
       seedPool = loadSeedPoses(path.join(__dirname, 'data'), 400);
       if (seedPool.length < 50) seedPool = [];
       else if (!TAG) console.log(`seeding ~${Math.round(seedFrom*100)}% of games from ${seedPool.length} stored positions`);
+    }
+  }
+  // Your league wins' openings: a forked task reads the parent's file, a direct run reads them itself.
+  let humanPool = [];
+  if (humanOpeningFrac > 0) {
+    if (humanOpeningsFile) { try { humanPool = JSON.parse(fs.readFileSync(humanOpeningsFile, 'utf8')); } catch (e) {} }
+    else {
+      humanPool = require('./human-openings.js').loadHumanOpenings(__dirname, humanOpeningPlies);
+      if (humanPool.length && !TAG) console.log(`human openings: ~${Math.round(humanOpeningFrac*100)}% of games start after move ` +
+                                                `${humanOpeningPlies} of ${humanPool.length} league game(s) you won`);
     }
   }
   // A direct single-process run draws its own novel starts; a forked task already has its slice.
@@ -655,18 +686,21 @@ function main() {
       brainA = ladderBrain(la); brainB = ladderBrain(lb); tag = 'L' + la + ' vs L' + lb;
       idA = `L${la}`; idB = `L${lb}`;
     }
-    const seedPose = !coverageGame && seedPool.length && Math.random() < seedFrom ? pick(seedPool) : null;
+    // Only games a net plays in: two deterministic ladder brains would replay one game per opening.
+    const humanStart = !coverageGame && kind !== 'ladder' && humanPool.length && Math.random() < humanOpeningFrac ? pick(humanPool) : null;
+    if (humanStart) tag = 'human-opening ' + tag;
+    const seedPose = !coverageGame && !humanStart && seedPool.length && Math.random() < seedFrom ? pick(seedPool) : null;
     if (seedPose) tag = 'seeded ' + tag;
     // seedPose wins if both roll -- a stored decision point already IS a real, reachable
     // position, so there's no reason to override it with an unconstrained random one. A novel
     // start is the density-aware version of a random one and takes precedence over it likewise.
-    const novelStart = !coverageGame && !seedPose && novelStarts.length && Math.random() < novelStartFrac
+    const novelStart = !coverageGame && !humanStart && !seedPose && novelStarts.length && Math.random() < novelStartFrac
       ? novelStarts.shift() : null;
     if (novelStart) tag = 'novel-start ' + tag;
-    const randomStart = !coverageGame && !seedPose && !novelStart && Math.random() < randomStartFrac;
+    const randomStart = !coverageGame && !humanStart && !seedPose && !novelStart && Math.random() < randomStartFrac;
     if (randomStart) tag = 'random-start ' + tag;
     const { rows, winner, plies, capped, repeated, adjudicated } =
-      playGame(eng, brainA, brainB, maxPlies, openingPlies, seedPose || novelStart, randomStart, { repeatGuard });
+      playGame(eng, brainA, brainB, maxPlies, openingPlies, humanStart || seedPose || novelStart, randomStart, { repeatGuard });
     // `g` marks which game a position came from. Without it train.js can only hold out random
     // ROWS, and consecutive positions in one game are near-identical -- so the same game lands on
     // both sides of the split and the val set stops being held-out data at all. Measured
@@ -677,7 +711,7 @@ function main() {
     // Present only on rows from a non-standard opening, so ordinary games' rows don't grow a
     // field every consumer would otherwise have to ignore. Lets --randomStartFrac's effect be
     // measured in isolation later: filter nn/data/*.jsonl by src before re-running train.js.
-    const src = novelStart ? { src: 'novel' } : randomStart ? { src: 'random' } : null;
+    const src = humanStart ? { src: 'human-opening' } : novelStart ? { src: 'novel' } : randomStart ? { src: 'random' } : null;
     if (winner !== null) {
       decided++;
       // An adjudicated win (the komi rule scoring the position at the move cap) is a real result but
@@ -736,7 +770,7 @@ function main() {
     // would have to play that slice at temperature 0.
     const sameNoiseClass = kind === 'nnnn' || kind === 'ladder';
     if (eloInbox && idA && idB && idA !== idB && sameNoiseClass &&
-        !seedPose && !novelStart && !randomStart && (winner !== null || capped)) {
+        !humanStart && !seedPose && !novelStart && !randomStart && (winner !== null || capped)) {
       const KL = eng.CFG.komiLoss;
       let rec = null;
       if (winner === null) rec = { w: 0, l: 0, d: 1 };                     // cap draw
