@@ -227,6 +227,9 @@ const gateLanes = Math.max(1, +arg('gateLanes', 4));
 // A gate panel member plays every candidate and the incumbent, so it is seated at its strongest face
 // costing at most this many times the incumbent face's measured wall clock per game (0 = no cap).
 const panelCostRatio = Math.max(0, +arg('panelCostRatio', 4) || 0);
+// The incumbent plays the gate panel at each of these depths and defends at its best (promotion-gate.js
+// has the argument); a depth measured confidently worse stops being played for those bytes.
+const gateDepths = String(arg('gateDepths', '1,2,3')).split(',').map(x => parseInt(x, 10)).filter(d => d >= 1);
 const poolLevels = arg('poolLevels', '');
 // Capped model-variety slots. Fixed ladder-rank targets ("1.5, 2.5, 4.5...") break down once nets
 // exceed L11 -- ultra rates 509 against L11's 332, no ladder rank left to even express where it
@@ -2053,12 +2056,15 @@ async function runPoolCycle() {
         return fs.readFileSync(p).equals(bestBytes);
       } catch (e) { return false; }
     };
-    // The champion defends at the face it was promoted at (best-face.js has the argument: the twins
+    // The champion's face is recorded against its bytes (best-face.js has the argument: the twins
     // that carry its rated faces leave the roster, and ckpt-621 drifted D2 -> D1 -> D3 as they did).
+    // The record starts at the face it was promoted at and then follows the gate's own measurement:
+    // the panel is played at every --gateDepths depth and the champion defends at its best one.
     // Only when nothing is recorded for these bytes -- first run, or best.json changed some other
     // way -- is the face read off the rated byte twins, and that reading is then recorded.
     const incRec = champFace.load(bestFaceFile, best);
     let incumbentDepth = incRec ? incRec.depth : 0;
+    const ruledOut = new Set(Array.isArray(incRec?.ruledOut) ? incRec.ruledOut : []);
     if (!incumbentDepth) {
       const incTwin = ranked.filter(r => isBestTwin(livePath(r)) || path.basename(r.model, '.json') === incumbentName)
         .sort((a, b) => (b.eloLo ?? -Infinity) - (a.eloLo ?? -Infinity))[0];
@@ -2084,9 +2090,10 @@ async function runPoolCycle() {
       log(`pool cycle ${num} — ${gateLine}`);
     } else {
       // The panel (promotion-gate.js has the argument): games start from the true start and every
-      // brain is deterministic, so a pairing has two games, not eighty. Each model plays at its
-      // strongest rated depth against the same gateGames/2 panel members, both colours: the ladder
-      // rungs, then the strongest live faces by Elo that are neither a candidate nor the incumbent.
+      // brain is deterministic, so a pairing has two games, not eighty. Each candidate plays at its
+      // strongest rated depth and at the champion's best depth, the champion at every --gateDepths
+      // depth, all against the same gateGames/2 panel members, both colours: the ladder rungs, then
+      // the strongest live faces by Elo that are neither a candidate nor the incumbent.
       const panelN = Math.max(2, Math.floor(gateGames/2));
       const rungs = require('./ladder-sampling.js').productionTop(6);
       const panel = rungs.map(l => ({ id: `L${l}`, spec: `L${l}` }));
@@ -2135,15 +2142,18 @@ async function runPoolCycle() {
                   `(started ${new Date().toISOString()})`);
       const verdict = await gate.runPanelGate({
         incumbent: ckpt, incumbentDepth,
+        incumbentDepths: [...new Set([incumbentDepth, ...gateDepths])].filter(d => d === incumbentDepth || !ruledOut.has(d)),
         candidates: candidates.map(p => ({ path: p, depth: byModel[path.basename(p, '.json')]?.depth || 1 })),
         panel, lanes: gateLanes,
         dataPrefix: path.join(dir, 'data', `gate-${String(num).padStart(3, '0')}`),
         log: m => log(`pool cycle ${num} — ${m}`),
       });
       for (const r of verdict.results) log(`pool cycle ${num} — gate ${gate.describe(r, gateMargin)}`);
+      const defended = verdict.incumbent?.depth || incumbentDepth;
       try {
         fs.appendFileSync(gateHistFile, JSON.stringify({
-          cycle: num, incumbent: incumbentName, incumbentDepth, games: gateGames, margin: gateMargin, at: new Date().toISOString(),
+          cycle: num, incumbent: incumbentName, incumbentDepth: defended, incumbentScores: verdict.incumbent?.scores,
+          games: gateGames, margin: gateMargin, at: new Date().toISOString(),
           results: verdict.results.map(r => ({ name: r.name, depth: r.depth, w: r.w, l: r.l, d: r.d, komiW: r.komiW, komiL: r.komiL,
                                                elo: r.rating.elo, lo: r.rating.lo, hi: r.rating.hi })),
         }) + '\n');
@@ -2153,16 +2163,25 @@ async function runPoolCycle() {
       if (winner && fs.existsSync(winner.path)) {
         atomicCopy(best, path.join(dir, 'models', `best.pre-pool-${Date.now()}.json`));
         atomicCopy(winner.path, best);
-        champFace.save(bestFaceFile, best, { name: winner.name, depth: winner.depth, cycle: num, source: 'promotion' });
+        champFace.save(bestFaceFile, best, { name: winner.name, depth: winner.depth, ruledOut: [], cycle: num, source: 'promotion' });
         // Every new champion gets a committee of its own (committee.js): the champion, a medal net and
         // the strongest ladder rung, entering the league as an ordinary face from the next pass.
         try { require('./committee.js').formForChampion(dir, winner.path, { log: m => log(`pool cycle ${num} — ${m}`) }); }
         catch (e) { log(`pool cycle ${num} — committee not formed (${e.message})`); }
-        gateLine = `promoted ${winner.name}@D${winner.depth}: ${winner.w}-${winner.l}-${winner.d} vs ${incumbentName}@D${incumbentDepth}, ` +
+        gateLine = `promoted ${winner.name}@D${winner.depth}: ${winner.w}-${winner.l}-${winner.d} vs ${incumbentName}@D${defended}, ` +
                    `${fmtEloRange(winner.rating)} (lower bound clears +${gateMargin})`;
       } else {
+        // The champion keeps the seat at the depth it just measured best at, and drops the depths it
+        // measured confidently worse at; both feed the next cycle's panel choice and cost cap.
+        if (verdict.incumbent) {
+          const out = [...new Set([...ruledOut, ...verdict.incumbent.ruledOut])].filter(d => d !== defended).sort((a, b) => a - b);
+          if (defended !== incumbentDepth || out.length !== ruledOut.size) {
+            champFace.save(bestFaceFile, best, { ...(incRec || {}), name: incumbentName, depth: defended, ruledOut: out, cycle: num, source: 'panel' });
+            log(`pool cycle ${num} — ${incumbentName} now defends at D${defended}` + (out.length ? `; not measured again at ${out.map(d => `D${d}`).join(', ')}` : ''));
+          }
+        }
         const top = verdict.results[0];
-        gateLine = `no candidate provably beats ${incumbentName}` +
+        gateLine = `no candidate provably beats ${incumbentName}@D${defended}` +
           (top && top.rating.elo != null ? ` (closest ${top.name}@D${top.depth}: ${top.w}-${top.l}-${top.d}, ${fmtEloRange(top.rating)})` : '') +
           '; keeping best.json';
       }

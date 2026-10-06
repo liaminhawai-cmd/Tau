@@ -7,6 +7,8 @@
 // 622-627 (its twin had left), and D3 in 628 off six games. A defender playing below its strongest
 // face is easy to clear, so the seat moved on search depth instead of strength. Recording the face
 // at promotion, keyed by the sha1 of best.json, pins it for as long as those bytes hold the seat.
+// The gate then re-measures the champion at several depths and moves the record to its best one
+// (source 'panel'), with `ruledOut` listing depths it measured confidently worse at.
 const fs = require('fs');
 const crypto = require('crypto');
 

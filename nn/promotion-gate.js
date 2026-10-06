@@ -120,7 +120,9 @@ function describe(result, margin = 0) {
     (result.komiW + result.komiL ? ` (komi ${result.komiW}-${result.komiL})` : '');
   const call = e.elo == null ? 'no data' : clears(result, margin) ? 'CLEARS' : e.hi < 0 ? 'weaker' : 'undecided';
   const inc = result.incumbent ? ` vs ${result.incumbent.name}@D${result.incumbent.depth}'s ${result.incumbent.w}-${result.incumbent.l}${result.incumbent.d ? '-' + result.incumbent.d : ''} on the same panel` : '';
-  return `${result.name}${result.depth ? `@D${result.depth}` : ''}: ${score}${inc}, ${fmtEloRange(e)} -- ${call}`;
+  const others = (result.others || []).filter(o => o.elo != null).map(o => `D${o.depth} ${fmtEloRange(o)}`);
+  return `${result.name}${result.depth ? `@D${result.depth}` : ''}: ${score}${inc}, ${fmtEloRange(e)} -- ${call}` +
+    (others.length ? ` (also tried ${others.join(', ')})` : '');
 }
 
 
@@ -228,52 +230,109 @@ function orderPanelPool(incumbentName, depth, pool, keepUnknown = 0.25) {
   }
   return out;
 }
+// Best against best. A model's strength is the strength of its best face, and the best face is not
+// reliably the deepest: over the league's history the D1->D2 step gains for nearly every model while
+// D2->D3 and D3->D4 are a coin flip, so most nets peak at D2 or D3 and some at D1. The gate used to
+// seat the incumbent at the one face it was promoted at, so ckpt-672 defended at D1 in cycles
+// 672-677 while its D2 face was ~80 Elo stronger, and a weaker challenger cleared it.
+//
+// So the incumbent plays the panel at every depth in `incumbentDepths` and defends at whichever
+// scores best -- picked on the same panel it is then compared on, which flatters it, on purpose: a
+// promotion has to beat the champion at its best. Its cells are cached by (bytes, depth, member),
+// so the extra depths cost one pass per champion plus each new member. A depth that is confidently
+// worse than the best one on the panel comes back in `incumbent.ruledOut`; the caller stops
+// measuring it for these bytes.
+//
+// Each candidate plays at its strongest league face and, if that differs, at the incumbent's best
+// depth as well, and is judged at whichever of the two scores higher: same flattery, same reason --
+// a fresh net has only a D1 rating, and its peak is as likely to be at the champion's depth.
 async function runPanelGate(opts) {
-  const { incumbent, candidates, panel, lanes = 4, depth = 1, incumbentDepth = depth, cachePath = PANEL_CACHE,
-    dataPrefix = null, log = console.log } = opts;
+  const { incumbent, candidates, panel, lanes = 4, depth = 1, incumbentDepth = depth, incumbentDepths = [incumbentDepth],
+    cachePath = PANEL_CACHE, dataPrefix = null, log = console.log } = opts;
   const cands = [...new Map(candidates.map(c => {
     const p = typeof c === 'string' ? c : c.path;
-    return [p, { path: p, depth: typeof c === 'string' ? depth : c.depth }];
+    return [p, { path: p, name: path.basename(String(p), '.json'), depth: typeof c === 'string' ? depth : c.depth }];
   })).values()].filter(c => c.path && fs.existsSync(c.path) && c.path !== incumbent);
-  if (!cands.length || !fs.existsSync(incumbent) || !panel || !panel.length) return { results: [], played: 0 };
+  if (!cands.length || !fs.existsSync(incumbent) || !panel || !panel.length) return { results: [], played: 0, incumbent: null };
   const cache = readCache(cachePath), kw = komiWinValue();
-  const players = [{ name: path.basename(incumbent, '.json'), path: incumbent, depth: incumbentDepth, inc: true },
-                   ...cands.map(c => ({ name: path.basename(c.path, '.json'), ...c, inc: false }))];
-  const jobs = [];
-  players.forEach((pl, pi) => panel.forEach((member, mi) => {
-    const key = `${pl.name}@D${pl.depth}|${member.id}`;
-    if (cache[key]) return;
-    jobs.push({ name: pl.name, path: pl.path, depth: pl.depth, member, key,
-                saveData: dataPrefix ? `${dataPrefix}-${String(pi).padStart(2, '0')}-${String(mi).padStart(2, '0')}.jsonl` : null });
-  }));
-  log(`gate: ${cands.length} candidate(s) vs ${path.basename(incumbent, '.json')} over a ${panel.length}-member panel ` +
-      `(incumbent D${incumbentDepth}; candidates ${players.slice(1).map(p => `${p.name}@D${p.depth}`).join(', ')}): ` +
-      `${jobs.length} cell(s) to play (${players.length*panel.length - jobs.length} cached), ${Math.min(lanes, jobs.length) || 0} lane(s)`);
-  let next = 0, played = 0;
-  const lane = async () => {
-    while (next < jobs.length) {
-      const job = jobs[next++];
-      const r = await playCell(job);
-      if (r) { cache[job.key] = r; played += 2; writeCache(cache, cachePath); }
-      else log(`gate: no result for ${job.name} vs ${job.member.id} -- arena produced no summary`);
+  const incName = path.basename(incumbent, '.json');
+  const incDepths = [...new Set([incumbentDepth, ...incumbentDepths])].filter(d => Number.isInteger(d) && d >= 1).sort((a, b) => a - b);
+  const pad = n => String(n).padStart(2, '0');
+  let seatNo = 0, played = 0;
+  // Play every uncached (seat, member) cell; a seat is one player at one depth.
+  const play = async (seats, what) => {
+    const jobs = [];
+    for (const s of seats) {
+      const si = seatNo++;
+      panel.forEach((member, mi) => {
+        const key = `${s.name}@D${s.depth}|${member.id}`;
+        if (cache[key]) return;
+        jobs.push({ name: s.name, path: s.path, depth: s.depth, member, key,
+                    saveData: dataPrefix ? `${dataPrefix}-${pad(si)}-${pad(mi)}.jsonl` : null });
+      });
     }
+    log(`gate: ${what}: ${jobs.length} cell(s) to play (${seats.length*panel.length - jobs.length} cached), ` +
+        `${Math.min(lanes, jobs.length) || 0} lane(s)`);
+    let next = 0;
+    const lane = async () => {
+      while (next < jobs.length) {
+        const job = jobs[next++];
+        const r = await playCell(job);
+        if (r) { cache[job.key] = r; played += 2; writeCache(cache, cachePath); }
+        else log(`gate: no result for ${job.name}@D${job.depth} vs ${job.member.id} -- arena produced no summary`);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(lanes, jobs.length) }, lane));
   };
-  await Promise.all(Array.from({ length: Math.min(lanes, jobs.length) }, lane));
-  const incName = players[0].name;
+  const cell = (name, d, member) => cache[`${name}@D${d}|${member.id}`];
+
+  await play([...incDepths.map(d => ({ name: incName, path: incumbent, depth: d })), ...cands],
+    `${cands.length} candidate(s) vs ${incName} over a ${panel.length}-member panel (incumbent at ` +
+    `${incDepths.map(d => `D${d}`).join(', ')}; candidates ${cands.map(c => `${c.name}@D${c.depth}`).join(', ')})`);
+
+  // The incumbent's best depth, on the members every measured depth has played.
+  const common = panel.filter(m => incDepths.every(d => cell(incName, d, m)));
+  const field = (name, d, members) => members.map(m => cellFrac(cell(name, d, m), kw));
+  const mean = xs => xs.reduce((a, b) => a + b, 0)/Math.max(1, xs.length);
+  const scores = {};
+  for (const d of incDepths) scores[d] = { score: common.length ? mean(field(incName, d, common)) : null, n: common.length };
+  let best = incumbentDepth;
+  if (common.length) best = incDepths.slice().sort((a, b) => scores[b].score - scores[a].score ||
+    (a === incumbentDepth ? -1 : b === incumbentDepth ? 1 : a - b))[0];
+  const ruledOut = [];
+  for (const d of incDepths) {
+    if (d === best || !common.length) continue;
+    const e = pairedElo(field(incName, d, common), field(incName, best, common));
+    scores[d].vsBest = { elo: e.elo, lo: e.lo, hi: e.hi };
+    if (e.hi != null && e.hi < 0) ruledOut.push(d);
+  }
+  if (incDepths.length > 1)
+    log(`gate: ${incName} on the panel: ${incDepths.map(d => `D${d} ${scores[d].score == null ? '?' : Math.round(100*scores[d].score) + '%'}` +
+        (ruledOut.includes(d) ? ' (confidently worse)' : '')).join(', ')} over ${common.length} member(s) -- defends at D${best}`);
+
+  const extra = cands.filter(c => c.depth !== best).map(c => ({ ...c, depth: best }));
+  if (extra.length) await play(extra, `also trying ${extra.map(c => c.name).join(', ')} at the incumbent's D${best}`);
+
   const results = [];
-  for (const pl of players.slice(1)) {
-    const fc = [], fi = [], tot = { games: 0, w: 0, l: 0, d: 0, komiW: 0, komiL: 0 }, inc = { games: 0, w: 0, l: 0, d: 0, komiW: 0, komiL: 0 };
-    for (const member of panel) {
-      const c = cache[`${pl.name}@D${pl.depth}|${member.id}`], i = cache[`${incName}@D${incumbentDepth}|${member.id}`];
-      if (!c || !i) continue;   // a member both sides have played is a pair; anything else is dropped
-      fc.push(cellFrac(c, kw)); fi.push(cellFrac(i, kw));
-      for (const [t, x] of [[tot, c], [inc, i]]) { t.games += 2; t.w += x.w; t.l += x.l; t.d += x.d; t.komiW += x.komiW; t.komiL += x.komiL; }
-    }
-    results.push({ name: pl.name, path: pl.path, depth: pl.depth, ...tot, incumbent: { name: incName, depth: incumbentDepth, ...inc },
+  for (const c of cands) {
+    const tried = [];
+    for (const d of [...new Set([c.depth, best])]) {
+      const fc = [], fi = [], tot = { games: 0, w: 0, l: 0, d: 0, komiW: 0, komiL: 0 }, inc = { games: 0, w: 0, l: 0, d: 0, komiW: 0, komiL: 0 };
+      for (const member of panel) {
+        const x = cell(c.name, d, member), i = cell(incName, best, member);
+        if (!x || !i) continue;   // a member both sides have played is a pair; anything else is dropped
+        fc.push(cellFrac(x, kw)); fi.push(cellFrac(i, kw));
+        for (const [t, y] of [[tot, x], [inc, i]]) { t.games += 2; t.w += y.w; t.l += y.l; t.d += y.d; t.komiW += y.komiW; t.komiL += y.komiL; }
+      }
+      tried.push({ name: c.name, path: c.path, depth: d, ...tot, incumbent: { name: incName, depth: best, ...inc },
                    scoreA: fc.reduce((a, b) => a + b, 0), scoreB: fi.reduce((a, b) => a + b, 0), rating: pairedElo(fc, fi) });
+    }
+    const key = r => [r.rating.elo ?? -Infinity, r.rating.lo ?? -Infinity];
+    tried.sort((a, b) => key(b)[0] - key(a)[0] || key(b)[1] - key(a)[1]);
+    results.push({ ...tried[0], others: tried.slice(1).map(r => ({ depth: r.depth, elo: r.rating.elo, lo: r.rating.lo, hi: r.rating.hi })) });
   }
   results.sort((a, b) => (b.rating.lo ?? -Infinity) - (a.rating.lo ?? -Infinity));
-  return { results, played };
+  return { results, played, incumbent: { name: incName, depth: best, scores, ruledOut } };
 }
 
 module.exports = { runGate, runPanelGate, pairedElo, clears, describe, splitGames,
