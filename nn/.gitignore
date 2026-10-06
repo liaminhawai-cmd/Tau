@@ -31,6 +31,10 @@ elo-inbox.jsonl
 # machine's results -- the independent re-measurement that catches an over-claimed medal is exactly
 # what makes a second trainer worth running. Only the derived elo-summary.json is published.
 elo-results.json
+# human-league.js: your games as league evidence (folded into elo-results.json, so per-machine for
+# the same reason) and the drafts of games still being played.
+human-results.jsonl
+human-sessions/
 # One per retromine job: the worker snapshots the script so a mid-run pull cannot change it
 # underneath itself. Deleted when the job ends.
 .retromine-worker-*.js

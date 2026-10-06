@@ -167,7 +167,7 @@ def mover_name(mv):
     global MOVER_FACE
     if MOVER_FACE is None:
         import re
-        MOVER_FACE = re.compile(r'(\+P)?@D[1-4]$')
+        MOVER_FACE = re.compile(r'(\+P)?@D[1-9]$')
     return MOVER_FACE.sub('', str(mv))
 
 
@@ -257,6 +257,10 @@ def elo_lookup(summary_path):
             continue
         if r.get('kind') == 'ladder':
             name = pid
+        elif r.get('kind') == 'human':          # human-league.js rows carry mv = the human's league id
+            name = pid
+            if (r.get('games') or 0) < 6:
+                continue
         elif r.get('model'):
             base = str(r.get('model')).replace('\\', '/').split('/')[-1]
             name = base[:-5] if base.endswith('.json') else base

@@ -497,4 +497,7 @@ function main() {
   if (dataStream) { dataStream.end(); console.log(`${savedRows} training rows -> ${saveData}`); }
 }
 
-main();
+// human-league.js builds league faces with exactly this brain factory, so a game against you is a
+// game against the same player the league rates.
+if (require.main === module) main();
+module.exports = { makeBrain };
