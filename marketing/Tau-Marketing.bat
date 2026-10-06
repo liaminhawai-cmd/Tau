@@ -4,6 +4,7 @@ title Tau Marketing
 cd /d "%~dp0"
 set "TOOLS=%~dp0rotoscope"
 set "CLIPS=%~dp0clips"
+set "ADS=%~dp0ads"
 set "VENV=%~dp0.venv"
 set "PY=%VENV%\Scripts\python.exe"
 
@@ -18,6 +19,8 @@ echo   2. Open the editor
 echo   3. Render a corrected clip to MP4
 echo   4. Open the clips folder
 echo   5. First-time setup / repair
+echo   6. Make ad variations of a corrected clip (every look, phone + wide)
+echo   7. Pair a throw with a Tau clip (with end card)
 echo   Q. Quit
 echo.
 echo  Tip: you can also drag a video or a .corrected.json onto this file.
@@ -29,6 +32,8 @@ if /i "%CHOICE%"=="2" goto editor
 if /i "%CHOICE%"=="3" goto render_ask
 if /i "%CHOICE%"=="4" (start "" "%CLIPS%" & goto menu)
 if /i "%CHOICE%"=="5" goto setup_force
+if /i "%CHOICE%"=="6" goto variants
+if /i "%CHOICE%"=="7" goto pair
 if /i "%CHOICE%"=="q" exit /b 0
 goto menu
 
@@ -96,6 +101,46 @@ echo.
 echo Saved %CLIPS%\%NAME%_tau.mp4
 start "" "%CLIPS%"
 if not "%~1"=="" (pause & exit /b 0)
+goto menu
+
+:variants
+echo.
+echo Drag the .corrected.json in here and press Enter.
+set "IN="
+set /p "IN=Corrected file: "
+if not defined IN goto menu
+set "IN=%IN:"=%"
+call :setup || goto fail
+echo.
+echo When is the key moment, in seconds from the start of the clip (like 1.4)?
+echo It gets slow motion and a short hold. Press Enter to skip.
+set "IMP=" & set "CAP=" & set "OPT="
+set /p "IMP=Key moment: "
+set /p "CAP=Caption (Enter for none): "
+if defined IMP set "OPT=--impact %IMP%"
+"%PY%" "%ADS%\animate.py" "%IN%" --batch %OPT% --caption "%CAP%" || goto fail
+for %%F in ("%IN%") do start "" "%%~dpF"
+goto menu
+
+:pair
+echo.
+echo Drag the stick-figure MP4 in here and press Enter.
+set "A=" & set "B="
+set /p "A=Throw video: "
+if not defined A goto menu
+echo Now drag in the Tau recording (Director mode or Cinematic Studio).
+set /p "B=Tau video: "
+if not defined B goto menu
+set "A=%A:"=%" & set "B=%B:"=%"
+call :setup || goto fail
+set "LAY=" & set "TOP=" & set "BOT=" & set "LAYOUT=stack"
+set /p "LAY=Layout? [S]tacked phone (default), side by [W]ide, or [C]ut one after the other: "
+if /i "%LAY%"=="w" set "LAYOUT=side"
+if /i "%LAY%"=="c" set "LAYOUT=cut"
+set /p "TOP=Label for the throw (like Sumo): "
+set /p "BOT=Label for the Tau clip (like Tau): "
+"%PY%" "%ADS%\compose.py" "%A%" "%B%" --layout %LAYOUT% --top "%TOP%" --bottom "%BOT%" || goto fail
+for %%F in ("%A%") do start "" "%%~dpF"
 goto menu
 
 :setup_force

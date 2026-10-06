@@ -23,3 +23,7 @@ Everything in `clips\` stays on your computer and isn't committed to git.
 - Keep clips short (a few seconds around the move). Detection is slow and you'll have fewer frames to fix.
 - Check the feet first: they're the least reliable joints.
 - For ads, only use footage you have the rights to (your own filming, or Creative Commons with the licence checked).
+
+## Ads
+
+Menu options 6 and 7 make ad variations and pair a throw with Tau footage. See `ads/PLAN.md` for the tools, the level 13 challenge rules and the ad and video outlines.
