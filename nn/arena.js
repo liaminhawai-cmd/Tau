@@ -47,7 +47,7 @@ function arg(name, dflt) {
 // recursive search stops once it has refuted the candidate (never blind -- no cutoff means every
 // arm is still swept); without it, the policy hard-prunes to its top arms, the original wiring.
 // Default stays pruning so the existing menu A/Bs keep testing what they say they test.
-function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, abCut, policyArms, stopStride, sweepDeg, parkStops, dualPolicy) {
+function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, abCut, policyArms, stopStride, sweepDeg, parkStops, dualPolicy, backup) {
   // "L9" is the rung as itself; "L9+corner" is the rung opening with the corner cross (index.html's
   // ladderPlanCorner, then itself). Both are pinned explicitly: the app flips a coin per game for
   // L7 and up, but a rated face has to be one thing or the other, or its Elo is a blend of two
@@ -122,7 +122,7 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
                  (parkStops ? ',PARK' : '');
     const common = { temperature, keepForDepth, quiesce, dual, dualPolicy: !!dualPolicy, policyArms,
                      stopStride, sweepDeg, parkStops: !!parkStops,
-                     policyPrune: !!dualPolicy && !abCut, abCut: !!abCut };
+                     policyPrune: !!dualPolicy && !abCut, abCut: !!abCut, backup: !!backup };
     if (timeMs) {
       const tm = () => (typeof timeMs === 'object' ? timeMs.ms : timeMs);
       const tTag = typeof timeMs === 'object' ? 'Trand' : 'T' + timeMs + 'ms';
@@ -132,7 +132,7 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
     const depthLabel = quiesce ? depth + 0.5 : depth;
     return { scored: true, depth,
              name: `dual(${path.basename(mp)}${temperature ? ',T' + temperature : ''}` +
-                   `${depthLabel > 1 ? ',D' + depthLabel : ''}${kTag}${pTag}${sTag})`,
+                   `${depthLabel > 1 ? ',D' + depthLabel : ''}${backup && depth > 2 ? ',BK' : ''}${kTag}${pTag}${sTag})`,
              fn: idx => nnPlanFor(eng, null, idx, { ...common, depth }) };
   }
   if (parts[0] !== 'nn') throw new Error('unknown brain: ' + spec);
@@ -182,9 +182,9 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
                 (parkStops ? ',PARK' : '');
   return { scored: true, depth,
            name: 'nn(' + path.basename(mp) + (temperature ? ',T' + temperature : '') + (depthLabel > 1 ? ',D' + depthLabel : '') +
-           kTag + pTag + aTagD + sTagD + ')',
+           (backup && depth > 2 ? ',BK' : '') + kTag + pTag + aTagD + sTagD + ')',
            fn: idx => nnPlanFor(eng, net, idx, { temperature, depth, keepForDepth, quiesce, policy, policyArms, stopStride, sweepDeg,
-                                                 parkStops: !!parkStops,
+                                                 parkStops: !!parkStops, backup: !!backup,
                                                  policyPrune: !!policy && !abCut, abCut: !!abCut }) };
 }
 
@@ -276,9 +276,14 @@ function main() {
   const dualPolicy = process.argv.includes('--dualPolicy');
   const dualPolicyA = dualPolicy || process.argv.includes('--dualPolicyA');
   const dualPolicyB = dualPolicy || process.argv.includes('--dualPolicyB');
+  // --backup: a depth-3+ search scores each move at the end of its principal line (nnai.js) instead
+  // of two plies ahead; --backupA/--backupB per side for a same-net A/B.
+  const backup = process.argv.includes('--backup');
+  const backupA = backup || process.argv.includes('--backupA');
+  const backupB = backup || process.argv.includes('--backupB');
   const asClock = t => (t && typeof t === 'object' ? t : t && +t);
-  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepA, quiesceA, arg('policyA', policy), asClock(timeMsA), abA, policyArmsA, stopStrideA, sweepDegA, parkStopsA, dualPolicyA);
-  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepB, quiesceB, arg('policyB', policy), asClock(timeMsB), abB, policyArmsB, stopStrideB, sweepDegB, parkStopsB, dualPolicyB);
+  const A = makeBrain(arg('a', 'nn'), eng, depthA, keepA, quiesceA, arg('policyA', policy), asClock(timeMsA), abA, policyArmsA, stopStrideA, sweepDegA, parkStopsA, dualPolicyA, backupA);
+  const B = makeBrain(arg('b', 'L5'), eng, depthB, keepB, quiesceB, arg('policyB', policy), asClock(timeMsB), abB, policyArmsB, stopStrideB, sweepDegB, parkStopsB, dualPolicyB, backupB);
   const games = +arg('games', 24);
   // both brains are commonly fully deterministic (nn at temperature 0, or a noise-free ladder
   // level) from the same fixed start -- without a shuffled opening, every game with the same

@@ -236,5 +236,8 @@ function worker() {
   });
 }
 
-if (process.argv.includes('--worker')) worker();
-else main().catch(e => { console.error('[search-label] FAILED: ' + e.message); process.exitCode = 1; });
+if (require.main === module) {
+  if (process.argv.includes('--worker')) worker();
+  else main().catch(e => { console.error('[search-label] FAILED: ' + e.message); process.exitCode = 1; });
+}
+module.exports = { eligible, selectRows, KEEP_FOR_DEPTH };

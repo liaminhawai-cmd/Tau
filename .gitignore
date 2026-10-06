@@ -99,3 +99,5 @@ marketing/tau-danger-map-moves-best.json-111frames (1).zip
 nn/grow-cache/
 # search-label.js / svx-experiment.js working files: position copies, labels, teacher snapshot
 nn/svx/
+# leaf-label.js / lfx-experiment.js working files, same kind
+nn/lfx/

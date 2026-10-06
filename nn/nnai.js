@@ -386,14 +386,14 @@ function nnPlanFor(eng, net, idx, opts) {
     for (const c of deepCands) {
       eng.applyPlanSearch(c);   // hypothetical: must not file into koHist or tick the move cap
       const g1 = eng.getG();
-      let deep;
+      let deep, line = null;
       if (g1.over) deep = g1.winner === idx ? 1e6 : -1e6;
       else {
         const oppPlan = nnPlanFor(eng, net, 1 - idx, { temperature: 0, depth: depth - 1, keepForDepth: o.keepForDepth,
                                                       policy: o.policy, policyPrune: !!o.policyPrune, policyArms: o.policyArms, stopStride: o.stopStride, evalFn: o.evalFn, sweepDeg: o.sweepDeg, parkStops: o.parkStops,
                                                       dual: o.dual, dualPolicy: o.dualPolicy,
-                                                      abCut: o.abCut,
-                                                      cutIfAbove: (o.abCut && bestDeep > -Infinity) ? -bestDeep : null });
+                                                      abCut: o.abCut, backup: o.backup,
+                                                      cutIfAbove: (o.abCut && !o.backup && bestDeep > -Infinity) ? -bestDeep : null });
         // Opponent wedged (no legal waypoint at all) -- score the position as it stands. This line
         // used to read `net.value(features(eng))`, which was wrong twice over: it ignored evalFn
         // entirely (so a le:L11 search mixed [-1,1] value-net scores into a +-400 scale here), and
@@ -403,12 +403,29 @@ function nnPlanFor(eng, net, idx, opts) {
         if (!oppPlan) deep = evalFn(eng, idx);
         else {
           eng.applyPlanSearch(oppPlan);
-          const g2 = eng.getG();
+          let g2 = eng.getG();
+          // o.backup: play the reply's own principal line out to its end and score THAT position,
+          // so a depth-N search scores N plies ahead. Without it the score is always taken right
+          // after the reply -- 2 plies ahead at every depth -- and the deeper plies only change
+          // which reply is assumed.
+          if (o.backup) {
+            line = [oppPlan];
+            for (const p of oppPlan.pv || []) { if (g2.over) break; eng.applyPlanSearch(p); line.push(p); g2 = eng.getG(); }
+          }
           deep = g2.over ? (g2.winner === idx ? 1e6 : -1e6) : evalFn(eng, idx);
+          // o.captureLeaves (an array, honoured at the call it is passed to, never recursively): the
+          // position each searched candidate is finally scored at -- the hypothetical positions the
+          // search's choice rests on, which no real game ever reaches (leaf-label.js trains on them).
+          if (Array.isArray(o.captureLeaves) && !g2.over) {
+            const ps = g2.pieces;
+            o.captureLeaves.push({ p: [ps[0].x, ps[0].y, ps[0].rot, ps[1].x, ps[1].y, ps[1].rot], m: g2.active,
+                                   f: features(eng), plies: 2 + (line ? line.length - 1 : 0) });
+          }
         }
       }
       restore();
       c.deep = deep;
+      if (line) c.pv = line;
       if (deep > bestDeep) bestDeep = deep;
     }
     deepCands.sort((a, b) => b.deep - a.deep);
