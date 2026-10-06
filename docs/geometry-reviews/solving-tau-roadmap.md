@@ -105,6 +105,24 @@ sweep), so the localisation/normal-cone/lever-arm pattern of the chord regime ca
 the hub as the "vertex". A hubV contact (victim's moving hub vs the attacker's fixed leg) is the
 `footOnFixedSeg` shape exactly.
 
+**The hub-regime census (`nn/throw-audit/hub-regime-census.js`, 2026-10-07) settles which to build:**
+replaying the three best witnesses from stops 2.5/5/7.5/9.5 deg of family (2,1):
+
+* every hub contact in the deep range is **hubV** (the victim's hub riding the attacker's leg
+  mid-throw) — zero hubA, zero hubhub across all twelve replays;
+* witness (0,-1) (the strongest): hubV at 4–45 substeps, its count shrinking with stop depth
+  (45 pushes at 2.5 deg, 4 at 9.5 deg);
+* witness (2,1) throws at EVERY deep stop with **pure leg-leg contact** — its refusals are the
+  cone-width smearing (the Brief-4 frame term), not hub;
+* witness (1,1) does not throw from the deep stops (prescreen margins negative there).
+
+So the deep range has two independent unlock paths, and hubV is the easier derivation: the
+victim's hub does not rotate, so the interval point is exactly `{box.x, box.y, H}` against the
+attacker's FIXED polyline — a 1D localisation parameter along the polyline whose drift is the
+translation pad alone, the normal cone from the contact-point box vs the hub box, hf and the
+lever arm rn closed-form (`push3d(c.pt, oHub, dist, HUBLEGD − dist)`), and the push magnitude
+pinned by the same [HUBLEGD, HUBLEGD + eta] contact constraint as the leg regime.
+
 
 
 ## The first family-cover measurement (2026-10-06, family (2,1) of CERT target 1)
