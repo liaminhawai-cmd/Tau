@@ -72,6 +72,7 @@ for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])
     // Population line every checkpoint, not just on a cull: while the field is over the admission
     // ceiling it is the only number that says whether the league is draining or still stuck.
     const held=after.heldModels?`, ${after.heldModels} model(s) held out of the league`:'';
+    for(const j of c.jumped||[])console.log(`[evolution] depth jump: ${j.model} D${j.from}->D${j.from+1} ${j.gain>=0?'+':''}${j.gain} Elo (typical step ${j.typical>=0?'+':''}${j.typical}); seated ${j.seated.join(', ')}`);
     if(c.reinstated.length)console.log(`[evolution] reinstated ${c.reinstated.length} face(s) the cull retired that had never been beaten: ${c.reinstated.join(', ')}`);
     if(c.culled.length||c.admitted.length)console.log(`[evolution] checkpoint: ${c.culled.length} culled, ${c.admitted.length} frontier face(s) admitted; bank ${after.gamesSinceCull.toFixed(0)}`);
     else console.log(`[evolution] no rating checkpoint due; bank ${before.gamesSinceCull.toFixed(0)}`);
@@ -91,7 +92,7 @@ for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])
     // only writes out any the old immortal sweep still listed, before the roster scan seats them.
     try{require('./committee.js').releaseLegacyCommittees(dir);}catch(e){console.error('[committee] release failed:',e.message);}
     evo.sync(dir);evo.ingestSummary(dir,summary);
-    const faces=evo.activeFaceIds(dir,[1,2,3,4]),levels=evo.activeLadderLevels(dir);
+    const faces=evo.activeFaceIds(dir,evo.FACE_DEPTHS),levels=evo.activeLadderLevels(dir);
     const a=['--faces',faces.join(','),'--levels',levels.join(','),'--summary',summary,
       '--out',get(original,'out',path.join(dir,'elo-results.json')),
       '--games',get(original,'ratingGames','2')];
@@ -106,6 +107,7 @@ for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])
     evo.ingestSummary(dir,summary);
 
     const c=evo.cull(dir);
+    for(const j of c.jumped||[])console.log(`[evolution] depth jump: ${j.model} D${j.from}->D${j.from+1} ${j.gain>=0?'+':''}${j.gain} Elo (typical step ${j.typical>=0?'+':''}${j.typical}); seated ${j.seated.join(', ')}`);
     if(c.reinstated.length)console.log(`[evolution] reinstated ${c.reinstated.length} face(s) the cull retired that had never been beaten: ${c.reinstated.join(', ')}`);
     if(c.culled.length||c.admitted.length)console.log(`[evolution] checkpoint: ${c.culled.length} culled, ${c.admitted.length} frontier face(s) admitted`);
     try{medals.main();}catch(e){console.error('[medals] refresh failed:',e.message);}

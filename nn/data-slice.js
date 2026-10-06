@@ -61,7 +61,7 @@ const census = process.argv.includes('--census');
 
 function mulberry32(a) { return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 function shuffle(items, rnd) { for (let i = items.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [items[i], items[j]] = [items[j], items[i]]; } return items; }
-const moverModel = mv => { const m = String(mv).match(/^(.*?)(\+P)?@D[1-4]$/); return m ? m[1] : null; }; // L10 etc -> null
+const moverModel = mv => { const m = String(mv).match(/^(.*?)(\+P)?@D[1-9]$/); return m ? m[1] : null; }; // L10 etc -> null
 
 function medalistSet() {
   const explicit = String(arg('medalists', '')).split(',').map(s => s.trim()).filter(Boolean);

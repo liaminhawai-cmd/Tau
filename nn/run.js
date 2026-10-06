@@ -230,6 +230,10 @@ const panelCostRatio = Math.max(0, +arg('panelCostRatio', 4) || 0);
 // The incumbent plays the gate panel at each of these depths and defends at its best (promotion-gate.js
 // has the argument); a depth measured confidently worse stops being played for those bytes.
 const gateDepths = String(arg('gateDepths', '1,2,3')).split(',').map(x => parseInt(x, 10)).filter(d => d >= 1);
+// The deepest face a candidate is gated at. A candidate plays the whole panel at its face, so a
+// jump-minted D5/D6 face (evolution-roster.js) would hold the gate for a day; such a model is gated
+// at its best face up to this depth and goes on being rated deeper in the league.
+const gateMaxDepth = Math.max(1, +arg('gateMaxDepth', 4) || 4);
 const poolLevels = arg('poolLevels', '');
 // Capped model-variety slots. Fixed ladder-rank targets ("1.5, 2.5, 4.5...") break down once nets
 // exceed L11 -- ultra rates 509 against L11's 332, no ladder rank left to even express where it
@@ -2001,6 +2005,7 @@ async function runPoolCycle() {
       return out;
     };
     const byModel = bestFace(rated);
+    const gateFace = bestFace(rated.filter(r => (r.depth || 1) <= gateMaxDepth));
     // The mint population is judged on the SAME one-face-per-model reading, but duals included: a
     // mint can be a dual net (mint-plan.js's 'dual' mode), and byModel leaves every dual out because
     // it exists to feed the best.json gate. Reading members from byModel made each dual member
@@ -2143,7 +2148,7 @@ async function runPoolCycle() {
       const verdict = await gate.runPanelGate({
         incumbent: ckpt, incumbentDepth,
         incumbentDepths: [...new Set([incumbentDepth, ...gateDepths])].filter(d => d === incumbentDepth || !ruledOut.has(d)),
-        candidates: candidates.map(p => ({ path: p, depth: byModel[path.basename(p, '.json')]?.depth || 1 })),
+        candidates: candidates.map(p => ({ path: p, depth: gateFace[path.basename(p, '.json')]?.depth || 1 })),
         panel, lanes: gateLanes,
         dataPrefix: path.join(dir, 'data', `gate-${String(num).padStart(3, '0')}`),
         log: m => log(`pool cycle ${num} — ${m}`),

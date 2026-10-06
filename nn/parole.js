@@ -23,7 +23,7 @@ const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i >= 0 
 const dry = process.argv.includes('--dry');
 const pattern = String(arg('like', arg('face', ''))).trim();
 const statePath = path.join(dir, 'models', '.evolution-roster.json');
-const trunk = id => String(id).replace(/(\+P)?@D[1-4]$/, '');
+const trunk = id => String(id).replace(/(\+P)?@D[1-9]$/, '');
 
 if (!pattern) {
   console.error('[parole] usage: node nn/parole.js --like <substring of the face or model name> [--dry]');

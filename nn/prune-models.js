@@ -61,7 +61,7 @@ const ALIASES = new Set(['best.json', 'value.json', 'scratch.json', 'wide.json',
   'l15_value.json', 'policy-joint-base.json', 'dual.json', 'policy.json', 'policy-fight.json']);
 const neverCandidate = f => ALIASES.has(f) || /^pool-slot-\d+\.json$/.test(f) || /^best\./.test(f) ||
   /^dual-startup-probe-/.test(f) || /\.partial\.json$/.test(f) || f.startsWith('.');
-const faceModel = id => String(id).replace(/(\+P)?@D[1-4]$/, '');
+const faceModel = id => String(id).replace(/(\+P)?@D[1-9]$/, '');
 const isLadder = id => /^L\d+(\+corner)?$/.test(id);
 const readJSON = p => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; } };
 const listFiles = d => { try { return fs.readdirSync(d, { withFileTypes: true }).filter(e => e.isFile()).map(e => e.name); } catch (e) { return []; } };

@@ -22,7 +22,7 @@ const stamp=()=>new Date().toISOString().replace(/[:.]/g,'-');
 
 function current(dir){const r=read(resultsPath(dir),{});return +r.ratingSemanticsVersion||0;}
 function copy(src,dst){if(!fs.existsSync(src))return false;fs.mkdirSync(path.dirname(dst),{recursive:true});fs.copyFileSync(src,dst);return true;}
-function modelExists(dir,id){const m=String(id).match(/^(.*?)(?:\+P)?@D[1-4]$/);return !!(m&&fs.existsSync(path.join(dir,'models',m[1]+'.json')));}
+function modelExists(dir,id){const m=String(id).match(/^(.*?)(?:\+P)?@D[1-9]$/);return !!(m&&fs.existsSync(path.join(dir,'models',m[1]+'.json')));}
 
 // Recreate the CURRENT point Elo of any old result graph. This is not retained as evidence: it is
 // only where the clean graph starts. One virtual match per player in elorank-legacy makes this prior
@@ -44,7 +44,7 @@ function seedFromCurrent(dir,old){const direct=old&&old.seedElo&&Object.keys(old
 
 function resetRoster(dir,now){
   const p=rosterPath(dir),s=read(p,null);if(!s)return 0;let reopened=0;
-  for(const key of ['D1','D2','D3','D4']){const pool=s.facePools&&s.facePools[key];if(!pool)continue;const active=new Set(pool.active||[]),retired=pool.retired||{};for(const [id,meta] of Object.entries(retired))if(meta&&meta.reason==='elastic cull'&&modelExists(dir,id)){active.add(id);delete retired[id];reopened++;}pool.active=[...active];pool.retired=retired;pool.trial=null;pool.waiting=[];pool.deferred={};}
+  for(const key of ['D1','D2','D3','D4','D5','D6']){const pool=s.facePools&&s.facePools[key];if(!pool)continue;const active=new Set(pool.active||[]),retired=pool.retired||{};for(const [id,meta] of Object.entries(retired))if(meta&&meta.reason==='elastic cull'&&modelExists(dir,id)){active.add(id);delete retired[id];reopened++;}pool.active=[...active];pool.retired=retired;pool.trial=null;pool.waiting=[];pool.deferred={};}
   s.latest={};s.ladderGames={};s.ladderRatings={};s.evidenceSeen={};s.gamesSinceCull=0;s.ratingSemanticsVersion=VERSION;s.lastEvent={at:now,result:'rating-semantics-reset',reopenedFaces:reopened};atomic(p,JSON.stringify(s,null,1));return reopened;
 }
 

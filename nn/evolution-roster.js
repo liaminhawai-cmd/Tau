@@ -26,9 +26,13 @@ const TARGET_MODELS=TARGET_FACES;
 // sheds what it knows about and keeps what it does not. Admission is the lever that actually
 // closes this -- the cull cannot, since a face it has never measured is one it may never retire.
 const ADMIT_CEILING=Math.round(TARGET_FACES*1.5);
-const FACE_CAPS=Object.freeze({D1:50,D2:14,D3:4,D4:1}); // compatibility export only; never enforced
-const FACE_MIN_GAMES=Object.freeze({D1:12,D2:8,D3:5,D4:2});
-const DEPTH_CULL_WEIGHT=Object.freeze({D1:1,D2:3,D3:9,D4:27});
+const FACE_CAPS=Object.freeze({D1:50,D2:14,D3:4,D4:1,D5:0,D6:0}); // compatibility export only; never enforced
+const FACE_MIN_GAMES=Object.freeze({D1:12,D2:8,D3:5,D4:2,D5:2,D6:2});
+const DEPTH_CULL_WEIGHT=Object.freeze({D1:1,D2:3,D3:9,D4:27,D5:81,D6:243});
+// Faces run D1..MAX_FACE_DEPTH. The ordinary frontier climbs one rung at a time and stops at
+// FRONTIER_MAX_DEPTH; only a measured depth jump (admitDepthJumps) seats a face deeper than that.
+const MAX_FACE_DEPTH=6,FRONTIER_MAX_DEPTH=4;
+const FACE_DEPTHS=Object.freeze(Array.from({length:MAX_FACE_DEPTH},(_,i)=>i+1));
 const CULL_EVERY_GAMES=100;
 // An experiment arm -- a member of the mutant or dual population -- is admitted at D1 like any file
 // and then, with the field over TARGET_FACES, was cull-eligible after cullMinGames (7 at D1 with 90
@@ -96,19 +100,19 @@ const LEAGUE_MIN_LEVEL=6;
 const LEAGUE_TOP_RUNGS=Math.max(1,+(process.env.TAU_LEAGUE_RUNGS||5));
 function productionLadderLevels(ladderN=null){try{const d=require('./engine.js').createEngine().AI_LADDER,n=ladderN==null?d.length:Math.min(ladderN,d.length);return d.slice(0,n).map((x,i)=>x&&!x.experimental?i+1:null).filter(Boolean);}catch(_){const n=ladderN==null?11:ladderN;return Array.from({length:n},(_,i)=>i+1);}}
 function faceId(name,depth,policy=false){return`${name}${policy?'+P':''}@D${depth}`;}
-function splitFaceId(id){const m=String(id).match(/^(.*?)(\+P)?@D([1-4])$/);return m?{name:m[1],policy:!!m[2],depth:+m[3],key:`D${m[3]}${m[2]?'+P':''}`}:null;}
+function splitFaceId(id){const m=String(id).match(/^(.*?)(\+P)?@D([1-9])$/);return m?{name:m[1],policy:!!m[2],depth:+m[3],key:`D${m[3]}${m[2]?'+P':''}`}:null;}
 function candidateFaces(e,d){if(e.committee)return e.fixedDepth&&d!==1?[]:[faceId(e.name,d,false)];/* a committee face at depth N has every member searching at depth N, so it climbs the frontier like a net; one whose spec pins a depth (the old sweep's) keeps its single D1 seat */if(e.policy&&d===1)return[];const a=[faceId(e.name,d,false)];if(e.dual)a.push(faceId(e.name,d,true));return a;}
-function ensurePools(s){s.facePools||={};for(let d=1;d<=4;d++)s.facePools[depthKey(d)]||=emptyPool();}
+function ensurePools(s){s.facePools||={};for(let d=1;d<=MAX_FACE_DEPTH;d++)s.facePools[depthKey(d)]||=emptyPool();}
 function poolIds(p){return[...(p.active||[]),...(p.trial?[p.trial]:[])];}
-function activeFaceSet(s){const q=new Set();for(let d=1;d<=4;d++)for(const id of poolIds(s.facePools[depthKey(d)]))q.add(id);return q;}
+function activeFaceSet(s){const q=new Set();for(let d=1;d<=MAX_FACE_DEPTH;d++)for(const id of poolIds(s.facePools[depthKey(d)]))q.add(id);return q;}
 function elasticRetired(p,id){return !!(p&&p.retired&&p.retired[id]&&p.retired[id].reason==='elastic cull');}
 function faceReading(s,id){const x=splitFaceId(id);return x?s.latest[x.name]?.faces?.[x.key]||null:null;}
 function faceEstablished(s,id,d){const r=faceReading(s,id);return !!(r&&(+r.games||0)>=FACE_MIN_GAMES[depthKey(d)]&&Number.isFinite(+r.eloHi));}
 function modelScore(s,name){const r=s.latest[name]||{},v=[];if(Number.isFinite(+r.eloHi))v.push(+r.eloHi);for(const f of Object.values(r.faces||{}))if(Number.isFinite(+f.eloHi))v.push(+f.eloHi);if(v.length)return Math.max(...v);const q=[];if(Number.isFinite(+r.elo))q.push(+r.elo);for(const f of Object.values(r.faces||{}))if(Number.isFinite(+f.elo))q.push(+f.elo);return q.length?Math.max(...q):-Infinity;}
 function modelSerial(name){const m=String(name).match(/(\d+)(?!.*\d)/);return m?+m[1]:-1;}
 
-function reconcile(s,entries,protect=new Set()){ensurePools(s);const available={};for(let d=1;d<=4;d++)available[depthKey(d)]=new Set(entries.flatMap(e=>candidateFaces(e,d)));
-  for(let d=1;d<=4;d++){const k=depthKey(d),p=s.facePools[k],avail=available[k];p.retired=p.retired||{};p.active=[...new Set((p.active||[]).filter(id=>avail.has(id)&&!elasticRetired(p,id)))];p.trial=null;p.waiting=[];p.deferred={};for(const id of Object.keys(p.retired))if(!avail.has(id))delete p.retired[id];}
+function reconcile(s,entries,protect=new Set()){ensurePools(s);const available={};for(let d=1;d<=MAX_FACE_DEPTH;d++)available[depthKey(d)]=new Set(entries.flatMap(e=>candidateFaces(e,d)));
+  for(let d=1;d<=MAX_FACE_DEPTH;d++){const k=depthKey(d),p=s.facePools[k],avail=available[k];p.retired=p.retired||{};p.active=[...new Set((p.active||[]).filter(id=>avail.has(id)&&!elasticRetired(p,id)))];p.trial=null;p.waiting=[];p.deferred={};for(const id of Object.keys(p.retired))if(!avail.has(id))delete p.retired[id];}
   // The mint. Every usable model file no pool has seen becomes a D1 face here -- that is how a fresh
   // clone bootstraps a population, and it is also how the desktop field reached 1067 faces on 2170
   // games. A pool cycle writes roughly three new model files an hour; each was admitted on the very
@@ -130,13 +134,13 @@ function reconcile(s,entries,protect=new Set()){ensurePools(s);const available={
   // the whole point of the league, and the elastic cull drains the rest toward TARGET_FACES anyway.
   // Only a member with NO seat is repaired: a seated mint member may have lost a weak face to the
   // cull on purpose (see mintMembers), and clearing that marker would forget the verdict.
-  for(const e of entries){if(!protect.has(e.name))continue;let seated=false;for(let d=1;d<=4&&!seated;d++)for(const id of candidateFaces(e,d))if((s.facePools[depthKey(d)].active||[]).includes(id)){seated=true;break;}
+  for(const e of entries){if(!protect.has(e.name))continue;let seated=false;for(let d=1;d<=MAX_FACE_DEPTH&&!seated;d++)for(const id of candidateFaces(e,d))if((s.facePools[depthKey(d)].active||[]).includes(id)){seated=true;break;}
     if(seated)continue;
-    for(let d=1;d<=4;d++){const p=s.facePools[depthKey(d)];for(const id of candidateFaces(e,d))if(elasticRetired(p,id))delete p.retired[id];}
-    for(let d=1;d<=4;d++){const ids=candidateFaces(e,d);if(!ids.length)continue;for(const id of ids){s.facePools[depthKey(d)].active.push(id);live.add(id);}break;}}
-  for(const e of entries){let known=false;for(let d=1;d<=4&&!known;d++)for(const id of candidateFaces(e,d))if(live.has(id)||elasticRetired(s.facePools[depthKey(d)],id)){known=true;break;}if(!known)pending.push(e);}
+    for(let d=1;d<=MAX_FACE_DEPTH;d++){const p=s.facePools[depthKey(d)];for(const id of candidateFaces(e,d))if(elasticRetired(p,id))delete p.retired[id];}
+    for(let d=1;d<=MAX_FACE_DEPTH;d++){const ids=candidateFaces(e,d);if(!ids.length)continue;for(const id of ids){s.facePools[depthKey(d)].active.push(id);live.add(id);}break;}}
+  for(const e of entries){let known=false;for(let d=1;d<=MAX_FACE_DEPTH&&!known;d++)for(const id of candidateFaces(e,d))if(live.has(id)||elasticRetired(s.facePools[depthKey(d)],id)){known=true;break;}if(!known)pending.push(e);}
   pending.sort((a,b)=>rank(b.name)-rank(a.name)||modelSerial(b.name)-modelSerial(a.name)||a.name.localeCompare(b.name));
-  let admitted=0;for(const e of pending){if(live.size>=ADMIT_CEILING)break;for(let d=1;d<=4;d++){const ids=candidateFaces(e,d);if(!ids.length)continue;for(const id of ids){s.facePools[depthKey(d)].active.push(id);live.add(id);}admitted++;break;}}
+  let admitted=0;for(const e of pending){if(live.size>=ADMIT_CEILING)break;for(let d=1;d<=MAX_FACE_DEPTH;d++){const ids=candidateFaces(e,d);if(!ids.length)continue;for(const id of ids){s.facePools[depthKey(d)].active.push(id);live.add(id);}admitted++;break;}}
   s.queueCompaction={version:4,updated:new Date().toISOString(),catalogueModels:entries.length,queueModels:entries.length,deferredFaces:0,heldModels:pending.length-admitted,admitCeiling:ADMIT_CEILING,population:live.size,mode:'open Elo league'};
 }
 // Promotion is won by strength PER UNIT COMPUTE, not by raw strength. Matchmaking and cull pressure
@@ -158,7 +162,7 @@ function reconcile(s,entries,protect=new Set()){ensurePools(s);const available={
 const PROMOTE_RENT_ELO=50;
 function pruneEfficiency(e,prev,mc){const ids=candidateFaces(e,prev),unit=(mc&&mc.unit)||1500,cost=(mc&&mc.cost)||{};const ms=ids.map(id=>+cost[id]).filter(x=>Number.isFinite(x)&&x>0);if(!ms.length)return 1;const implied=DEPTH_CULL_WEIGHT[depthKey(prev)]*unit;return Math.max(1e-6,(ms.reduce((a,x)=>a+x,0)/ms.length)/Math.max(1e-9,implied));}
 function promoteScore(s,e,prev,mc){const v=modelScore(s,e.name);return Number.isFinite(v)?v-PROMOTE_RENT_ELO*Math.log2(pruneEfficiency(e,prev,mc)):v;}
-function nextFrontier(s,entries,mc){const q=[];for(const e of entries){let highest=0;for(let d=1;d<=4;d++){const p=s.facePools[depthKey(d)],ids=candidateFaces(e,d);if(ids.some(id=>(p.active||[]).includes(id)||elasticRetired(p,id)||!!faceReading(s,id)))highest=d;}if(highest>=4)continue;const prev=Math.max(1,highest),prevIds=candidateFaces(e,prev);if(prevIds.length&&!prevIds.some(id=>faceEstablished(s,id,prev)))continue;for(let d=highest+1;d<=4;d++){const ids=candidateFaces(e,d);if(!ids.length)continue;const fresh=ids.filter(id=>!s.facePools[depthKey(d)].active.includes(id)&&!elasticRetired(s.facePools[depthKey(d)],id));if(fresh.length)q.push({e,depth:d,ids:fresh,score:promoteScore(s,e,prev,mc),serial:modelSerial(e.name)});break;}}
+function nextFrontier(s,entries,mc){const q=[];for(const e of entries){let highest=0;for(let d=1;d<=MAX_FACE_DEPTH;d++){const p=s.facePools[depthKey(d)],ids=candidateFaces(e,d);if(ids.some(id=>(p.active||[]).includes(id)||elasticRetired(p,id)||!!faceReading(s,id)))highest=d;}if(highest>=FRONTIER_MAX_DEPTH)continue;const prev=Math.max(1,highest),prevIds=candidateFaces(e,prev);if(prevIds.length&&!prevIds.some(id=>faceEstablished(s,id,prev)))continue;for(let d=highest+1;d<=FRONTIER_MAX_DEPTH;d++){const ids=candidateFaces(e,d);if(!ids.length)continue;const fresh=ids.filter(id=>!s.facePools[depthKey(d)].active.includes(id)&&!elasticRetired(s.facePools[depthKey(d)],id));if(fresh.length)q.push({e,depth:d,ids:fresh,score:promoteScore(s,e,prev,mc),serial:modelSerial(e.name)});break;}}
   return q;}
 // Climbing a rung is a per-face ROLL, not a quota. The old frontier sorted every candidate and
 // advanced exactly q[0] -- one face per checkpoint for the whole field, winner-takes-all. That is
@@ -192,11 +196,31 @@ function admitFrontier(s,entries,mc){const q=nextFrontier(s,entries,mc);if(!q.le
     for(const id of c.ids)s.facePools[depthKey(c.depth)].active.push(id);
     out.push(...c.ids);}
   return out;}
+// Depth jumps. Over the league's history the D1->D2 step gains ~80 Elo for nearly every model and
+// every later step is a coin flip, so a model whose next ply is worth far MORE than the usual step
+// is the one whose curve may still be climbing. The frontier cannot find it: it promotes on overall
+// strength, one rung at a time, and stops at FRONTIER_MAX_DEPTH -- a model weak at D1-D3 never
+// reaches D4, and nothing ever reaches D5. So a measured jump from Dn to Dn+1 seats Dn+1 and Dn+2
+// at once (whichever are not already seated or culled), as ordinary faces: rated, priced and culled
+// like any other. A step is a jump when it beats the league's typical step at that depth by
+// DEPTH_JUMP_ELO and is above zero at 90% confidence, both faces' intervals combined.
+const DEPTH_JUMP_ELO=(()=>{const v=+process.env.TAU_DEPTH_JUMP_ELO;return Number.isFinite(v)&&v>0?v:100;})();
+const Z90=1.645;
+function faceSigma(r){const lo=+r.eloLo,hi=+r.eloHi;return Number.isFinite(lo)&&Number.isFinite(hi)&&hi>lo?(hi-lo)/(2*Z90):Infinity;}
+function stepReady(a,b,d){return !!(a&&b&&Number.isFinite(+a.elo)&&Number.isFinite(+b.elo)&&(+a.games||0)>=FACE_MIN_GAMES[depthKey(d)]&&(+b.games||0)>=FACE_MIN_GAMES[depthKey(d+1)]);}
+// The typical Dn->Dn+1 step: the median over every model with both faces established, or the
+// league history's own figure (+80 into D2, ~0 after) while fewer than five have both.
+function typicalSteps(s){const out={};for(let d=1;d<MAX_FACE_DEPTH;d++){const xs=[];for(const rec of Object.values(s.latest||{}))for(const pk of ['','+P']){const a=rec.faces?.[`D${d}${pk}`],b=rec.faces?.[`D${d+1}${pk}`];if(stepReady(a,b,d))xs.push(+b.elo-+a.elo);}xs.sort((x,y)=>x-y);out[d]=xs.length>=5?xs[xs.length>>1]:(d===1?80:0);}return out;}
+function depthJumps(s,entries){const typ=typicalSteps(s),out=[];for(const e of entries){const rec=s.latest[e.name];if(!rec||!rec.faces)continue;
+  for(let d=1;d<MAX_FACE_DEPTH;d++){let gain=null;for(const pk of ['','+P']){const a=rec.faces[`D${d}${pk}`],b=rec.faces[`D${d+1}${pk}`];if(!stepReady(a,b,d))continue;const g=+b.elo-+a.elo,sd=Math.hypot(faceSigma(a),faceSigma(b));if(g-typ[d]>=DEPTH_JUMP_ELO&&g-Z90*sd>0&&(gain==null||g>gain))gain=g;}
+    if(gain!=null)out.push({e,from:d,gain,typical:typ[d]});}}return out;}
+function admitDepthJumps(s,entries){const out=[];for(const j of depthJumps(s,entries)){const seated=[];for(const t of [j.from+1,j.from+2]){if(t>MAX_FACE_DEPTH)continue;const p=s.facePools[depthKey(t)];for(const id of candidateFaces(j.e,t)){if(poolIds(p).includes(id)||elasticRetired(p,id))continue;p.active.push(id);seated.push(id);}}
+  if(seated.length)out.push({model:j.e.name,from:j.from,gain:Math.round(j.gain),typical:Math.round(j.typical),seated});}return out;}
 function sync(dir,ladderN=null){const s=loadState(dir),entries=stableModelEntries(dir),present=new Set(entries.map(e=>e.name));for(const e of entries){s.active[e.name]={file:e.file,dual:e.dual,policy:e.policy,...(e.committee?{committee:true}:{}),shape:e.shape};delete s.retired[e.name];}for(const n of Object.keys(s.active))if(!present.has(n))delete s.active[n];reconcile(s,entries,protectedModels(dir));const prod=productionLadderLevels(ladderN).filter(l=>l>=LEAGUE_MIN_LEVEL).slice(-LEAGUE_TOP_RUNGS),allowed=new Set(prod);if(!Array.isArray(s.ladderActive))s.ladderActive=prod;// Union, not just filter: a rung added to the game (Corner L12) has to enter an EXISTING state's league, or it is never rated -- the filter alone only ever let rungs leave.
 s.ladderActive=[...new Set([...s.ladderActive.filter(x=>allowed.has(x)),...prod])].sort((a,b)=>a-b);saveState(dir,s);return s;}
 function readSummary(file){try{return JSON.parse(fs.readFileSync(file,'utf8'));}catch(_){return{players:{}};}}
 function ingestSummary(dir,file){const s=sync(dir),sum=readSummary(file),groups={},ladder={};for(const [id,r] of Object.entries(sum.players||{})){if(r.kind==='ladder'){if(r.corner)continue;/* the rung's own rating keys the ladder tables; its corner-opening face is rated separately and must not clobber it */ladder[r.level]={games:+r.games||0,elo:Number.isFinite(+r.elo)?+r.elo:null};continue;}if((r.kind!=='nn'&&r.kind!=='committee')||!r.model)continue;const name=path.basename(r.model,'.json');(groups[name]||=[]).push({...r,id});}
-  let delta=0;for(const [name,rows] of Object.entries(groups)){const rec=s.latest[name]||{},faces={...(rec.faces||{})},depthGames={...(rec.depthGames||{})},depthElo={...(rec.depthElo||{})};for(const d of [1,2,3,4]){const at=rows.filter(r=>+r.depth===d);depthGames[d]=Math.max(depthGames[d]||0,at.reduce((a,r)=>a+(+r.games||0),0));const es=at.map(r=>+r.elo).filter(Number.isFinite);if(es.length)depthElo[d]=mean(es);}
+  let delta=0;for(const [name,rows] of Object.entries(groups)){const rec=s.latest[name]||{},faces={...(rec.faces||{})},depthGames={...(rec.depthGames||{})},depthElo={...(rec.depthElo||{})};for(const d of FACE_DEPTHS){const at=rows.filter(r=>+r.depth===d);depthGames[d]=Math.max(depthGames[d]||0,at.reduce((a,r)=>a+(+r.games||0),0));const es=at.map(r=>+r.elo).filter(Number.isFinite);if(es.length)depthElo[d]=mean(es);}
     for(const r of rows){if(!Number.isFinite(+r.depth)||!Number.isFinite(+r.elo))continue;const k=`D${r.depth}${r.dualPolicy?'+P':''}`,old=faces[k]||{};faces[k]={elo:+r.elo,eloLo:Number.isFinite(+r.eloLo)?+r.eloLo:old.eloLo,eloHi:Number.isFinite(+r.eloHi)?+r.eloHi:old.eloHi,games:Math.max(+old.games||0,+r.games||0),updated:sum.updated||new Date().toISOString()};}
     const base=rows.filter(r=>r.depth===1||r.depth===2),use=base.length?base:rows,allGames=rows.reduce((a,r)=>a+(+r.games||0),0);const eloLo=mean(use.map(r=>+r.eloLo)),eloHi=mean(use.map(r=>+r.eloHi));s.latest[name]={elo:mean(use.map(r=>+r.elo)),eloLo,eloHi,games:Math.max(+rec.games||0,allGames),depthGames,depthElo,faces,updated:sum.updated||new Date().toISOString()};const prev=+s.evidenceSeen[name]||0;if(allGames>prev)delta+=allGames-prev;s.evidenceSeen[name]=Math.max(prev,allGames);}
   for(const [lvl,r] of Object.entries(ladder)){const g=+r.games||0,prev=+s.ladderGames[lvl]||0;if(g>prev)delta+=g-prev;s.ladderGames[lvl]=Math.max(prev,g);const old=s.ladderRatings[lvl]||{};s.ladderRatings[lvl]={elo:Number.isFinite(r.elo)?r.elo:old.elo,games:Math.max(+old.games||0,g),updated:sum.updated||new Date().toISOString()};}
@@ -204,16 +228,16 @@ function ingestSummary(dir,file){const s=sync(dir),sum=readSummary(file),groups=
   // delta by two. This now includes D1-D4 equally; depth cost affects WHO gets culled, not whether
   // a completed rating game advances the 100-game population clock.
   s.gamesSinceCull+=delta/2;saveState(dir,s);return s;}
-function activeFaceIds(dir,depths=[1,2,3,4]){const s=sync(dir);return depths.flatMap(d=>poolIds(s.facePools[depthKey(d)]));}
+function activeFaceIds(dir,depths=FACE_DEPTHS){const s=sync(dir);return depths.flatMap(d=>poolIds(s.facePools[depthKey(d)]));}
 function modelPathsForFaces(dir,ids){const s=sync(dir),seen=new Set(),out=[];for(const id of ids){const x=splitFaceId(id),m=x&&s.active[x.name];if(m&&!seen.has(x.name)){seen.add(x.name);out.push(path.join(dir,'models',m.file));}}return out;}
-function activeModelNames(dir){const s=sync(dir),set=new Set();for(let d=1;d<=4;d++)for(const id of poolIds(s.facePools[depthKey(d)])){const x=splitFaceId(id);if(x)set.add(x.name);}return[...set];}
+function activeModelNames(dir){const s=sync(dir),set=new Set();for(let d=1;d<=MAX_FACE_DEPTH;d++)for(const id of poolIds(s.facePools[depthKey(d)])){const x=splitFaceId(id);if(x)set.add(x.name);}return[...set];}
 function ratingSlice(dir){return modelPathsForFaces(dir,activeFaceIds(dir,[1,2]));}
 function selfplaySlice(dir){return ratingSlice(dir).filter(p=>!modelMeta(p).committee);}
 function d3Slice(dir){return modelPathsForFaces(dir,activeFaceIds(dir,[3]));}
 function d4Slice(dir){return modelPathsForFaces(dir,activeFaceIds(dir,[4]));}
 function activeLadderLevels(dir,ladderN=null){return sync(dir,ladderN).ladderActive.slice();}
 function filterFocus(dir,paths){const live=new Set(activeModelNames(dir));return paths.filter(p=>live.has(path.basename(p,'.json')));}
-function selfplayProfile(paths,{dir}){const s=sync(dir),entries=paths.map(p=>({path:p,name:path.basename(p,'.json'),meta:modelMeta(p)})),elos=entries.map(e=>s.latest[e.name]?.elo).filter(Number.isFinite),maxE=elos.length?Math.max(...elos):0,raw={},weights={},coverage=[],depthCaps={};let sum=0;for(const e of entries){const elo=s.latest[e.name]?.elo,w=Number.isFinite(elo)?Math.exp((elo-maxE)/ELO_TEMP):1;raw[e.name]=w;sum+=w;}const total=Math.max(1,entries.reduce((a,e)=>a+(s.latest[e.name]?.games||0),0));for(const e of entries){const r=Math.max(1e-9,raw[e.name]/Math.max(sum,1e-9)),g=(s.latest[e.name]?.games||0)/total;weights[e.name]=+(r*r/(g+.01)+Math.sqrt(r)).toFixed(6);let cap=1;for(let d=1;d<=4;d++)if(candidateFaces(e,d).some(id=>poolIds(s.facePools[depthKey(d)]).includes(id)))cap=d;depthCaps[e.name]=cap;for(let d=1;d<=cap;d++)for(const id of candidateFaces(e,d))if(poolIds(s.facePools[depthKey(d)]).includes(id)&&!faceReading(s,id))coverage.push({name:e.name,face:id.includes('+P@')?'policy':'bare',depth:d});}return{weights,coverage,depthCaps};}
+function selfplayProfile(paths,{dir}){const s=sync(dir),entries=paths.map(p=>({path:p,name:path.basename(p,'.json'),meta:modelMeta(p)})),elos=entries.map(e=>s.latest[e.name]?.elo).filter(Number.isFinite),maxE=elos.length?Math.max(...elos):0,raw={},weights={},coverage=[],depthCaps={};let sum=0;for(const e of entries){const elo=s.latest[e.name]?.elo,w=Number.isFinite(elo)?Math.exp((elo-maxE)/ELO_TEMP):1;raw[e.name]=w;sum+=w;}const total=Math.max(1,entries.reduce((a,e)=>a+(s.latest[e.name]?.games||0),0));for(const e of entries){const r=Math.max(1e-9,raw[e.name]/Math.max(sum,1e-9)),g=(s.latest[e.name]?.games||0)/total;weights[e.name]=+(r*r/(g+.01)+Math.sqrt(r)).toFixed(6);let cap=1;for(let d=1;d<=MAX_FACE_DEPTH;d++)if(candidateFaces(e,d).some(id=>poolIds(s.facePools[depthKey(d)]).includes(id)))cap=d;depthCaps[e.name]=cap;for(let d=1;d<=cap;d++)for(const id of candidateFaces(e,d))if(poolIds(s.facePools[depthKey(d)]).includes(id)&&!faceReading(s,id))coverage.push({name:e.name,face:id.includes('+P@')?'policy':'bare',depth:d});}return{weights,coverage,depthCaps};}
 // Steepened twice, and both times the shape was absolute where it should have been relative.
 // Measured on a 406-face field: the 25 cap was fully saturated (the curve wanted ~31), so the
 // drain had degenerated into a flat constant no matter how bloated the field got; and because a
@@ -280,7 +304,7 @@ function cullKey(r){const matches=Math.max(1,(+r.games||0)/2),hi=+r.eloHi;
 // Each model's best SEATED face, picked the way run.js picks a member's reading (highest eloLo, then
 // Elo). Recomputed after every single cull, so it always names a face that is still seated.
 function bestSeatByModel(s){const best=new Map(),lo=r=>Number.isFinite(+r.eloLo)?+r.eloLo:-Infinity;for(const id of activeFaceSet(s)){const x=splitFaceId(id),r=faceReading(s,id);if(!x||!r)continue;const b=best.get(x.name);if(!b||lo(r)>lo(b.r)||(lo(r)===lo(b.r)&&+r.elo>+b.r.elo))best.set(x.name,{id,r});}return new Map([...best].map(([n,b])=>[n,b.id]));}
-function eligibleByDepth(s,population,protect=new Set(),skip=null,mint=new Set()){const pop=Number.isFinite(population)?population:activeFaceSet(s).size,bestSeat=bestSeatByModel(s);const out={D1:[],D2:[],D3:[],D4:[]};for(let d=1;d<=4;d++){const k=depthKey(d),need=cullMinGames(k,pop);for(const id of s.facePools[k].active||[]){if(skip&&skip.has(id))continue;const r=faceReading(s,id);if(!r||(+r.games||0)<need||!Number.isFinite(+r.eloHi))continue;const x=splitFaceId(id);
+function eligibleByDepth(s,population,protect=new Set(),skip=null,mint=new Set()){const pop=Number.isFinite(population)?population:activeFaceSet(s).size,bestSeat=bestSeatByModel(s);const out=Object.fromEntries(FACE_DEPTHS.map(d=>[depthKey(d),[]]));for(let d=1;d<=MAX_FACE_DEPTH;d++){const k=depthKey(d),need=cullMinGames(k,pop);for(const id of s.facePools[k].active||[]){if(skip&&skip.has(id))continue;const r=faceReading(s,id);if(!r||(+r.games||0)<need||!Number.isFinite(+r.eloHi))continue;const x=splitFaceId(id);
       /* population members leave through run.js's own retirement; a mint member's spare faces are ordinary once measured (see mintMembers) */
       if(x&&protect.has(x.name)&&!(mint.has(x.name)&&(+r.games||0)>=PROTECT_GAMES&&bestSeat.has(x.name)&&bestSeat.get(x.name)!==id))continue;
       out[k].push({id,r,depth:d,key:k});}out[k].sort((a,b)=>cullKey(a.r)-cullKey(b.r)||+a.r.elo-+b.r.elo);}return out;}
@@ -376,8 +400,8 @@ function cull(dir){const s=sync(dir),recs=faceRecords(dir);
   // Both are repaired here. A face is only a candidate if it has an actual rated record in the store
   // and that record has never been beaten, so this can never seat a face the league has not played.
   const reinstated=[],once=new Set(s.reinstatedOnce||[]);
-  const avail={};{const entries=stableModelEntries(dir);for(let d=1;d<=4;d++)avail[depthKey(d)]=new Set(entries.flatMap(e=>candidateFaces(e,d)));}
-  for(let d=1;d<=4;d++){const k=depthKey(d),p=s.facePools[k];p.retired||={};p.active||=[];
+  const avail={};{const entries=stableModelEntries(dir);for(let d=1;d<=MAX_FACE_DEPTH;d++)avail[depthKey(d)]=new Set(entries.flatMap(e=>candidateFaces(e,d)));}
+  for(let d=1;d<=MAX_FACE_DEPTH;d++){const k=depthKey(d),p=s.facePools[k];p.retired||={};p.active||=[];
     const seat=id=>{if(!p.active.includes(id))p.active.push(id);once.add(id);reinstated.push(id);};
     for(const id of Object.keys(p.retired)){
       if(p.retired[id].reason!=='elastic cull'||!undefeated(recs[id])||once.has(id))continue;
@@ -390,12 +414,15 @@ function cull(dir){const s=sync(dir),recs=faceRecords(dir);
     }}
   // Prune ids whose model file is gone (reconcile drops them from every pool) so this list cannot
   // grow without bound across the life of a state file.
-  if(reinstated.length){const known=new Set();for(let d=1;d<=4;d++){const q=s.facePools[depthKey(d)];for(const id of q.active||[])known.add(id);for(const id of Object.keys(q.retired||{}))known.add(id);}
+  if(reinstated.length){const known=new Set();for(let d=1;d<=MAX_FACE_DEPTH;d++){const q=s.facePools[depthKey(d)];for(const id of q.active||[])known.add(id);for(const id of Object.keys(q.retired||{}))known.add(id);}
     s.reinstatedOnce=[...once].filter(id=>known.has(id));saveState(dir,s);}
-  if(s.gamesSinceCull<CULL_EVERY_GAMES)return{culled:[],birth:null,admitted:[],reinstated,state:s};
+  // Depth jumps are seated as soon as they are measured, like the reinstatement above: they are a
+  // reading of evidence already in hand, not a cull, so they do not wait on the bank.
+  const jumped=admitDepthJumps(s,stableModelEntries(dir));if(jumped.length)saveState(dir,s);
+  if(s.gamesSinceCull<CULL_EVERY_GAMES)return{culled:[],birth:null,admitted:[],reinstated,jumped,state:s};
   const mc=measuredCosts(dir),protect=protectedModels(dir),mint=mintMembers(dir),justBack=new Set(reinstated);
-  const checkpoints=Math.floor(s.gamesSinceCull/CULL_EVERY_GAMES),culled=[],admitted=[];for(let q=0;q<checkpoints;q++){const population=activeFaceSet(s).size,e0=eligibleByDepth(s,population,protect,justBack,mint),seen=e0.D1.length+e0.D2.length+e0.D3.length+e0.D4.length,want=Math.min(stochasticCount(expectedCulls(population)),Math.floor(seen/2));for(let i=0;i<want;i++){const e=eligibleByDepth(s,population,protect,justBack,mint),k=chooseDepth(e,mc);if(!k)break;const v=e[k][0],p=s.facePools[k],now=new Date().toISOString();p.active=p.active.filter(id=>id!==v.id);p.retired[v.id]={at:now,reason:'elastic cull',eloHi:v.r.eloHi,elo:v.r.elo,games:+v.r.games||0,population};culled.push({type:'face',name:v.id,face:v.id,depth:v.depth,replacedBy:null,result:'elastic-cull'});}admitted.push(...admitFrontier(s,stableModelEntries(dir),mc));s.gamesSinceCull=Math.max(0,s.gamesSinceCull-CULL_EVERY_GAMES);}if(culled.length||admitted.length||reinstated.length)s.lastEvent={at:new Date().toISOString(),culled:culled.map(x=>x.face),admitted,reinstated,result:'elastic-checkpoint'};saveState(dir,s);return{culled,birth:null,admitted,reinstated,state:s};}
+  const checkpoints=Math.floor(s.gamesSinceCull/CULL_EVERY_GAMES),culled=[],admitted=[];for(let q=0;q<checkpoints;q++){const population=activeFaceSet(s).size,e0=eligibleByDepth(s,population,protect,justBack,mint),seen=Object.values(e0).reduce((a,x)=>a+x.length,0),want=Math.min(stochasticCount(expectedCulls(population)),Math.floor(seen/2));for(let i=0;i<want;i++){const e=eligibleByDepth(s,population,protect,justBack,mint),k=chooseDepth(e,mc);if(!k)break;const v=e[k][0],p=s.facePools[k],now=new Date().toISOString();p.active=p.active.filter(id=>id!==v.id);p.retired[v.id]={at:now,reason:'elastic cull',eloHi:v.r.eloHi,elo:v.r.elo,games:+v.r.games||0,population};culled.push({type:'face',name:v.id,face:v.id,depth:v.depth,replacedBy:null,result:'elastic-cull'});}admitted.push(...admitFrontier(s,stableModelEntries(dir),mc));s.gamesSinceCull=Math.max(0,s.gamesSinceCull-CULL_EVERY_GAMES);}if(culled.length||admitted.length||reinstated.length||jumped.length)s.lastEvent={at:new Date().toISOString(),culled:culled.map(x=>x.face),admitted,reinstated,jumped:jumped.flatMap(j=>j.seated),result:'elastic-checkpoint'};saveState(dir,s);return{culled,birth:null,admitted,reinstated,jumped,state:s};}
 function noteBirth(dir,birth){if(birth&&birth.outPath&&fs.existsSync(birth.outPath))sync(dir);}
-function status(dir){const s=sync(dir),pop=activeFaceSet(s).size,faces={};for(let d=1;d<=4;d++){const k=depthKey(d),p=s.facePools[k];faces[k]={seats:(p.active||[]).length,trial:p.trial?1:0,waiting:(p.waiting||[]).length,deferred:0,retired:Object.keys(p.retired||{}).length,capacity:null};}return{models:activeModelNames(dir).length,ladders:s.ladderActive.length,gamesSinceCull:s.gamesSinceCull,faces,targetFaces:TARGET_FACES,population:pop,admitCeiling:ADMIT_CEILING,cullMinGames:Object.fromEntries([1,2,3,4].map(d=>[depthKey(d),cullMinGames(depthKey(d),pop)])),heldModels:+(s.queueCompaction&&s.queueCompaction.heldModels)||0};}
+function status(dir){const s=sync(dir),pop=activeFaceSet(s).size,faces={};for(let d=1;d<=MAX_FACE_DEPTH;d++){const k=depthKey(d),p=s.facePools[k];faces[k]={seats:(p.active||[]).length,trial:p.trial?1:0,waiting:(p.waiting||[]).length,deferred:0,retired:Object.keys(p.retired||{}).length,capacity:null};}return{models:activeModelNames(dir).length,ladders:s.ladderActive.length,gamesSinceCull:s.gamesSinceCull,faces,targetFaces:TARGET_FACES,population:pop,admitCeiling:ADMIT_CEILING,cullMinGames:Object.fromEntries(FACE_DEPTHS.map(d=>[depthKey(d),cullMinGames(depthKey(d),pop)])),heldModels:+(s.queueCompaction&&s.queueCompaction.heldModels)||0};}
 function restoreDepthSpecialists(){return[];}function retireBadD4(){return[];}
-module.exports={protectedModels,measuredCosts,PROTECT_GAMES,TARGET_MODELS,TARGET_FACES,ADMIT_CEILING,FACE_CAPS,FACE_MIN_GAMES,cullMinGames,DEPTH_CULL_WEIGHT,D3_SHARE,sync,ingestSummary,modelMeta,stableModelEntries,activeModelNames,activeFaceIds,restoreDepthSpecialists,selfplaySlice,ratingSlice,selfplayProfile,activeLadderLevels,filterFocus,d3Slice,d4Slice,retireBadD4,d3SummaryPath,d4SummaryPath,cull,noteBirth,status};
+module.exports={MAX_FACE_DEPTH,FRONTIER_MAX_DEPTH,FACE_DEPTHS,DEPTH_JUMP_ELO,depthJumps,admitDepthJumps,typicalSteps,protectedModels,measuredCosts,PROTECT_GAMES,TARGET_MODELS,TARGET_FACES,ADMIT_CEILING,FACE_CAPS,FACE_MIN_GAMES,cullMinGames,DEPTH_CULL_WEIGHT,D3_SHARE,sync,ingestSummary,modelMeta,stableModelEntries,activeModelNames,activeFaceIds,restoreDepthSpecialists,selfplaySlice,ratingSlice,selfplayProfile,activeLadderLevels,filterFocus,d3Slice,d4Slice,retireBadD4,d3SummaryPath,d4SummaryPath,cull,noteBirth,status};
