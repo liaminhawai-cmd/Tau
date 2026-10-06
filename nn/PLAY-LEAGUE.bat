@@ -13,7 +13,7 @@ echo   (as you+undo), and every line you finish is saved as training data.
 echo   Your games go into nn\human-results.jsonl and nn\data\human-*.jsonl; the league
 echo   folds them into the ratings at its next pass. Safe to run alongside the trainer.
 echo.
-echo   Options:  --name liam   --port 8765
+echo   Options:  --name liam   --port 8770
 echo   Leave this window open while you play; close it when you are done.
 echo.
 node nn\human-league.js %*

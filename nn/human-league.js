@@ -36,7 +36,7 @@ const clean = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9._-]+/g
 let userName = ''; try { userName = os.userInfo().username; } catch (e) {}
 const NAME = clean(arg('name', process.env.TAU_PLAYER || userName)) || 'me';
 const HUMAN = `human:${NAME}`, HUMAN_UNDO = `${HUMAN}+undo`;
-const PORT = +arg('port', 8765);
+const PORT = +arg('port', 8770);   // the live ladder sits on 8765
 const RESULTS = path.join(dir, 'human-results.jsonl');
 const SESSIONS = path.join(dir, 'human-sessions');
 const machine = require('./machine-id.js');
@@ -263,8 +263,15 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) {
   finishLeftovers();
-  server.listen(PORT, '127.0.0.1', () => {
-    const url = `http://127.0.0.1:${PORT}/index.html#league`;
+  // Next free port if this one is taken (a second copy, or anything else on it).
+  let port = PORT;
+  server.on('error', e => {
+    if (e.code === 'EADDRINUSE' && port < PORT + 10) { port++; server.listen(port, '127.0.0.1'); return; }
+    console.error('[league] cannot start: ' + e.message); process.exitCode = 1;
+  });
+  server.listen(port, '127.0.0.1');
+  server.on('listening', () => {
+    const url = `http://127.0.0.1:${port}/index.html#league`;
     const m = me();
     console.log(`[league] you are ${HUMAN} (provisional ${m.provisional.elo} over ${m.provisional.games} game(s)` +
                 (m.official ? `, official ${m.official.elo}` : '') + `); ${faces().length} faces to play`);
