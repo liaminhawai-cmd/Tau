@@ -65,6 +65,7 @@ for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])
 (async()=>{
   const original=process.argv.slice(2),summary=get(original,'summary',require('./machine-id.js').summaryFile(dir));
   ratingState.ensure(dir);
+  ratingState.ensureSearchEpoch(dir);
 
   if(has(original,'cullOnly')){
     evo.sync(dir);evo.ingestSummary(dir,summary);
@@ -72,6 +73,7 @@ for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])
     // Population line every checkpoint, not just on a cull: while the field is over the admission
     // ceiling it is the only number that says whether the league is draining or still stuck.
     const held=after.heldModels?`, ${after.heldModels} model(s) held out of the league`:'';
+    for(const d of c.deepOut||[])console.log(`[evolution] retired ${d.face}: ${d.elo} Elo (upper bound ${d.eloHi}) is not the top of the league (${d.leader} ${d.leaderElo}); D5/D6 faces stay only while they lead`);
     for(const j of c.jumped||[])console.log(`[evolution] depth jump: ${j.model} D${j.from}->D${j.from+1} ${j.gain>=0?'+':''}${j.gain} Elo (typical step ${j.typical>=0?'+':''}${j.typical}); seated ${j.seated.join(', ')}`);
     if(c.reinstated.length)console.log(`[evolution] reinstated ${c.reinstated.length} face(s) the cull retired that had never been beaten: ${c.reinstated.join(', ')}`);
     if(c.culled.length||c.admitted.length)console.log(`[evolution] checkpoint: ${c.culled.length} culled, ${c.admitted.length} frontier face(s) admitted; bank ${after.gamesSinceCull.toFixed(0)}`);
@@ -107,6 +109,7 @@ for(const sig of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'])
     evo.ingestSummary(dir,summary);
 
     const c=evo.cull(dir);
+    for(const d of c.deepOut||[])console.log(`[evolution] retired ${d.face}: ${d.elo} Elo (upper bound ${d.eloHi}) is not the top of the league (${d.leader} ${d.leaderElo}); D5/D6 faces stay only while they lead`);
     for(const j of c.jumped||[])console.log(`[evolution] depth jump: ${j.model} D${j.from}->D${j.from+1} ${j.gain>=0?'+':''}${j.gain} Elo (typical step ${j.typical>=0?'+':''}${j.typical}); seated ${j.seated.join(', ')}`);
     if(c.reinstated.length)console.log(`[evolution] reinstated ${c.reinstated.length} face(s) the cull retired that had never been beaten: ${c.reinstated.join(', ')}`);
     if(c.culled.length||c.admitted.length)console.log(`[evolution] checkpoint: ${c.culled.length} culled, ${c.admitted.length} frontier face(s) admitted`);

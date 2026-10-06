@@ -10,7 +10,7 @@
 // and the deeper the search, the more unfamiliar positions it looks at.
 //
 // So this replays stored game positions through the teacher's own search (--rootDepth, scored at the
-// end of each line -- nnai.js `backup`), records the position each searched candidate was finally
+// end of each line, as every nnai.js search now is), records the position each searched candidate was finally
 // scored at, and asks the teacher's --depth search what that position is really worth. Each leaf
 // becomes a row whose label is that score (z = sv: no game reached it, so there is no result). The
 // root rows get the same --depth search score as search-label.js gives them, so a net trained on the

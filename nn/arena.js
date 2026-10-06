@@ -122,7 +122,7 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
                  (parkStops ? ',PARK' : '');
     const common = { temperature, keepForDepth, quiesce, dual, dualPolicy: !!dualPolicy, policyArms,
                      stopStride, sweepDeg, parkStops: !!parkStops,
-                     policyPrune: !!dualPolicy && !abCut, abCut: !!abCut, backup: !!backup };
+                     policyPrune: !!dualPolicy && !abCut, abCut: !!abCut, backup: backup !== false };
     if (timeMs) {
       const tm = () => (typeof timeMs === 'object' ? timeMs.ms : timeMs);
       const tTag = typeof timeMs === 'object' ? 'Trand' : 'T' + timeMs + 'ms';
@@ -132,7 +132,7 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
     const depthLabel = quiesce ? depth + 0.5 : depth;
     return { scored: true, depth,
              name: `dual(${path.basename(mp)}${temperature ? ',T' + temperature : ''}` +
-                   `${depthLabel > 1 ? ',D' + depthLabel : ''}${backup && depth > 2 ? ',BK' : ''}${kTag}${pTag}${sTag})`,
+                   `${depthLabel > 1 ? ',D' + depthLabel : ''}${backup === false && depth > 2 ? ',2PLY' : ''}${kTag}${pTag}${sTag})`,
              fn: idx => nnPlanFor(eng, null, idx, { ...common, depth }) };
   }
   if (parts[0] !== 'nn') throw new Error('unknown brain: ' + spec);
@@ -182,9 +182,9 @@ function makeBrain(spec, eng, depth, keepForDepth, quiesce, policyPath, timeMs, 
                 (parkStops ? ',PARK' : '');
   return { scored: true, depth,
            name: 'nn(' + path.basename(mp) + (temperature ? ',T' + temperature : '') + (depthLabel > 1 ? ',D' + depthLabel : '') +
-           (backup && depth > 2 ? ',BK' : '') + kTag + pTag + aTagD + sTagD + ')',
+           (backup === false && depth > 2 ? ',2PLY' : '') + kTag + pTag + aTagD + sTagD + ')',
            fn: idx => nnPlanFor(eng, net, idx, { temperature, depth, keepForDepth, quiesce, policy, policyArms, stopStride, sweepDeg,
-                                                 parkStops: !!parkStops, backup: !!backup,
+                                                 parkStops: !!parkStops, backup: backup !== false,
                                                  policyPrune: !!policy && !abCut, abCut: !!abCut }) };
 }
 
@@ -276,11 +276,12 @@ function main() {
   const dualPolicy = process.argv.includes('--dualPolicy');
   const dualPolicyA = dualPolicy || process.argv.includes('--dualPolicyA');
   const dualPolicyB = dualPolicy || process.argv.includes('--dualPolicyB');
-  // --backup: a depth-3+ search scores each move at the end of its principal line (nnai.js) instead
-  // of two plies ahead; --backupA/--backupB per side for a same-net A/B.
-  const backup = process.argv.includes('--backup');
-  const backupA = backup || process.argv.includes('--backupA');
-  const backupB = backup || process.argv.includes('--backupB');
+  // A depth-3+ search scores each move at the end of its principal line (nnai.js). --noBackup (or
+  // --noBackupA/--noBackupB per side) restores the old two-plies-ahead scoring for an A/B; the old
+  // --backup flags are still accepted and mean the default.
+  const noBackup = process.argv.includes('--noBackup');
+  const backupA = !(noBackup || process.argv.includes('--noBackupA'));
+  const backupB = !(noBackup || process.argv.includes('--noBackupB'));
   const asClock = t => (t && typeof t === 'object' ? t : t && +t);
   const A = makeBrain(arg('a', 'nn'), eng, depthA, keepA, quiesceA, arg('policyA', policy), asClock(timeMsA), abA, policyArmsA, stopStrideA, sweepDegA, parkStopsA, dualPolicyA, backupA);
   const B = makeBrain(arg('b', 'L5'), eng, depthB, keepB, quiesceB, arg('policyB', policy), asClock(timeMsB), abB, policyArmsB, stopStrideB, sweepDegB, parkStopsB, dualPolicyB, backupB);

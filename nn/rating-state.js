@@ -62,5 +62,32 @@ function ensure(dir,{force=false}={}){
   console.log(`[rating] old state archived to ${archive}; ${reopened} elastic-culled face(s) reopened for fair remeasurement`);
   return{reset:true,version:VERSION,archive,reopened,seedPlayers:Object.keys(seedElo).length};
 }
-module.exports={VERSION,SEMANTICS,ensure,current};
+// Search epoch 2: every depth-3+ nn search now scores a move at the end of its principal line
+// (nnai.js), where epoch 1 scored it two plies ahead at every depth. D1 and D2 faces play exactly
+// as before; every D3+ face is a different player under the same name. So, once, the evidence on
+// D3+ faces is dropped -- their results, their one-match priors and the roster's readings of them
+// -- and they are re-measured from scratch as they stand. Everything else is untouched, and the
+// old files are archived first. Retired D3+ faces stay retired (the frontier re-promotes models
+// that earn it); seated ones keep their seats.
+const SEARCH_EPOCH=2;
+const deepFaceId=id=>/@D([3-9])$/.test(String(id));
+function ensureSearchEpoch(dir){
+  const r=read(resultsPath(dir),null);if(!r||(+r.searchEpoch||1)>=SEARCH_EPOCH)return{purged:false};
+  const now=new Date().toISOString(),archive=path.join(dir,'elo-archive',stamp()+'-search-epoch-'+SEARCH_EPOCH);
+  for(const p of [resultsPath(dir),...summariesRead(dir),rosterPath(dir)])copy(p,path.join(archive,path.basename(p)));
+  let results=0,seeds=0;
+  for(const k of Object.keys(r.results||{})){const z=k.indexOf('|');if(z<1)continue;if(deepFaceId(k.slice(0,z))||deepFaceId(k.slice(z+1))){delete r.results[k];results++;}}
+  for(const id of Object.keys(r.seedElo||{}))if(deepFaceId(id)){delete r.seedElo[id];seeds++;}
+  r.recent=(r.recent||[]).filter(x=>!deepFaceId(x&&x.a)&&!deepFaceId(x&&x.b));
+  r.searchEpoch=SEARCH_EPOCH;atomic(resultsPath(dir),JSON.stringify(r,null,1));
+  let readings=0;const ro=read(rosterPath(dir),null);
+  if(ro){for(const rec of Object.values(ro.latest||{})){for(const k of Object.keys(rec.faces||{}))if(/^D([3-9])/.test(k)){delete rec.faces[k];readings++;}
+      for(const t of ['depthGames','depthElo'])for(const k of Object.keys(rec[t]||{}))if(+k>=3)delete rec[t][k];}
+    ro.lastEvent={at:now,result:'search-epoch-'+SEARCH_EPOCH,droppedReadings:readings};atomic(rosterPath(dir),JSON.stringify(ro,null,1));}
+  for(const p of summariesWrite(dir)){const sm=read(p,null);if(!sm||!sm.players)continue;for(const id of Object.keys(sm.players))if(deepFaceId(id))delete sm.players[id];atomic(p,JSON.stringify(sm,null,1));}
+  atomic(path.join(archive,'RESET-METADATA.json'),JSON.stringify({archivedAt:now,reason:'search epoch '+SEARCH_EPOCH+': depth-3+ searches score at the end of the line',droppedResults:results,droppedSeeds:seeds,droppedReadings:readings},null,2));
+  console.log(`[rating] search epoch ${SEARCH_EPOCH}: D3+ faces now score moves at the end of the line; dropped ${results} result(s), ${seeds} prior(s) and ${readings} roster reading(s) on D3+ faces so they re-measure from scratch (old files in ${archive})`);
+  return{purged:true,results,seeds,readings,archive};
+}
+module.exports={VERSION,SEMANTICS,SEARCH_EPOCH,ensure,ensureSearchEpoch,current};
 if(require.main===module)ensure(__dirname,{force:process.argv.includes('--force')});

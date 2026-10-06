@@ -383,6 +383,7 @@ function nnPlanFor(eng, net, idx, opts) {
       ? cands.slice().sort((a, b) => (b.prior || 0) - (a.prior || 0)).slice(0, keep)
       : cands.slice(0, keep);
     let bestDeep = -Infinity;
+    const backup = o.backup !== false;
     for (const c of deepCands) {
       eng.applyPlanSearch(c);   // hypothetical: must not file into koHist or tick the move cap
       const g1 = eng.getG();
@@ -393,7 +394,7 @@ function nnPlanFor(eng, net, idx, opts) {
                                                       policy: o.policy, policyPrune: !!o.policyPrune, policyArms: o.policyArms, stopStride: o.stopStride, evalFn: o.evalFn, sweepDeg: o.sweepDeg, parkStops: o.parkStops,
                                                       dual: o.dual, dualPolicy: o.dualPolicy,
                                                       abCut: o.abCut, backup: o.backup,
-                                                      cutIfAbove: (o.abCut && !o.backup && bestDeep > -Infinity) ? -bestDeep : null });
+                                                      cutIfAbove: (o.abCut && !backup && bestDeep > -Infinity) ? -bestDeep : null });
         // Opponent wedged (no legal waypoint at all) -- score the position as it stands. This line
         // used to read `net.value(features(eng))`, which was wrong twice over: it ignored evalFn
         // entirely (so a le:L11 search mixed [-1,1] value-net scores into a +-400 scale here), and
@@ -404,11 +405,13 @@ function nnPlanFor(eng, net, idx, opts) {
         else {
           eng.applyPlanSearch(oppPlan);
           let g2 = eng.getG();
-          // o.backup: play the reply's own principal line out to its end and score THAT position,
-          // so a depth-N search scores N plies ahead. Without it the score is always taken right
-          // after the reply -- 2 plies ahead at every depth -- and the deeper plies only change
-          // which reply is assumed.
-          if (o.backup) {
+          // Play the reply's own principal line out to its end and score THAT position, so a
+          // depth-N search scores N plies ahead. The old search (o.backup === false) scored right
+          // after the reply -- 2 plies ahead at EVERY depth -- so the deeper plies only changed
+          // which reply was assumed and never what the move was worth. Same net, D3 scored at the
+          // end of the line against D3 scored two plies ahead: 64-40 over 104 games; against D2:
+          // 65-39. At depth 2 the two are identical (the line is the reply).
+          if (backup) {
             line = [oppPlan];
             for (const p of oppPlan.pv || []) { if (g2.over) break; eng.applyPlanSearch(p); line.push(p); g2 = eng.getG(); }
           }

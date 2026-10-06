@@ -24,6 +24,7 @@ const {atomicWrite}=require('./atomic-write.js');
 const atomic=(p,s)=>atomicWrite(p,s);
 const read=(p,d)=>{try{return JSON.parse(fs.readFileSync(p,'utf8'));}catch(_){return d;}};
 ratingState.ensure(dir);
+ratingState.ensureSearchEpoch(dir);
 // Legacy self-play/benchmark writers may still append this during a rolling upgrade. It is never
 // official Elo evidence under v4, so discard it rather than let a dead side-channel accumulate.
 try{fs.unlinkSync(path.join(dir,'elo-inbox.jsonl'));}catch(_){}

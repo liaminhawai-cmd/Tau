@@ -141,8 +141,20 @@ function describe(result, margin = 0) {
 // cycle and a standing candidate that is re-gated every cycle costs nothing after its first.
 //
 // panel: [{ id, spec, depth? }] -- arena --b specs ('L11', 'nn:0:<path>' with depth).
-const PANEL_CACHE = path.join(dir, '.gate-panel-cache.json');
-function readCache(file = PANEL_CACHE) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return {}; } }
+// Search epoch 2 (rating-state.js): D3+ searches now score at the end of the line, so cells played
+// by or against a D3+ face under the old search describe a different player. The cache moved to a
+// new file; the first read carries the D1/D2-only cells over from the old one.
+const PANEL_CACHE = path.join(dir, '.gate-panel-cache-v2.json');
+const OLD_PANEL_CACHE = path.join(dir, '.gate-panel-cache.json');
+const deepCell = key => key.split('|').some(id => /@D([3-9])$/.test(id));
+function readCache(file = PANEL_CACHE) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) {}
+  if (file !== PANEL_CACHE) return {};
+  try {
+    const old = JSON.parse(fs.readFileSync(OLD_PANEL_CACHE, 'utf8'));
+    return Object.fromEntries(Object.entries(old).filter(([k]) => !deepCell(k)));
+  } catch (e) { return {}; }
+}
 function writeCache(c, file = PANEL_CACHE) {
   const tmp = file + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(c, null, 1)); fs.renameSync(tmp, file);

@@ -132,7 +132,7 @@ async function main() {
   const pairings = [
     ['leaves-vs-games-D1', arms.leaves, arms.games, 1, games1, []],
     ['leaves-vs-games-D2', arms.leaves, arms.games, 2, games2, []],
-    ['leaves-vs-games-D3', arms.leaves, arms.games, 3, games3, ['--backup']],
+    ['leaves-vs-games-D3', arms.leaves, arms.games, 3, games3, []],
   ];
   if (!process.argv.includes('--noMatch'))
     for (const [tag, a, b, d, g, extra] of pairings) await match(tag, a, b, d, g, extra);

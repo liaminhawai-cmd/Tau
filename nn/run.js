@@ -2069,7 +2069,8 @@ async function runPoolCycle() {
     // way -- is the face read off the rated byte twins, and that reading is then recorded.
     const incRec = champFace.load(bestFaceFile, best);
     let incumbentDepth = incRec ? incRec.depth : 0;
-    const ruledOut = new Set(Array.isArray(incRec?.ruledOut) ? incRec.ruledOut : []);
+    // Depths ruled out under the old D3+ search (rating-state.js, search epoch 2) are measured again.
+    const ruledOut = new Set((Array.isArray(incRec?.ruledOut) ? incRec.ruledOut : []).filter(d => d < 3 || (incRec.searchEpoch || 1) >= 2));
     if (!incumbentDepth) {
       const incTwin = ranked.filter(r => isBestTwin(livePath(r)) || path.basename(r.model, '.json') === incumbentName)
         .sort((a, b) => (b.eloLo ?? -Infinity) - (a.eloLo ?? -Infinity))[0];
@@ -2168,7 +2169,7 @@ async function runPoolCycle() {
       if (winner && fs.existsSync(winner.path)) {
         atomicCopy(best, path.join(dir, 'models', `best.pre-pool-${Date.now()}.json`));
         atomicCopy(winner.path, best);
-        champFace.save(bestFaceFile, best, { name: winner.name, depth: winner.depth, ruledOut: [], cycle: num, source: 'promotion' });
+        champFace.save(bestFaceFile, best, { name: winner.name, depth: winner.depth, ruledOut: [], searchEpoch: 2, cycle: num, source: 'promotion' });
         // Every new champion gets a committee of its own (committee.js): the champion, a medal net and
         // the strongest ladder rung, entering the league as an ordinary face from the next pass.
         try { require('./committee.js').formForChampion(dir, winner.path, { log: m => log(`pool cycle ${num} — ${m}`) }); }
@@ -2180,8 +2181,8 @@ async function runPoolCycle() {
         // measured confidently worse at; both feed the next cycle's panel choice and cost cap.
         if (verdict.incumbent) {
           const out = [...new Set([...ruledOut, ...verdict.incumbent.ruledOut])].filter(d => d !== defended).sort((a, b) => a - b);
-          if (defended !== incumbentDepth || out.length !== ruledOut.size) {
-            champFace.save(bestFaceFile, best, { ...(incRec || {}), name: incumbentName, depth: defended, ruledOut: out, cycle: num, source: 'panel' });
+          if (defended !== incumbentDepth || out.length !== ruledOut.size || (incRec?.searchEpoch || 1) < 2) {
+            champFace.save(bestFaceFile, best, { ...(incRec || {}), name: incumbentName, depth: defended, ruledOut: out, searchEpoch: 2, cycle: num, source: 'panel' });
             log(`pool cycle ${num} — ${incumbentName} now defends at D${defended}` + (out.length ? `; not measured again at ${out.map(d => `D${d}`).join(', ')}` : ''));
           }
         }
