@@ -1,0 +1,36 @@
+{
+  "replyArm": [
+    2,
+    1
+  ],
+  "replyInterval": [
+    0.24766222085799536,
+    0.25016385945252056
+  ],
+  "witness": {
+    "pv": 0,
+    "dir": -1,
+    "stopRule": "limit",
+    "jF": 1
+  },
+  "eventSignature": null,
+  "enclosure": {
+    "metric": "L1-foot",
+    "radius": 0.028887664137583136,
+    "remainder": 0.00001806762858908612,
+    "halfWidthDeg": 0.07166666666666671
+  },
+  "throwMargin": 0.04643126529157371,
+  "proof": {
+    "status": "validated",
+    "method": "exact+seg clearance+tangent-seed",
+    "noEventCrossing": true,
+    "clearance": 5.624507182787859,
+    "k": 28,
+    "minR": 67.21343126529158
+  }
+}
+# certify: ok k=28 minR=67.213
+# clearance: 5.625 MIND: 2.88 | seed: tau 0.0717deg, remainder 1.81e-5u
+# --validate 3
+# ok 3/3
