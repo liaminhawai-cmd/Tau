@@ -32,8 +32,11 @@ const closest = (hub, att) => {
   return best;
 };
 
+const matInv3 = M => { const [[a, b, c], [d, e, f], [g, h, i]] = M; const A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g, det = a * A + b * B + c * C; if (Math.abs(det) < 1e-12) return null; const D = -(b * i - c * h), E = a * i - c * g, F = -(a * h - b * g), G = b * f - c * e, H = -(a * f - c * d), I = a * e - b * d; return [[A, D, G], [B, E, H], [C, F, I]].map(r => r.map(v => v / det)); };
+const matVec3 = (M, v) => [0, 1, 2].map(r => M[r][0] * v[0] + M[r][1] * v[1] + M[r][2] * v[2]);
+
 const trials = +(process.argv[2] || 3000), samples = +(process.argv[3] || 100);
-let regimes = 0, refused = 0, escapes = 0, wrongLeg = 0, vertexWrong = 0, pushes = 0, noPush = 0, worst = null;
+let regimes = 0, refused = 0, escapes = 0, wrongLeg = 0, vertexWrong = 0, pushes = 0, noPush = 0, pinChecks = 0, pinEscapes = 0, worst = null, worstPin = null;
 for (let t = 0; t < trials; t++) {
   const att = { x: (Math.random() * 2 - 1) * 40, y: (Math.random() * 2 - 1) * 40, rot: Math.random() * 2 * Math.PI };
   const th = Math.random() * 2 * Math.PI, dd = 7 + Math.random() * 12;   // the hub-graze window
@@ -62,9 +65,39 @@ for (let t = 0; t < trials; t++) {
     if (lam < hv.lam[0] - 1e-9 || lam > hv.lam[1] + 1e-9) { escapes++; if (!worst) worst = { why: 'lambda escape', cp, hv, lam }; }
     if (lam * nx < dX[0] - 1e-9 || lam * nx > dX[1] + 1e-9 || lam * ny < dY[0] - 1e-9 || lam * ny > dY[1] + 1e-9) { escapes++; if (!worst) worst = { why: 'translation escape', cp, hv, lam, nx, ny }; }
   }
+  // DIRECT REBUILT-STATE FALSIFICATION (Copilot's method, maths/5.log): the shell pin must contain
+  // every sampled pose's engine post-push state -- not just the regime's d/hf/lambda intervals.
+  if ((hv.vertex >= 0 && !hv.straddle) || (hv.vertex < 0 && hv.seg)) {
+    if (hv.d[1] < HUBLEGD) {
+      const qc0 = { x: (box.x[0] + box.x[1]) / 2, y: (box.y[0] + box.y[1]) / 2, rot: (box.rot[0] + box.rot[1]) / 2 };
+      const qcNext = { ...qc0 };
+      const pc = TC.pushSubstep(att, qcNext);   // pushSubstep mutates qcNext in place to the post-push pose
+      const hp = pc.pushes.filter(pu => pu.kind === 'hubV');
+      if (hp.length && hp.length === pc.pushes.length && hp.every(pu => pu.i === hv.i)) {
+        const dcx = hp.reduce((s, pu) => s + pu.lambda * pu.nx, 0), dcy = hp.reduce((s, pu) => s + pu.lambda * pu.ny, 0);
+        const ps = TC.hubVPinnedState(hv, qc0, qcNext, box, dcx, dcy);
+        const Mi = ps && matInv3(ps.M);
+        if (Mi) {
+          for (let t = 0; t < samples; t++) {
+            const vp = { x: box.x[0] + Math.random() * (box.x[1] - box.x[0]), y: box.y[0] + Math.random() * (box.y[1] - box.y[0]), rot: box.rot[0] + Math.random() * (box.rot[1] - box.rot[0]) };
+            const pr = TC.pushSubstep(att, vp);   // vp mutated in place to the post-push pose
+            const kinds = new Set(pr.pushes.map(pu => pu.kind));
+            if (kinds.has('leg') || kinds.has('hubA') || kinds.has('hubhub')) continue;   // mixed: not the hubV-only pin's claim
+            if (pr.pushes.some(pu => pu.kind === 'hubV' && pu.i !== hv.i)) continue;
+            const u = matVec3(Mi, [vp.x - qcNext.x, vp.y - qcNext.y, vp.rot - qcNext.rot]);
+            let ok = true;
+            for (let r = 0; r < 3; r++) if (u[r] < ps.U[r][0] - 1e-9 || u[r] > ps.U[r][1] + 1e-9) ok = false;
+            pinChecks++; if (!ok) { pinEscapes++; if (!worstPin) worstPin = { u, U: ps.U, vp, opp: pv.opp, hv: { vertex: hv.vertex, d: hv.d.map(v => +v.toFixed(5)) } }; }
+          }
+        }
+      }
+    }
+  }
 }
 console.log(`hubV regime falsification: ${trials} trials x ${samples} samples; ${regimes} regimes (of which ${refused} refused ownership), ${pushes} pushed poses, ${noPush} clear/floored poses`);
 console.log(`  escapes (a true value outside its interval): ${escapes}; wrong-leg poses: ${wrongLeg}; vertex-ownership violations: ${vertexWrong}`);
+console.log(`  rebuilt-state pin checks: ${pinChecks}; pin escapes: ${pinEscapes}`);
+if (worstPin) console.log(`  first pin escape: u ${worstPin.u.map(v => +v.toExponential(3))} vs U ${JSON.stringify(worstPin.U.map(iv => iv.map(v => +v.toExponential(3))))} (regime vertex ${worstPin.hv.vertex}, d ${worstPin.hv.d})`);
 if (worst) console.log(`  first violation: ${worst.why} ${JSON.stringify(worst.cp && { i: worst.cp.i, k: worst.cp.k, d: +worst.cp.d.toFixed(4) })} vs regime ${JSON.stringify(worst.hv && { i: worst.hv.i, vertex: worst.hv.vertex, d: worst.hv.d.map(v => +v.toFixed(4)) })}`);
-console.log(escapes === 0 && wrongLeg === 0 && vertexWrong === 0 ? 'PASS' : 'FAIL');
-process.exit(escapes === 0 && wrongLeg === 0 && vertexWrong === 0 ? 0 : 1);
+console.log(escapes === 0 && wrongLeg === 0 && vertexWrong === 0 && pinEscapes === 0 ? 'PASS' : 'FAIL');
+process.exit(escapes === 0 && wrongLeg === 0 && vertexWrong === 0 && pinEscapes === 0 ? 0 : 1);

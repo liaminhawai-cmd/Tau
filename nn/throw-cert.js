@@ -443,6 +443,58 @@ function parkJacobian(att, q, pair, vk, box, segWant) {
 }
 
 // ---- one substep's analysis over an axis-aligned box of victim poses (throw-cert.js's) ----
+// The hubV shell pin, shared by the certify substep loop and the falsification audit: rebuilds
+// the post-push state in the contact frame (e_t, n_c, rot). Returns { U, M } or null (centre over
+// the leg, or the shell-minus-squares goes negative -- the caller refuses). The push acts along
+// each pose's OWN horizontal normal n(p), which tilts from the centre normal n_c by up to dpsi;
+// the tangential coordinate therefore picks up lambda*sin(dpsi) as well (the tilt term) -- the
+// earlier version dropped it and let poses escape by ~7e-7u (Copilot's maths/5.log counterexample).
+function hubVPinnedState(hv, qc, qcNext, bb, dcx, dcy) {
+  let Vx, Vy, wv, wcx, wcy, wcxy, cxIv, cyIv, chIv, tIv = null, tc = 0;
+  if (hv.vertex >= 0) {
+    Vx = hv.vx; Vy = hv.vy; wv = H - hv.vh;
+    wcx = qc.x - Vx; wcy = qc.y - Vy; wcxy = Math.hypot(wcx, wcy);
+    if (!(wcxy > 1e-9)) return null;
+    cxIv = [Vx, Vx]; cyIv = [Vy, Vy]; chIv = [hv.vh, hv.vh];
+  } else {
+    const sg = hv.seg;
+    const uLen = Math.hypot(sg.ux, sg.uy, sg.uh), uvx = sg.ux / uLen, uvy = sg.uy / uLen, uvh = sg.uh / uLen;
+    const wcx0 = qc.x - sg.ax0, wcy0 = qc.y - sg.ay0, wch0 = H - sg.ah0;
+    tc = (wcx0 * uvx + wcy0 * uvy + wch0 * uvh) / uLen; tc = Math.max(0, Math.min(1, tc));
+    const ccx = sg.ax0 + tc * sg.ux, ccy = sg.ay0 + tc * sg.uy;
+    wcx = qc.x - ccx; wcy = qc.y - ccy; wcxy = Math.hypot(wcx, wcy);
+    if (!(wcxy > 1e-9)) return null;
+    tIv = sg.t;
+    cxIv = add([sg.ax0, sg.ax0], mul([sg.ux, sg.ux], tIv)); cyIv = add([sg.ay0, sg.ay0], mul([sg.uy, sg.uy], tIv)); chIv = add([sg.ah0, sg.ah0], mul([sg.uh, sg.uh], tIv));
+  }
+  const nx = wcx / wcxy, ny = wcy / wcxy, etx = -ny, ety = nx;
+  const aC = wcxy + dcx * nx + dcy * ny;
+  const bIv = add(mul(sub(bb.x, cxIv), [etx, etx]), mul(sub(bb.y, cyIv), [ety, ety]));
+  const wvIv = sub([H, H], chIv);
+  const bSq = sq(bIv), wvSq = sq(wvIv);
+  const gapIv = sub([HUBLEGD, HUBLEGD], hv.d);
+  const invHfSq = [1 / (hv.hf[1] * hv.hf[1]), 1 / (hv.hf[0] * hv.hf[0])];
+  const d2p = add([HUBLEGD * HUBLEGD, HUBLEGD * HUBLEGD], mul(sq(gapIv), sub(invHfSq, [1, 1])));
+  const a2 = sub(sub(d2p, bSq), wvSq);
+  if (a2[0] < 0) return null;
+  const aIv = [Math.sqrt(a2[0]), Math.sqrt(a2[1])];
+  const bC = wcx * etx + wcy * ety;
+  const tilt = hv.lam[1] * Math.sin((hv.psi[1] - hv.psi[0]) / 2);
+  let u1, u2;
+  if (hv.vertex >= 0) {
+    u1 = add(sub(bIv, [bC, bC]), [-tilt, tilt]);
+    u2 = sub(aIv, [aC, aC]);
+  } else {
+    const sg = hv.seg, uLen = Math.hypot(sg.ux, sg.uy, sg.uh);
+    const uu = (sg.ux / uLen) * nx + (sg.uy / uLen) * ny, uv = (sg.ux / uLen) * etx + (sg.uy / uLen) * ety;
+    const dt = sub(tIv, [tc, tc]);
+    u1 = add(add(sub(bIv, [bC, bC]), mul(dt, [uv, uv])), [-tilt, tilt]);
+    u2 = add(sub(aIv, [aC, aC]), mul(dt, [uu, uu]));
+  }
+  const u3 = [bb.rot[0] - qcNext.rot, bb.rot[1] - qcNext.rot];
+  return { U: [u1, u2, u3], M: colsOf([etx, ety, 0], [nx, ny, 0], [0, 0, 1]) };
+}
+
 function analyse(box, att, pairWant, hubVFull) {
   const c = { x: (box.x[0] + box.x[1]) / 2, y: (box.y[0] + box.y[1]) / 2, rot: (box.rot[0] + box.rot[1]) / 2 };
   const hx = (box.x[1] - box.x[0]) / 2, hy = (box.y[1] - box.y[0]) / 2, ht = (box.rot[1] - box.rot[0]) / 2;
@@ -1043,75 +1095,15 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
         if (pre.hubV && !hv) return fail('hubV possible but the closest leg/segment not isolated in a state', k);
         if (hv) {
           if (pushLeg >= 0 && hv.i !== pushLeg) return fail(`hubV: the set's owned leg ${hv.i} is not the centre's push leg ${pushLeg}`, k);
-          if (hv.vertex >= 0 && !hv.straddle && hv.d[1] < HUBLEGD) {
-            // THE PINNED VERTEX ROUTE -- only for a FULLY-TOUCHING state (d_hi < HUBLEGD): the
-            // shell below bounds PUSHED poses (whose gap > 0), but a straddling state's unpushed
-            // poses keep their original along-n coordinate, which the shell does not bound
-            // (d_hi^2 <= HUBLEGD^2 + gap^2 k fails once gap goes negative) -- those states take
-            // the translation route below, whose lambda interval contains 0.
-            // The push moves the hub along the horizontal normal only, so
-            // the tangential (e_t) and vertical coordinates are UNCHANGED, and the post-push hub
-            // lies on the EXACT shell (from |w + t n|^2 with t = (HUBLEGD-d)/hf, w.n = |w_xy|):
-            //     d'^2 = d^2 + 2(HUBLEGD-d)d + (HUBLEGD-d)^2/hf^2
-            //          = HUBLEGD^2 + (HUBLEGD-d)^2 (1/hf^2 - 1),
-            // the middle identity being d^2 + 2(HUBLEGD-d)d = HUBLEGD^2 - (HUBLEGD-d)^2 -- the
-            // rewrite that keeps the interval tight (per-substep growth ~0.002u instead of the
-            // ~0.04u the free translation costs). The state is REBUILT in the contact frame
-            // (e_t, n_c, rot): u1 = the hub box's e_t coordinates (linear, tight), u2 =
-            // sqrt(d'^2 - u1^2 - w_v^2) with w_v exact (the hub height is fixed), u3 = the rot
-            // interval (rn = 0: the push does not rotate the piece).
-            const Vx = hv.vx, Vy = hv.vy, wv = H - hv.vh;
-            const wcx = qc.x - Vx, wcy = qc.y - Vy, wcxy = Math.hypot(wcx, wcy);
-            if (!(wcxy > 1e-9)) return fail('hubV pinning: the centre hub sits over the vertex (degenerate)', k);
-            const nx = wcx / wcxy, ny = wcy / wcxy, etx = -ny, ety = nx;
-            const aC = wcxy + dcx * nx + dcy * ny;   // the centre's own post-push along-n coordinate
-            const bbh = aabbOf(qc, Ms, U);
-            const bIv = add(mul(sub(bbh.x, [Vx, Vx]), [etx, etx]), mul(sub(bbh.y, [Vy, Vy]), [ety, ety]));
-            const bC = wcx * etx + wcy * ety, bSq = sq(bIv);
-            const gapIv = sub([HUBLEGD, HUBLEGD], hv.d);
-            const invHfSq = [1 / (hv.hf[1] * hv.hf[1]), 1 / (hv.hf[0] * hv.hf[0])];
-            const d2p = add([HUBLEGD * HUBLEGD, HUBLEGD * HUBLEGD], mul(sq(gapIv), sub(invHfSq, [1, 1])));
-            const a2 = sub(sub(d2p, bSq), [wv * wv, wv * wv]);
-            if (a2[0] < 0) return fail('hubV pinning: the shell minus the tangential square is negative (bug)', k);
-            const aIv = [Math.sqrt(a2[0]), Math.sqrt(a2[1])];
-            const u1 = sub(bIv, [bC, bC]), u2 = sub(aIv, [aC, aC]), u3 = [bbh.rot[0] - qcNext.rot, bbh.rot[1] - qcNext.rot];
-            if (!(u1[0] <= 1e-9 && u1[1] >= -1e-9 && u2[0] <= 1e-9 && u2[1] >= -1e-9 && u3[0] <= 1e-9 && u3[1] >= -1e-9)) return fail('hubV pinning: the centre left the rebuilt state (bug)', k);
-            nextUsH.push({ U: [u1, u2, u3], M: colsOf([etx, ety, 0], [nx, ny, 0], [0, 0, 1]), keep: true });
-          } else if (hv.vertex < 0 && hv.d[1] < HUBLEGD && hv.seg) {
-            // THE PINNED INTERIOR ROUTE (the shell is contact-agnostic, so it holds). The contact
-            // point c(p) drifts along the segment with the clamped projection t, and the frame
-            // coordinate of the POSE is c(p)_xy + a' n + b e_t, so the (t - t_c) u_xy drift enters
-            // both u1 and u2. Same (e_t, n_c, rot) frame as the vertex route; b and w_v now vary
-            // with t, so their intervals come from the contact-point box.
-            const sg = hv.seg;
-            const uLen = Math.hypot(sg.ux, sg.uy, sg.uh), uvx = sg.ux / uLen, uvy = sg.uy / uLen, uvh = sg.uh / uLen;
-            const wcx0 = qc.x - sg.ax0, wcy0 = qc.y - sg.ay0, wch0 = H - sg.ah0;
-            let tc = (wcx0 * uvx + wcy0 * uvy + wch0 * uvh) / uLen; tc = Math.max(0, Math.min(1, tc));
-            const ccx = sg.ax0 + tc * sg.ux, ccy = sg.ay0 + tc * sg.uy;
-            const wcx = qc.x - ccx, wcy = qc.y - ccy, wcxy = Math.hypot(wcx, wcy);
-            if (!(wcxy > 1e-9)) return fail('hubV interior pinning: the centre hub sits over the leg (degenerate)', k);
-            const nx = wcx / wcxy, ny = wcy / wcxy, etx = -ny, ety = nx;
-            const aC = wcxy + dcx * nx + dcy * ny;
-            const bbh = aabbOf(qc, Ms, U);
-            const tIv = sg.t;
-            const cxIv = add([sg.ax0, sg.ax0], mul([sg.ux, sg.ux], tIv)), cyIv = add([sg.ay0, sg.ay0], mul([sg.uy, sg.uy], tIv)), chIv = add([sg.ah0, sg.ah0], mul([sg.uh, sg.uh], tIv));
-            const bIv = add(mul(sub(bbh.x, cxIv), [etx, etx]), mul(sub(bbh.y, cyIv), [ety, ety]));
-            const wvIv = sub([H, H], chIv);
-            const bSq = sq(bIv), wvSq = sq(wvIv);
-            const gapIv = sub([HUBLEGD, HUBLEGD], hv.d);
-            const invHfSq = [1 / (hv.hf[1] * hv.hf[1]), 1 / (hv.hf[0] * hv.hf[0])];
-            const d2p = add([HUBLEGD * HUBLEGD, HUBLEGD * HUBLEGD], mul(sq(gapIv), sub(invHfSq, [1, 1])));
-            const a2 = sub(sub(d2p, bSq), wvSq);
-            if (a2[0] < 0) return fail('hubV interior pinning: the shell minus the tangential/vertical squares is negative (bug)', k);
-            const aIv = [Math.sqrt(a2[0]), Math.sqrt(a2[1])];
-            const uu = uvx * nx + uvy * ny, uv = uvx * etx + uvy * ety;
-            const dt = sub(tIv, [tc, tc]);
-            const bC = wcx * etx + wcy * ety;
-            const u1 = add(sub(bIv, [bC, bC]), mul(dt, [uv, uv]));
-            const u2 = add(sub(aIv, [aC, aC]), mul(dt, [uu, uu]));
-            const u3 = [bbh.rot[0] - qcNext.rot, bbh.rot[1] - qcNext.rot];
-            if (!(u1[0] <= 1e-9 && u1[1] >= -1e-9 && u2[0] <= 1e-9 && u2[1] >= -1e-9 && u3[0] <= 1e-9 && u3[1] >= -1e-9)) return fail('hubV interior pinning: the centre left the rebuilt state (bug)', k);
-            nextUsH.push({ U: [u1, u2, u3], M: colsOf([etx, ety, 0], [nx, ny, 0], [0, 0, 1]), keep: true });
+          // the pinned shell routes (fully-touching only): rebuild the state in the contact frame
+          // (e_t, n_c, rot) -- see hubVPinnedState. Straddling states (d_hi >= HUBLEGD: the shell
+          // does not bound unpushed poses) and straddles take the translation route below, whose
+          // lambda interval contains 0.
+          if (hv.d[1] < HUBLEGD && ((hv.vertex >= 0 && !hv.straddle) || (hv.vertex < 0 && hv.seg))) {
+            const ps = hubVPinnedState(hv, qc, qcNext, aabbOf(qc, Ms, U), dcx, dcy);
+            if (!ps) return fail('hubV pinning: degenerate (centre over the leg, or the shell-minus-squares negative)', k);
+            if (!ps.U.every(r => r[0] <= 1e-9 && r[1] >= -1e-9)) return fail('hubV pinning: the centre left the rebuilt state (bug)', k);
+            nextUsH.push({ U: ps.U, M: ps.M, keep: true });
           } else {
             // the translation route (straddle, or a straddling/clear state): the translation
             // interval M^-1(Delta_iv - Delta_c) ALONE --
@@ -1406,7 +1398,7 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
   return { certified, why: certified ? null : `final foot radius bound ${minR.toFixed(3)} <= ${EDGE}`, k: K, K, rows, minR, rc, final: { qc, states: Us }, pair, traj };
 }
 
-module.exports = { certify, analyse, sweep, pushSubstep, parkJacobian, featureMargins3, featureMargins3Interval, isolateFeatureWalls, LIM_SUB };
+module.exports = { certify, analyse, sweep, pushSubstep, parkJacobian, featureMargins3, featureMargins3Interval, isolateFeatureWalls, hubVPinnedState, LIM_SUB };
 
 if (require.main === module) {
   // POSE=x,y,rot,x,y,rot node nn/throw-cert.js attacker pv dir jF hx hy hRotDeg [--validate N] [--rows] [--engine]
