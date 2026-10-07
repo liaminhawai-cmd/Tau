@@ -732,7 +732,18 @@ function analyse(box, att, pairWant) {
       const pA = side === 'V' ? cc2.pb : vp, pV = side === 'V' ? vp : cc2.pb;
       const w = [pV.x - pA.x, pV.y - pA.y, pV.h - pA.h], L = Math.hypot(w[0], w[1], w[2]);
       if (L < 1e-6) return { ...out, refuse: 'degenerate vertex contact' };
-      const phi = (side === 'V' ? 2 * pad : pad) / L;
+      // BRIEF-3 RESIDUAL BOUND (2026-10-08): for a victim-side vertex, w = pV - pA is the RESIDUAL of
+      // the victim vertex's projection onto the FIXED attacker chord, and the residual map of a
+      // firmly-nonexpansive projection is nonexpansive:
+      //   |Δres|² = |Δp|² − 2⟨Δproj, Δp⟩ + |Δproj|² ≤ |Δp|²   (projection inequality ⟨Δproj, Δp⟩ ≥ |Δproj|²),
+      // so |Δw| ≤ |Δvp| ≤ pad -- ONE displacement, not the 2*pad the triangle inequality charges
+      // (the old code even stated the projection's 1-Lipschitz fact and then added the two bounds).
+      // This halves the blanket cone's angular half-width at every victim-vertex dwell -- the
+      // 'vertex cone too wide' refusal that dominated the deep range. The attacker-side vertex
+      // already used pad legitimately: there the fixed point is the attacker's own vertex and the
+      // moving point is its projection onto the MOVING victim chord, bounded by that chord's
+      // material displacement alone.
+      const phi = pad / L;
       const hfC = Math.hypot(w[0], w[1]) / L, psiC = Math.atan2(w[1], w[0]);
       let blanketSP = null;
       if (phi < 0.5 && hfC - phi > 0.05) {
