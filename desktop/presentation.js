@@ -110,8 +110,8 @@
   // Fourteen boards for fourteen rungs, Yellow first and Colossus last. Where a board sits is a
   // choice of scenery: every rung's actual opponent DIFFICULTY is set by its number alone (see
   // index.html's RUNG_TO_AI_LADDER), so moving a board up or down this list never makes anyone
-  // easier or harder. Dark was the last board held in reserve; the league ladder's fourth trained
-  // rung claimed it, one below Titan, so the arena stays at the top. (See index.html's LADDER_N.)
+  // easier or harder. Dark was the last board held in reserve; it came in at rung 5, early enough
+  // to be seen, when the league nets took the ladder to fourteen rungs. (See index.html's LADDER_N.)
   // Each rung has a board and somebody who lives on it. The opponent is a CHARACTER on the board
   // rather than a new name for it: in the ladder you are challenging Sensei, in Settings you are
   // picking the Dojo, and the Dojo never stops being called the Dojo. That is what keeps the two
@@ -125,6 +125,7 @@
     { board:'maple',    opponent:'Lily' },
     { board:'ebony',    opponent:'Corvin' },       // corvus: the raven, black as the board
     { board:'walnut',   opponent:'Hazel' },      // the club set
+    { board:'dark',     opponent:'Nyx' },        // night itself
     { board:'slate',    opponent:'Flint' },
     { board:'cosy',     opponent:'Vesper' },     // whoever has owned this heirloom table for forty years
     { board:'dojo',     opponent:'Sensei' },
@@ -133,7 +134,6 @@
     { board:'marble',   opponent:'Alabaster' },
     { board:'math',     opponent:'Euclid' },     // compass and straightedge
     { board:'alien',    opponent:'Chorus' },     // it is not one of anything
-    { board:'dark',     opponent:'Nyx' },        // night itself
     { board:'colossus', opponent:'Titan' },      // the arena, at the top
   ];
 

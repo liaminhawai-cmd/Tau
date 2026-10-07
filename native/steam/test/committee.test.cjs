@@ -56,7 +56,7 @@ test('a league rung never opens with the corner cross, and the rungs below it st
 
 test('a save written under the old 11-rung numbering is migrated once, not read back under the wrong rung',async t=>{
   // Old numbering: Cosy/Vesper was rung 5. It is now rung 6 (Yellow took rung 1 and pushed
-  // everything else up one). An unmigrated save would show rung 5 (now Slate) cleared instead.
+  // everything else up one). An unmigrated save would show rung 5 (now Dark) cleared instead.
   const storage = { tauLadder: '{"b":{"5":1},"r":{"5":1,"1":1}}', tauRankedLevel: '9' };
   const g=await game('', storage);t.after(g.close);
   assert.deepEqual(g.errors,[]);
@@ -82,7 +82,7 @@ test('a returning player is pointed at the rung they were actually on, not back 
   const g=await game('?steam=1&premium=1', storage);t.after(g.close);
   assert.equal(g.read('ladderFrontier()'),6,'mid-way through the old Level 5 is mid-way through the new Level 6');
   assert.equal(g.$('desktopLevel').value,'6','and that is the rung the menu comes up on');
-  assert.equal(g.read('tauDesktop.board'),'cosy','wearing the same board and opponent as before the renumber');
+  assert.equal(g.read('tauDesktop.board'),'slate','wearing that rung\'s own board and opponent');
   assert.notEqual(g.read('RUNG_TO_AI_LADDER[5]'),0,'which is emphatically not the pushover');
   assert.deepEqual(g.errors,[]);
 });
@@ -120,7 +120,7 @@ test('no board opens out of order, whatever else the profile has done',async t=>
   for (const id of ['walnut','dojo','ebony','colossus','marble'])
     assert.ok(!by(id).unlocked, id + ' stays shut on a profile that has climbed nothing');
   assert.equal(g.$('desktopLevel').options[13].disabled, true, 'and the top rung cannot be picked');
-  // Dark has a rung now (13, Nyx), so a play count no longer opens it either.
+  // Dark has a rung now (5, Nyx), so a play count no longer opens it either.
   assert.ok(!by('dark').unlocked,'Dark is earned by climbing to it, like every other board');
   assert.deepEqual(g.errors,[]);
 });
@@ -128,7 +128,7 @@ test('no board opens out of order, whatever else the profile has done',async t=>
 test('a match says WHO you are playing, not which number you picked',async t=>{
   const storage = { tauLadder: '{"b":{"1":1,"2":1},"r":{"1":1,"2":1}}', tauLadderRenumberedV1: '1' };
   const g=await game('?steam=1&premium=1', storage);t.after(g.close);
-  g.read('startLadderLevel(6, 0)');   // 0-based 6 = rung 7 = Dojo, where Sensei lives
+  g.read('startLadderLevel(7, 0)');   // 0-based 7 = rung 8 = Dojo, where Sensei lives
   assert.equal(g.read('ladderOpponentName()'),'Sensei');
   assert.equal(g.read('vsAiOpponentLabel()'),'Sensei','the turn indicator names them');
   assert.match(g.read('vsAiTurnLabel(1 - humanIdx)'),/Sensei/);
@@ -260,10 +260,10 @@ test('the desktop premium ladder puts its faces in the chosen order, easiest to 
   assert.equal(rungs.length,14,'and every one of them is a ladder rung now');
   assert.equal(rungs[0].board,'yellow'); assert.equal(rungs[0].opponent,'Wren');
   const faces = rungs.map(r => r.opponent + '@' + r.board).join(' ');
-  assert.equal(faces, 'Wren@yellow Lily@maple Corvin@ebony Hazel@walnut Flint@slate Vesper@cosy '
-    + 'Sensei@dojo Marlowe@noir Rikishi@sumo Alabaster@marble Euclid@math Chorus@alien Nyx@dark Titan@colossus');
+  assert.equal(faces, 'Wren@yellow Lily@maple Corvin@ebony Hazel@walnut Nyx@dark Flint@slate Vesper@cosy '
+    + 'Sensei@dojo Marlowe@noir Rikishi@sumo Alabaster@marble Euclid@math Chorus@alien Titan@colossus');
   assert.equal(D.boardRung('colossus'),14,'Titan\'s arena is the top rung');
-  assert.equal(D.boardRung('dark'),13,'and Dark, the board held in reserve, is the rung below it');
+  assert.equal(D.boardRung('dark'),5,'and Dark, the board held in reserve, comes in early at rung 5');
   // The faces moved; the brains did not. Rung n is still the nth difficulty, whoever wears it.
   assert.equal(g.read('JSON.stringify(RUNG_TO_AI_LADDER)'), JSON.stringify([0,0,1,2,3,4,5,6,7,8,17,18,19,20]));
   assert.deepEqual(g.errors,[]);

@@ -790,7 +790,7 @@ test('a board is an opponent: the next one opens the moment this one is beaten, 
   assert.match(by('ebony').unlock,/beat Lily/,'which names ITS opponent, not a game count');
   g.read('markLadderCleared(1,1)');
   assert.ok(by('maple').unlocked,'and finishing the other colour never closes it again');
-  // Dark has its rung now (13), so it too names the opponent below it rather than a game count.
+  // Dark has its rung now (5), so it too names the opponent below it rather than a game count.
   assert.match(by('dark').unlock,/beat /);
   // A pile of wins somewhere else is NOT a way in any more: the rung is the unlock, full stop.
   D.recordResult({humanWon:true,vsAI:true,online:false,lab:false,level:8});
@@ -3463,7 +3463,7 @@ test('a camera the player just let go of stays put, and the lean back comes in s
 
 test('on the sumo board the lines are straw bales, and they go when the board does',async t=>{
   const g=await game('?steam=1&premium=1',{tauDesktopSettingsV1:'{"board":"sumo","levelSkipped":true}',
-    tauLadder:'{"b":{"1":1,"2":1,"3":1,"4":1,"5":1,"6":1,"7":1,"8":1},"r":{}}', tauLadderRenumberedV1:'1'});t.after(g.close);
+    tauLadder:'{"b":{"1":1,"2":1,"3":1,"4":1,"5":1,"6":1,"7":1,"8":1,"9":1},"r":{}}', tauLadderRenumberedV1:'1'});t.after(g.close);
   const D=g.w.tauDesktop;
   g.read(`if (!scene) scene = new THREE.Scene();`);
   D.tick(1/60);
