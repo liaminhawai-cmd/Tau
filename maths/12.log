@@ -1,0 +1,158 @@
+{
+  "claim": "Exact rational continuum-cover primitive; no Tau geometry certified",
+  "tests": 10,
+  "resourceLimitFailsClosed": true,
+  "results": [
+    {
+      "name": "closed overlap",
+      "covered": true,
+      "cells": 5,
+      "checked": 5,
+      "hole": null,
+      "arithmetic": "BigInt exact rational endpoints"
+    },
+    {
+      "name": "missing singleton",
+      "covered": false,
+      "cells": 5,
+      "checked": 3,
+      "hole": [
+        {
+          "point": true,
+          "lo": [
+            "1",
+            "2"
+          ],
+          "hi": [
+            "1",
+            "2"
+          ]
+        }
+      ],
+      "arithmetic": "BigInt exact rational endpoints"
+    },
+    {
+      "name": "singleton repair",
+      "covered": true,
+      "cells": 5,
+      "checked": 5,
+      "hole": null,
+      "arithmetic": "BigInt exact rational endpoints"
+    },
+    {
+      "name": "tiny rational gap below double resolution",
+      "covered": false,
+      "cells": 7,
+      "checked": 4,
+      "hole": [
+        {
+          "point": false,
+          "lo": [
+            "1",
+            "2"
+          ],
+          "hi": [
+            "500000000000000000000000000001",
+            "1000000000000000000000000000000"
+          ]
+        }
+      ],
+      "arithmetic": "BigInt exact rational endpoints"
+    },
+    {
+      "name": "open target excludes endpoints",
+      "covered": true,
+      "cells": 1,
+      "checked": 1,
+      "hole": null,
+      "arithmetic": "BigInt exact rational endpoints"
+    },
+    {
+      "name": "closed target needs endpoints",
+      "covered": false,
+      "cells": 3,
+      "checked": 1,
+      "hole": [
+        {
+          "point": true,
+          "lo": [
+            "0",
+            "1"
+          ],
+          "hi": [
+            "0",
+            "1"
+          ]
+        }
+      ],
+      "arithmetic": "BigInt exact rational endpoints"
+    },
+    {
+      "name": "two dimensional corner hole",
+      "covered": false,
+      "cells": 25,
+      "checked": 19,
+      "hole": [
+        {
+          "point": false,
+          "lo": [
+            "1",
+            "2"
+          ],
+          "hi": [
+            "1",
+            "1"
+          ]
+        },
+        {
+          "point": false,
+          "lo": [
+            "1",
+            "2"
+          ],
+          "hi": [
+            "1",
+            "1"
+          ]
+        }
+      ],
+      "arithmetic": "BigInt exact rational endpoints"
+    },
+    {
+      "name": "two dimensional full cover",
+      "covered": true,
+      "cells": 15,
+      "checked": 15,
+      "hole": null,
+      "arithmetic": "BigInt exact rational endpoints"
+    },
+    {
+      "name": "point target",
+      "covered": true,
+      "cells": 1,
+      "checked": 1,
+      "hole": null,
+      "arithmetic": "BigInt exact rational endpoints"
+    },
+    {
+      "name": "empty cover",
+      "covered": false,
+      "cells": 3,
+      "checked": 1,
+      "hole": [
+        {
+          "point": true,
+          "lo": [
+            "0",
+            "1"
+          ],
+          "hi": [
+            "0",
+            "1"
+          ]
+        }
+      ],
+      "arithmetic": "BigInt exact rational endpoints"
+    }
+  ]
+}

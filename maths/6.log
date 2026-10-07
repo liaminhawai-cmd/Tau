@@ -1,0 +1,26 @@
+{
+  "claim": "Finite uniform leg exclusion in real arithmetic; center geometry and arithmetic not yet outward-rounded",
+  "refusal": "substep 23 (7.67 deg): hubV possible while leg pairs are touchable (mixed hubV + leg regime not implemented)",
+  "att": {
+    "x": 5.694176600751655,
+    "y": 30.069684861955672,
+    "rot": -13.83680857598623
+  },
+  "box": {
+    "x": [
+      15.6013849335005,
+      16.945143699874215
+    ],
+    "y": [
+      38.678023935655986,
+      39.68324957500509
+    ],
+    "rot": [
+      11.091585470539803,
+      11.095080992059914
+    ]
+  },
+  "visits": 13,
+  "leaves": 7,
+  "minLowerGap": 0.026097384520983202
+}

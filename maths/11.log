@@ -1,0 +1,50 @@
+{
+  "claim": "Kernel tests on explicitly synthetic finite games; no Tau win certified",
+  "acceptedFixtures": 2,
+  "rejectedMutations": 13,
+  "randomGames": 200,
+  "minimaxComparisons": 25200,
+  "verifiedGeneratedProofs": 6145,
+  "mutationResults": [
+    {
+      "name": "missing opponent reply",
+      "reason": "Legal move cover hole"
+    },
+    {
+      "name": "wrong turn quantifier",
+      "reason": "Wrong existential turn"
+    },
+    {
+      "name": "false terminal",
+      "reason": "Successor enclosure missing"
+    },
+    {
+      "name": "no rank decrease",
+      "reason": "Depth does not decrease"
+    },
+    {
+      "name": "cycle",
+      "reason": "Depth does not decrease"
+    },
+    {
+      "name": "missing successor",
+      "reason": "Successor enclosure missing"
+    },
+    {
+      "name": "unbound model",
+      "reason": "Model hash mismatch"
+    },
+    {
+      "name": "illegal witness",
+      "reason": "Witness not uniformly legal"
+    },
+    {
+      "name": "empty root region",
+      "reason": "Malformed node"
+    },
+    {
+      "name": "draw as win",
+      "reason": "Successor enclosure missing"
+    }
+  ]
+}

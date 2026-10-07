@@ -1,0 +1,339 @@
+# family cover (2,1), mover 0, pose [12.2195,37.7663,11.0497,2.8121,28.9609,-13.703]
+    witness (0,-1) jF 1 prescreen 5.87u -> refused: no tube: interval beyond family, contact on the patch, or clearance <= MIND
+    witness (2,1) jF 1 prescreen 4.02u -> refused: no tube: interval beyond family, contact on the patch, or clearance <= MIND
+    witness (1,1) jF 1 prescreen -2.16u -> refused: no tube: interval beyond family, contact on the patch, or clearance <= MIND
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 42
+    witness (0,-1) jF 1 prescreen 6.73u -> refused: substep 1 (0.33 deg): contact point not localised on segments (2,0) (slack 6.466u of 3.02u)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 36
+    witness (2,1) jF 1 prescreen 5.78u -> refused: substep 1 (0.33 deg): contact point not localised on segments (2,0) (slack 6.366u of 3.02u)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 100
+    witness (1,1) jF 1 prescreen -0.56u -> refused: substep 1 (0.33 deg): contact point not localised on segments (2,0) (slack 6.385u of 3.02u)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 35
+    witness (0,-1) jF 1 prescreen 7.23u -> refused: substep 15 (5.00 deg): contact point not localised on segments (3,0) (slack 3.816u of 3.02u)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 31
+    witness (2,1) jF 1 prescreen 6.65u -> refused: substep 11 (3.67 deg): vertex cone too wide (30.8 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 88
+    witness (1,1) jF 1 prescreen 0.51u -> refused: substep 46 (15.33 deg): contact point not localised on segments (2,2) (slack 5.468u of 3.02u)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 31
+  first possible contact at substep 21 (7.00 deg): legs (1,0), centre distance 3.407, pad 0.628
+    witness (0,-1) jF 1 prescreen 7.61u -> refused: substep 21 (7.00 deg): contact point not localised on segments (3,1) (slack 1.673u of 3.02u)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 28
+  first possible contact at substep 19 (6.33 deg): legs (1,2), centre distance 3.440, pad 0.628
+    witness (2,1) jF 1 prescreen 7.14u -> refused: substep 20 (6.67 deg): after the push: contact point not localised on segments (2,0) (slack 4.171u of 3.02u)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 82
+  first possible contact at substep 61 (20.33 deg): legs (1,0), centre distance 3.508, pad 0.628
+    witness (1,1) jF 1 prescreen 1.03u -> refused: substep 61 (20.33 deg): contact point not localised on segments (3,1) (slack 3.286u of 3.02u)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 29
+  first possible contact at substep 24 (8.00 deg): legs (1,0), centre distance 3.126, pad 0.312
+    witness (0,-1) jF 1 prescreen 7.76u -> refused: substep 26 (8.67 deg): after the push: contact point not localised on segments (2,1) (slack 3.289u of 3.02u)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 27
+  first possible contact at substep 22 (7.33 deg): legs (1,2), centre distance 3.186, pad 0.312
+    witness (2,1) jF 1 prescreen 7.41u -> refused: substep 23 (7.67 deg): after the push: vertex cone too wide (36.2 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 79
+  first possible contact at substep 69 (23.00 deg): legs (1,0), centre distance 3.135, pad 0.312
+    witness (1,1) jF 1 prescreen 1.29u -> refused: substep 69 (23.00 deg): after the push: contact point not localised on segments (3,2) (slack 2.004u of 3.02u)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 28
+  first possible contact at substep 26 (8.67 deg): legs (1,0), centre distance 2.941, pad 0.156
+    witness (0,-1) jF 1 prescreen 7.82u -> refused: substep 27 (9.00 deg): after the push: vertex cone too wide (29.3 deg)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 26
+  first possible contact at substep 24 (8.00 deg): legs (1,2), centre distance 2.992, pad 0.156
+    witness (2,1) jF 1 prescreen 7.53u -> refused: substep 25 (8.33 deg): after the push: vertex cone too wide (40.4 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 77
+  first possible contact at substep 72 (24.00 deg): legs (1,0), centre distance 3.002, pad 0.156
+    witness (1,1) jF 1 prescreen 1.42u -> refused: substep 75 (25.00 deg): after the push: contact point not localised on segments (3,1) (slack 3.138u of 3.02u)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 28
+  first possible contact at substep 26 (8.67 deg): legs (1,0), centre distance 2.951, pad 0.078
+  thrown at substep 28 (9.33 deg): foot 1 radius >= 67.1924u over the whole set (centre 67.2340u), rim 67.167
+    witness (0,-1) jF 1 prescreen 7.82u -> CERTIFIED k=28 minR=67.192
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 28
+  first possible contact at substep 26 (8.67 deg): legs (1,0), centre distance 2.941, pad 0.156
+    witness (0,-1) jF 1 prescreen 7.82u -> refused: substep 27 (9.00 deg): after the push: vertex cone too wide (29.3 deg)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 26
+  first possible contact at substep 24 (8.00 deg): legs (1,2), centre distance 2.992, pad 0.156
+    witness (2,1) jF 1 prescreen 7.53u -> refused: substep 25 (8.33 deg): after the push: vertex cone too wide (40.4 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 77
+  first possible contact at substep 72 (24.00 deg): legs (1,0), centre distance 3.002, pad 0.156
+    witness (1,1) jF 1 prescreen 1.42u -> refused: substep 75 (25.00 deg): after the push: contact point not localised on segments (3,1) (slack 3.138u of 3.02u)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 29
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 3.024, pad 0.156
+    witness (0,-1) jF 1 prescreen 7.76u -> refused: substep 28 (9.33 deg): after the push: hub-leg contact possible (tight LB 1.304 < 4.18)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 27
+  first possible contact at substep 24 (8.00 deg): legs (1,2), centre distance 2.959, pad 0.156
+    witness (2,1) jF 1 prescreen 7.41u -> refused: substep 25 (8.33 deg): after the push: vertex cone too wide (45.9 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 79
+  first possible contact at substep 71 (23.67 deg): legs (1,0), centre distance 3.019, pad 0.156
+    witness (1,1) jF 1 prescreen 1.29u -> refused: substep 74 (24.67 deg): after the push: contact point not localised on segments (3,2) (slack 1.924u of 3.02u)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 29
+  first possible contact at substep 26 (8.67 deg): legs (1,0), centre distance 2.932, pad 0.078
+  thrown at substep 29 (9.67 deg): foot 1 radius >= 67.2007u over the whole set (centre 67.2435u), rim 67.167
+    witness (0,-1) jF 1 prescreen 7.82u -> CERTIFIED k=29 minR=67.201
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 29
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 3.024, pad 0.156
+    witness (0,-1) jF 1 prescreen 7.76u -> refused: substep 28 (9.33 deg): after the push: hub-leg contact possible (tight LB 1.304 < 4.18)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 27
+  first possible contact at substep 24 (8.00 deg): legs (1,2), centre distance 2.959, pad 0.156
+    witness (2,1) jF 1 prescreen 7.41u -> refused: substep 25 (8.33 deg): after the push: vertex cone too wide (45.9 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 79
+  first possible contact at substep 71 (23.67 deg): legs (1,0), centre distance 3.019, pad 0.156
+    witness (1,1) jF 1 prescreen 1.29u -> refused: substep 74 (24.67 deg): after the push: contact point not localised on segments (3,2) (slack 1.924u of 3.02u)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 30
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 3.004, pad 0.156
+    witness (0,-1) jF 1 prescreen 7.76u -> refused: substep 27 (9.00 deg): after the push: hub-leg contact possible (tight LB 4.061 < 4.18)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 28
+  first possible contact at substep 24 (8.00 deg): legs (1,2), centre distance 2.926, pad 0.156
+    witness (2,1) jF 1 prescreen 7.41u -> refused: substep 25 (8.33 deg): after the push: hub-leg contact possible (tight LB 0.000 < 4.18)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 80
+  first possible contact at substep 71 (23.67 deg): legs (1,0), centre distance 2.977, pad 0.156
+    witness (1,1) jF 1 prescreen 1.29u -> refused: substep 74 (24.67 deg): after the push: hub-leg contact possible (tight LB 0.000 < 4.18)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 30
+  first possible contact at substep 26 (8.67 deg): legs (1,0), centre distance 2.912, pad 0.078
+  thrown at substep 30 (10.00 deg): foot 1 radius >= 67.2085u over the whole set (centre 67.2527u), rim 67.167
+    witness (0,-1) jF 1 prescreen 7.76u -> CERTIFIED k=30 minR=67.209
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 30
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 3.004, pad 0.156
+    witness (0,-1) jF 1 prescreen 7.76u -> refused: substep 27 (9.00 deg): after the push: hub-leg contact possible (tight LB 4.061 < 4.18)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 28
+  first possible contact at substep 24 (8.00 deg): legs (1,2), centre distance 2.926, pad 0.156
+    witness (2,1) jF 1 prescreen 7.41u -> refused: substep 25 (8.33 deg): after the push: hub-leg contact possible (tight LB 0.000 < 4.18)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 80
+  first possible contact at substep 71 (23.67 deg): legs (1,0), centre distance 2.977, pad 0.156
+    witness (1,1) jF 1 prescreen 1.29u -> refused: substep 74 (24.67 deg): after the push: hub-leg contact possible (tight LB 0.000 < 4.18)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 31
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.984, pad 0.156
+    witness (0,-1) jF 1 prescreen 7.68u -> refused: substep 27 (9.00 deg): after the push: vertex cone too wide (25.8 deg)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 28
+  first possible contact at substep 23 (7.67 deg): legs (1,2), centre distance 3.006, pad 0.156
+    witness (2,1) jF 1 prescreen 7.28u -> refused: substep 24 (8.00 deg): after the push: vertex cone too wide (32.8 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 82
+  first possible contact at substep 70 (23.33 deg): legs (1,0), centre distance 2.995, pad 0.156
+    witness (1,1) jF 1 prescreen 1.16u -> refused: substep 73 (24.33 deg): after the push: hub-leg contact possible (tight LB 0.000 < 4.18)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 30
+  first possible contact at substep 26 (8.67 deg): legs (1,0), centre distance 2.892, pad 0.078
+  thrown at substep 31 (10.33 deg): foot 1 radius >= 67.2155u over the whole set (centre 67.2614u), rim 67.167
+    witness (0,-1) jF 1 prescreen 7.76u -> CERTIFIED k=31 minR=67.215
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 31
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.984, pad 0.156
+    witness (0,-1) jF 1 prescreen 7.68u -> refused: substep 27 (9.00 deg): after the push: vertex cone too wide (25.8 deg)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 28
+  first possible contact at substep 23 (7.67 deg): legs (1,2), centre distance 3.006, pad 0.156
+    witness (2,1) jF 1 prescreen 7.28u -> refused: substep 24 (8.00 deg): after the push: vertex cone too wide (32.8 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 82
+  first possible contact at substep 70 (23.33 deg): legs (1,0), centre distance 2.995, pad 0.156
+    witness (1,1) jF 1 prescreen 1.16u -> refused: substep 73 (24.33 deg): after the push: hub-leg contact possible (tight LB 0.000 < 4.18)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 32
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.965, pad 0.156
+    witness (0,-1) jF 1 prescreen 7.68u -> refused: substep 27 (9.00 deg): after the push: vertex cone too wide (34.7 deg)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 29
+  first possible contact at substep 23 (7.67 deg): legs (1,2), centre distance 2.972, pad 0.156
+    witness (2,1) jF 1 prescreen 7.28u -> refused: substep 24 (8.00 deg): after the push: vertex cone too wide (48.8 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 84
+  first possible contact at substep 69 (23.00 deg): legs (1,0), centre distance 3.012, pad 0.156
+    witness (1,1) jF 1 prescreen 1.16u -> refused: substep 72 (24.00 deg): after the push: contact point not localised on segments (1,4) (slack 5.268u of 3.02u)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 31
+  first possible contact at substep 26 (8.67 deg): legs (1,0), centre distance 2.873, pad 0.078
+  thrown at substep 32 (10.67 deg): foot 1 radius >= 67.2226u over the whole set (centre 67.2697u), rim 67.167
+    witness (0,-1) jF 1 prescreen 7.68u -> CERTIFIED k=32 minR=67.223
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 32
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.965, pad 0.156
+    witness (0,-1) jF 1 prescreen 7.68u -> refused: substep 27 (9.00 deg): after the push: vertex cone too wide (34.7 deg)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 29
+  first possible contact at substep 23 (7.67 deg): legs (1,2), centre distance 2.972, pad 0.156
+    witness (2,1) jF 1 prescreen 7.28u -> refused: substep 24 (8.00 deg): after the push: vertex cone too wide (48.8 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 84
+  first possible contact at substep 69 (23.00 deg): legs (1,0), centre distance 3.012, pad 0.156
+    witness (1,1) jF 1 prescreen 1.16u -> refused: substep 72 (24.00 deg): after the push: contact point not localised on segments (1,4) (slack 5.268u of 3.02u)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 33
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.945, pad 0.156
+    witness (0,-1) jF 1 prescreen 7.61u -> refused: substep 27 (9.00 deg): after the push: hub-leg contact possible (tight LB 3.070 < 4.18)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 29
+  first possible contact at substep 23 (7.67 deg): legs (1,2), centre distance 2.939, pad 0.156
+    witness (2,1) jF 1 prescreen 7.14u -> refused: substep 23 (7.67 deg): the push cone did not settle
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 85
+  first possible contact at substep 68 (22.67 deg): legs (1,0), centre distance 3.030, pad 0.156
+    witness (1,1) jF 1 prescreen 1.03u -> refused: substep 70 (23.33 deg): after the push: contact point not localised on segments (3,2) (slack 2.107u of 3.02u)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 32
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.955, pad 0.078
+  thrown at substep 33 (11.00 deg): foot 1 radius >= 67.2291u over the whole set (centre 67.2776u), rim 67.167
+    witness (0,-1) jF 1 prescreen 7.68u -> CERTIFIED k=33 minR=67.229
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 33
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.945, pad 0.156
+    witness (0,-1) jF 1 prescreen 7.61u -> refused: substep 27 (9.00 deg): after the push: hub-leg contact possible (tight LB 3.070 < 4.18)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 29
+  first possible contact at substep 23 (7.67 deg): legs (1,2), centre distance 2.939, pad 0.156
+    witness (2,1) jF 1 prescreen 7.14u -> refused: substep 23 (7.67 deg): the push cone did not settle
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 85
+  first possible contact at substep 68 (22.67 deg): legs (1,0), centre distance 3.030, pad 0.156
+    witness (1,1) jF 1 prescreen 1.03u -> refused: substep 70 (23.33 deg): after the push: contact point not localised on segments (3,2) (slack 2.107u of 3.02u)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 34
+  first possible contact at substep 24 (8.00 deg): legs (1,0), centre distance 3.029, pad 0.156
+    witness (0,-1) jF 1 prescreen 7.61u -> refused: substep 27 (9.00 deg): after the push: hub-leg contact possible (tight LB 2.631 < 4.18)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 30
+  first possible contact at substep 22 (7.33 deg): legs (1,2), centre distance 3.018, pad 0.156
+    witness (2,1) jF 1 prescreen 7.14u -> refused: substep 23 (7.67 deg): after the push: vertex cone too wide (33.4 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 87
+  first possible contact at substep 68 (22.67 deg): legs (1,0), centre distance 2.989, pad 0.156
+    witness (1,1) jF 1 prescreen 1.03u -> refused: substep 70 (23.33 deg): after the push: contact point not localised on segments (3,2) (slack 2.164u of 3.02u)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 33
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.936, pad 0.078
+  thrown at substep 34 (11.33 deg): foot 1 radius >= 67.2348u over the whole set (centre 67.2850u), rim 67.167
+    witness (0,-1) jF 1 prescreen 7.61u -> CERTIFIED k=34 minR=67.235
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 34
+  first possible contact at substep 24 (8.00 deg): legs (1,0), centre distance 3.029, pad 0.156
+    witness (0,-1) jF 1 prescreen 7.61u -> refused: substep 27 (9.00 deg): after the push: hub-leg contact possible (tight LB 2.631 < 4.18)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 30
+  first possible contact at substep 22 (7.33 deg): legs (1,2), centre distance 3.018, pad 0.156
+    witness (2,1) jF 1 prescreen 7.14u -> refused: substep 23 (7.67 deg): after the push: vertex cone too wide (33.4 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 87
+  first possible contact at substep 68 (22.67 deg): legs (1,0), centre distance 2.989, pad 0.156
+    witness (1,1) jF 1 prescreen 1.03u -> refused: substep 70 (23.33 deg): after the push: contact point not localised on segments (3,2) (slack 2.164u of 3.02u)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 35
+  first possible contact at substep 24 (8.00 deg): legs (1,0), centre distance 3.009, pad 0.156
+    witness (0,-1) jF 1 prescreen 7.55u -> refused: substep 27 (9.00 deg): after the push: hub-leg contact possible (tight LB 0.000 < 4.18)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 31
+  first possible contact at substep 22 (7.33 deg): legs (1,2), centre distance 2.985, pad 0.156
+    witness (2,1) jF 1 prescreen 6.99u -> refused: substep 23 (7.67 deg): after the push: vertex cone too wide (38.8 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 88
+  first possible contact at substep 67 (22.33 deg): legs (1,0), centre distance 3.008, pad 0.156
+    witness (1,1) jF 1 prescreen 0.90u -> refused: substep 69 (23.00 deg): after the push: contact point not localised on segments (3,2) (slack 2.025u of 3.02u)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 34
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.916, pad 0.078
+  thrown at substep 35 (11.67 deg): foot 1 radius >= 67.2398u over the whole set (centre 67.2920u), rim 67.167
+    witness (0,-1) jF 1 prescreen 7.61u -> CERTIFIED k=35 minR=67.240
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 35
+  first possible contact at substep 24 (8.00 deg): legs (1,0), centre distance 3.009, pad 0.156
+    witness (0,-1) jF 1 prescreen 7.55u -> refused: substep 27 (9.00 deg): after the push: hub-leg contact possible (tight LB 0.000 < 4.18)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 31
+  first possible contact at substep 22 (7.33 deg): legs (1,2), centre distance 2.985, pad 0.156
+    witness (2,1) jF 1 prescreen 6.99u -> refused: substep 23 (7.67 deg): after the push: vertex cone too wide (38.8 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 88
+  first possible contact at substep 67 (22.33 deg): legs (1,0), centre distance 3.008, pad 0.156
+    witness (1,1) jF 1 prescreen 0.90u -> refused: substep 69 (23.00 deg): after the push: contact point not localised on segments (3,2) (slack 2.025u of 3.02u)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 35
+  first possible contact at substep 24 (8.00 deg): legs (1,0), centre distance 2.990, pad 0.156
+    witness (0,-1) jF 1 prescreen 7.55u -> refused: substep 26 (8.67 deg): the push cone did not settle
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 31
+  first possible contact at substep 22 (7.33 deg): legs (1,2), centre distance 2.951, pad 0.156
+    witness (2,1) jF 1 prescreen 6.99u -> refused: substep 23 (7.67 deg): after the push: vertex cone too wide (35.8 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 90
+  first possible contact at substep 66 (22.00 deg): legs (1,0), centre distance 3.027, pad 0.156
+    witness (1,1) jF 1 prescreen 0.90u -> refused: substep 68 (22.67 deg): after the push: contact point not localised on segments (3,2) (slack 2.014u of 3.02u)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 35
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.896, pad 0.078
+    witness (0,-1) jF 1 prescreen 7.55u -> refused: substep 37 (12.33 deg): after the push: vertex cone too wide (39.2 deg)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 31
+  first possible contact at substep 23 (7.67 deg): legs (1,2), centre distance 2.856, pad 0.078
+    witness (2,1) jF 1 prescreen 6.99u -> refused: substep 24 (8.00 deg): after the push: hub-leg contact possible (tight LB 0.000 < 4.18)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 89
+  first possible contact at substep 68 (22.67 deg): legs (1,0), centre distance 2.928, pad 0.078
+    witness (1,1) jF 1 prescreen 0.90u -> refused: substep 84 (28.00 deg): after the push: hub-leg contact possible (tight LB 0.000 < 4.18)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 35
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.901, pad 0.039
+  thrown at substep 35 (11.67 deg): foot 1 radius >= 67.2026u over the whole set (centre 67.2298u), rim 67.167
+    witness (0,-1) jF 1 prescreen 7.55u -> CERTIFIED k=35 minR=67.203
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 35
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.896, pad 0.078
+    witness (0,-1) jF 1 prescreen 7.55u -> refused: substep 37 (12.33 deg): after the push: vertex cone too wide (39.2 deg)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 31
+  first possible contact at substep 23 (7.67 deg): legs (1,2), centre distance 2.856, pad 0.078
+    witness (2,1) jF 1 prescreen 6.99u -> refused: substep 24 (8.00 deg): after the push: hub-leg contact possible (tight LB 0.000 < 4.18)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 89
+  first possible contact at substep 68 (22.67 deg): legs (1,0), centre distance 2.928, pad 0.078
+    witness (1,1) jF 1 prescreen 0.90u -> refused: substep 84 (28.00 deg): after the push: hub-leg contact possible (tight LB 0.000 < 4.18)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 35
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.887, pad 0.078
+    witness (0,-1) jF 1 prescreen 7.55u -> refused: substep 37 (12.33 deg): after the push: contact point not localised on segments (2,1) (slack 3.274u of 3.02u)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 31
+  first possible contact at substep 22 (7.33 deg): legs (1,2), centre distance 2.951, pad 0.078
+    witness (2,1) jF 1 prescreen 6.99u -> refused: substep 24 (8.00 deg): vertex cone too wide (29.3 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 90
+  first possible contact at substep 68 (22.67 deg): legs (1,0), centre distance 2.907, pad 0.078
+    witness (1,1) jF 1 prescreen 0.90u -> refused: substep 83 (27.67 deg): after the push: hub-leg contact possible (tight LB 0.000 < 4.18)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 35
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.892, pad 0.039
+  thrown at substep 36 (12.00 deg): foot 1 radius >= 67.2495u over the whole set (centre 67.2777u), rim 67.167
+    witness (0,-1) jF 1 prescreen 7.55u -> CERTIFIED k=36 minR=67.249
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 35
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.887, pad 0.078
+    witness (0,-1) jF 1 prescreen 7.55u -> refused: substep 37 (12.33 deg): after the push: contact point not localised on segments (2,1) (slack 3.274u of 3.02u)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 31
+  first possible contact at substep 22 (7.33 deg): legs (1,2), centre distance 2.951, pad 0.078
+    witness (2,1) jF 1 prescreen 6.99u -> refused: substep 24 (8.00 deg): vertex cone too wide (29.3 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 90
+  first possible contact at substep 68 (22.67 deg): legs (1,0), centre distance 2.907, pad 0.078
+    witness (1,1) jF 1 prescreen 0.90u -> refused: substep 83 (27.67 deg): after the push: hub-leg contact possible (tight LB 0.000 < 4.18)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 36
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.877, pad 0.078
+    witness (0,-1) jF 1 prescreen 7.55u -> refused: substep 38 (12.67 deg): after the push: hub-leg contact possible (tight LB 2.930 < 4.18)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 32
+  first possible contact at substep 22 (7.33 deg): legs (1,2), centre distance 2.935, pad 0.078
+    witness (2,1) jF 1 prescreen 6.99u -> refused: substep 23 (7.67 deg): after the push: vertex cone too wide (34.7 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 91
+  first possible contact at substep 67 (22.33 deg): legs (1,0), centre distance 2.947, pad 0.078
+    witness (1,1) jF 1 prescreen 0.90u -> refused: substep 83 (27.67 deg): after the push: hub-leg contact possible (tight LB 0.000 < 4.18)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 36
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.882, pad 0.039
+  thrown at substep 36 (12.00 deg): foot 1 radius >= 67.2075u over the whole set (centre 67.2360u), rim 67.167
+    witness (0,-1) jF 1 prescreen 7.55u -> CERTIFIED k=36 minR=67.207
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 36
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.877, pad 0.078
+    witness (0,-1) jF 1 prescreen 7.55u -> refused: substep 38 (12.67 deg): after the push: hub-leg contact possible (tight LB 2.930 < 4.18)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 32
+  first possible contact at substep 22 (7.33 deg): legs (1,2), centre distance 2.935, pad 0.078
+    witness (2,1) jF 1 prescreen 6.99u -> refused: substep 23 (7.67 deg): after the push: vertex cone too wide (34.7 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 91
+  first possible contact at substep 67 (22.33 deg): legs (1,0), centre distance 2.947, pad 0.078
+    witness (1,1) jF 1 prescreen 0.90u -> refused: substep 83 (27.67 deg): after the push: hub-leg contact possible (tight LB 0.000 < 4.18)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 36
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.867, pad 0.078
+    witness (0,-1) jF 1 prescreen 7.47u -> refused: substep 38 (12.67 deg): after the push: hub-leg contact possible (tight LB 2.649 < 4.18)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 32
+  first possible contact at substep 22 (7.33 deg): legs (1,2), centre distance 2.918, pad 0.078
+    witness (2,1) jF 1 prescreen 6.86u -> refused: substep 23 (7.67 deg): after the push: vertex cone too wide (32.3 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 91
+  first possible contact at substep 67 (22.33 deg): legs (1,0), centre distance 2.926, pad 0.078
+    witness (1,1) jF 1 prescreen 0.77u -> refused: substep 83 (27.67 deg): after the push: hub-leg contact possible (tight LB 0.000 < 4.18)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 36
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.872, pad 0.039
+  thrown at substep 37 (12.33 deg): foot 1 radius >= 67.2543u over the whole set (centre 67.2836u), rim 67.167
+    witness (0,-1) jF 1 prescreen 7.55u -> CERTIFIED k=37 minR=67.254
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 36
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.867, pad 0.078
+    witness (0,-1) jF 1 prescreen 7.47u -> refused: substep 38 (12.67 deg): after the push: hub-leg contact possible (tight LB 2.649 < 4.18)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 32
+  first possible contact at substep 22 (7.33 deg): legs (1,2), centre distance 2.918, pad 0.078
+    witness (2,1) jF 1 prescreen 6.86u -> refused: substep 23 (7.67 deg): after the push: vertex cone too wide (32.3 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 91
+  first possible contact at substep 67 (22.33 deg): legs (1,0), centre distance 2.926, pad 0.078
+    witness (1,1) jF 1 prescreen 0.77u -> refused: substep 83 (27.67 deg): after the push: hub-leg contact possible (tight LB 0.000 < 4.18)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 37
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.857, pad 0.078
+    witness (0,-1) jF 1 prescreen 7.47u -> refused: substep 38 (12.67 deg): after the push: hub-leg contact possible (tight LB 2.311 < 4.18)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 32
+  first possible contact at substep 22 (7.33 deg): legs (1,2), centre distance 2.901, pad 0.078
+    witness (2,1) jF 1 prescreen 6.86u -> refused: substep 23 (7.67 deg): after the push: vertex cone too wide (42.0 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 92
+  first possible contact at substep 67 (22.33 deg): legs (1,0), centre distance 2.906, pad 0.078
+    witness (1,1) jF 1 prescreen 0.77u -> refused: substep 83 (27.67 deg): contact point not localised on segments (3,2) (slack 1.628u of 3.02u)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 37
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.862, pad 0.039
+  thrown at substep 37 (12.33 deg): foot 1 radius >= 67.2122u over the whole set (centre 67.2417u), rim 67.167
+    witness (0,-1) jF 1 prescreen 7.47u -> CERTIFIED k=37 minR=67.212
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 37
+  first possible contact at substep 25 (8.33 deg): legs (1,0), centre distance 2.857, pad 0.078
+    witness (0,-1) jF 1 prescreen 7.47u -> refused: substep 38 (12.67 deg): after the push: hub-leg contact possible (tight LB 2.311 < 4.18)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 32
+  first possible contact at substep 22 (7.33 deg): legs (1,2), centre distance 2.901, pad 0.078
+    witness (2,1) jF 1 prescreen 6.86u -> refused: substep 23 (7.67 deg): after the push: vertex cone too wide (42.0 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 92
+  first possible contact at substep 67 (22.33 deg): legs (1,0), centre distance 2.906, pad 0.078
+    witness (1,1) jF 1 prescreen 0.77u -> refused: substep 83 (27.67 deg): contact point not localised on segments (3,2) (slack 1.628u of 3.02u)
+throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 37
+  first possible contact at substep 24 (8.00 deg): legs (1,0), centre distance 2.951, pad 0.078
+    witness (0,-1) jF 1 prescreen 7.47u -> refused: substep 38 (12.67 deg): after the push: hub-leg contact possible (tight LB 3.712 < 4.18)
+throw arm (2,1) limit 39.00 deg = 117 substeps of 0.3333 deg; centre thrown 32
+  first possible contact at substep 22 (7.33 deg): legs (1,2), centre distance 2.885, pad 0.078
+    witness (2,1) jF 1 prescreen 6.86u -> refused: substep 23 (7.67 deg): after the push: vertex cone too wide (28.9 deg)
+throw arm (1,1) limit 36.00 deg = 108 substeps of 0.3333 deg; centre thrown 93
+  first possible contact at substep 66 (22.00 deg): legs (1,0), centre distance 2.946, pad 0.078
+    witness (1,1) jF 1 prescreen 0.77u -> refused: substep 83 (27.67 deg): after the push: contact point not localised on segments (3,2) (slack 1.848u of 3.02u)
+^C
