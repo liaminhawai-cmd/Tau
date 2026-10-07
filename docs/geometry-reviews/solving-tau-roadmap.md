@@ -147,6 +147,40 @@ So milestone 2's remaining distance is precisely gaps 1 and 3 -- the same two le
 negative on tangent seeding points at. The full six-family `--dead` run was launched the same day
 and reports each family the same way.
 
+## The 2026-10-08 session: cone class eliminated, libm axiom eliminated, witness diversity
+
+Three landings, each measured:
+
+1. **Brief-3 residual bound in the vertex dwell** (`bf0bc17f7`). The blanket cone's angular
+   half-width at a victim-vertex dwell used `2*pad` — the triangle-inequality sum of the vertex
+   displacement and its projection's displacement. But `w = pV - pA` there is the *residual* of
+   the victim vertex's projection onto the FIXED attacker chord, and the residual map of a
+   firmly-nonexpansive projection is nonexpansive (`|Δres|² ≤ |Δp|²` by the projection inequality),
+   so one displacement suffices. Effect: witness (2,1) at [2.4,2.6] deg passes its former
+   'vertex cone too wide (21.3 deg)' refusal and advances a substep; (1,-1) and (2,-1) move past
+   their cone refusals entirely; the family cover certified 47 patches before reaching the deep
+   range vs 46 in the entire previous run. Both committed CERT targets revalidate 3/3.
+   The 'vertex cone too wide' blocker CLASS is removed; the deep range now refuses only on the
+   two known gaps (hubV push regime, mid-contact smearing).
+2. **Axiom-free trig** (`763a12814`). `rigorous-fp.js`'s cosI/sinI now evaluate endpoints through
+   dd-pi argument reduction + an alternating Taylor enclosure — ONLY +,-,*,/ in the enclosure
+   path, truncation bounded by the first omitted term. The 4-ulp libm axiom is gone; the self-test
+   (200k cases, sinI containment added) reports 0 containment failures; the `--fp` report shows
+   box widening 2.25e-12 u and the clearance lower bound still clearing MIND. The leaf's analytic
+   layer now rests on IEEE 754 arithmetic alone; the remaining named FP gap is the REPLICA sweep.
+3. **Witness diversity in `certifyBest`** (this commit). If the top-ranked witnesses all refuse,
+   every remaining witness with a positive prescreen margin is tried — a refused witness is not
+   evidence about the rest, and the census showed different arms certify different sub-intervals
+   ((1,1) certified 2x wider than (0,-1) at the limit end). Negative-margin arms stay skipped:
+   they do not throw at all.
+
+Still in flight at session end: the family (2,1) cover with all three fixes (47+ patches
+certified, last witness (0,-1) at 6.87u prescreen); its record lands in the run log for the next
+session. The deep range [2, ~9.7] deg remains blocked by exactly two named gaps -- the hubV push
+regime and the Brief-4 frame term -- with the third blocker class now closed.
+
+
+
 ## The wiring point (rung 3)
 
 `forced-win.js:1611 cellSample -> deadCertificate` is the sampled leaf the retrograde currently

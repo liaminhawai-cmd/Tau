@@ -139,11 +139,17 @@ function witnessPrescreen(pieces,m,rpv,rd,a,b,fam,opts){
   return {cands,afters};
 }
 // Try the ranked witnesses (the previous patch's witness first -- witness continuity) until one
-// certifies the whole interval. Returns {ok:true,...} or {ok:false,why}.
+// certifies the whole interval. Returns {ok:true,...} or {ok:false,why}. Witness diversity: if
+// every one of the first opts.tries refused, keep going through ALL remaining witnesses with a
+// positive prescreen margin -- a refused witness is not evidence about the rest, and the census
+// showed different arms certify different sub-intervals ((1,1) certified 2x wider than (0,-1)
+// at the limit end). Negative-margin arms are correctly skipped: they do not throw at all.
 function certifyBest(pieces,m,rpv,rd,a,b,fam,opts){
   opts=opts||{};const log=opts.log||(()=>{});
   const {cands}=witnessPrescreen(pieces,m,rpv,rd,a,b,fam,opts);
-  const order=cands.slice(0,Math.max(1,opts.tries||2));
+  const nFirst=Math.max(1,opts.tries||2);
+  const order=cands.slice(0,nFirst);
+  for(const c of cands.slice(nFirst)) if(c.margin>0) order.push(c);
   if(opts.hint){const i=order.findIndex(c=>c.wpv===opts.hint.pv&&c.wd===opts.hint.dir);
     if(i>0)order.unshift(order.splice(i,1)[0]);}
   let why='no witnesses';
