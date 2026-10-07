@@ -583,11 +583,15 @@ function analyse(box, att, pairWant, hubVFull) {
       const dIv = contactVertex >= 0
         ? (() => { const Vp = A[own.i][contactVertex]; const exv = sub(hubIv.x, [Vp.x, Vp.x]), eyv = sub(hubIv.y, [Vp.y, Vp.y]), ehv = sub(hubIv.h, [Vp.h, Vp.h]); const d2 = add(add(mul(exv, exv), mul(eyv, eyv)), mul(ehv, ehv)); return [Math.sqrt(Math.max(0, d2[0])), Math.sqrt(d2[1])]; })()
         : own.d.slice();
-      // lambda = (HUBLEGD - d)/hf per pose, max(0, .) for the poses that do not touch: straddling
-      // states carry 0 inside the interval because gapIv dips below 0 there.
+      // the law's clean range over the WHOLE box: a pose whose hf dips under the floor or whose
+      // push exceeds the cap takes a DIFFERENT push (floored/capped) and the closed-form lambda
+      // and the shell identity below fail for it -- refuse rather than model those branches.
+      if (hfIv[0] < REPLICA.hfFloor) return { ...out, refuse: `hubV hf dips under the law's floor (${hfIv[0].toFixed(3)} < ${REPLICA.hfFloor}) in the box` };
       const gapIv = [HUBLEGD - dIv[1], HUBLEGD - dIv[0]];
       const lamIv = [gapIv[0] / hfIv[1], gapIv[1] / Math.max(hfIv[0], 1e-6)];
-      out.hubV = { possible: true, regime: { i: own.i, k: contactSeg, vertex: contactVertex, d: dIv, psi: psiIv, hf: hfIv, lam: lamIv, pad: padT } };
+      if (lamIv[1] > REPLICA.cap) return { ...out, refuse: `hubV push over the law's cap (${lamIv[1].toFixed(3)} > ${REPLICA.cap}) in the box` };
+      const vp = contactVertex >= 0 ? A[own.i][contactVertex] : null;
+      out.hubV = { possible: true, regime: { i: own.i, k: contactSeg, vertex: contactVertex, vx: vp ? vp.x : null, vy: vp ? vp.y : null, vh: vp ? vp.h : null, d: dIv, psi: psiIv, hf: hfIv, lam: lamIv, pad: padT } };
     }
   }
   if (touchable.length === 0) return { ...out, free: true, minDist: Math.min(...pairs.map(p => p.dist)) - pad };
@@ -1031,12 +1035,49 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
         if (pre.hubV && !hv) return fail('hubV possible but the closest leg/segment not isolated in a state', k);
         if (hv) {
           if (pushLeg >= 0 && hv.i !== pushLeg) return fail(`hubV: the set's owned leg ${hv.i} is not the centre's push leg ${pushLeg}`, k);
-          // the pushed state's shift is M^-1 (Delta_iv - Delta_c) ALONE: the post-push pose is
-          // p + Delta(p), the new centre is qc + Delta_c, so relative to it the set is
-          // M u + (Delta(p) - Delta_c) -- the noPush (-M^-1 Delta_c) would double-count Delta_c.
-          const dX = sub(mul(hv.lam, cosRange(hv.psi)), [dcx, dcx]), dY = sub(mul(hv.lam, sinRange(hv.psi)), [dcy, dcy]);
-          const hubShift = matVecIv(Mi, [dX, dY, [0, 0]]);
-          nextUsH.push({ U: [0, 1, 2].map(r => add(U[r], hubShift[r])), M: Ms, keep: st.keep });
+          if (hv.vertex >= 0 && hv.d[1] < HUBLEGD) {
+            // THE PINNED VERTEX ROUTE -- only for a FULLY-TOUCHING state (d_hi < HUBLEGD): the
+            // shell below bounds PUSHED poses (whose gap > 0), but a straddling state's unpushed
+            // poses keep their original along-n coordinate, which the shell does not bound
+            // (d_hi^2 <= HUBLEGD^2 + gap^2 k fails once gap goes negative) -- those states take
+            // the translation route below, whose lambda interval contains 0.
+            // The push moves the hub along the horizontal normal only, so
+            // the tangential (e_t) and vertical coordinates are UNCHANGED, and the post-push hub
+            // lies on the EXACT shell (from |w + t n|^2 with t = (HUBLEGD-d)/hf, w.n = |w_xy|):
+            //     d'^2 = d^2 + 2(HUBLEGD-d)d + (HUBLEGD-d)^2/hf^2
+            //          = HUBLEGD^2 + (HUBLEGD-d)^2 (1/hf^2 - 1),
+            // the middle identity being d^2 + 2(HUBLEGD-d)d = HUBLEGD^2 - (HUBLEGD-d)^2 -- the
+            // rewrite that keeps the interval tight (per-substep growth ~0.002u instead of the
+            // ~0.04u the free translation costs). The state is REBUILT in the contact frame
+            // (e_t, n_c, rot): u1 = the hub box's e_t coordinates (linear, tight), u2 =
+            // sqrt(d'^2 - u1^2 - w_v^2) with w_v exact (the hub height is fixed), u3 = the rot
+            // interval (rn = 0: the push does not rotate the piece).
+            const Vx = hv.vx, Vy = hv.vy, wv = H - hv.vh;
+            const wcx = qc.x - Vx, wcy = qc.y - Vy, wcxy = Math.hypot(wcx, wcy);
+            if (!(wcxy > 1e-9)) return fail('hubV pinning: the centre hub sits over the vertex (degenerate)', k);
+            const nx = wcx / wcxy, ny = wcy / wcxy, etx = -ny, ety = nx;
+            const aC = wcxy + dcx * nx + dcy * ny;   // the centre's own post-push along-n coordinate
+            const bbh = aabbOf(qc, Ms, U);
+            const bIv = add(mul(sub(bbh.x, [Vx, Vx]), [etx, etx]), mul(sub(bbh.y, [Vy, Vy]), [ety, ety]));
+            const bC = wcx * etx + wcy * ety, bSq = sq(bIv);
+            const gapIv = sub([HUBLEGD, HUBLEGD], hv.d);
+            const invHfSq = [1 / (hv.hf[1] * hv.hf[1]), 1 / (hv.hf[0] * hv.hf[0])];
+            const d2p = add([HUBLEGD * HUBLEGD, HUBLEGD * HUBLEGD], mul(sq(gapIv), sub(invHfSq, [1, 1])));
+            const a2 = sub(sub(d2p, bSq), [wv * wv, wv * wv]);
+            if (a2[0] < 0) return fail('hubV pinning: the shell minus the tangential square is negative (bug)', k);
+            const aIv = [Math.sqrt(a2[0]), Math.sqrt(a2[1])];
+            const u1 = sub(bIv, [bC, bC]), u2 = sub(aIv, [aC, aC]), u3 = [bbh.rot[0] - qcNext.rot, bbh.rot[1] - qcNext.rot];
+            if (!(u1[0] <= 1e-9 && u1[1] >= -1e-9 && u2[0] <= 1e-9 && u2[1] >= -1e-9 && u3[0] <= 1e-9 && u3[1] >= -1e-9)) return fail('hubV pinning: the centre left the rebuilt state (bug)', k);
+            nextUsH.push({ U: [u1, u2, u3], M: colsOf([etx, ety, 0], [nx, ny, 0], [0, 0, 1]), keep: true });
+          } else {
+            // the segment-interior route: the translation interval M^-1(Delta_iv - Delta_c) ALONE --
+            // the post-push pose is p + Delta(p), the new centre is qc + Delta_c, so relative to
+            // it the set is M u + (Delta(p) - Delta_c) -- the noPush (-M^-1 Delta_c) would
+            // double-count Delta_c.
+            const dX = sub(mul(hv.lam, cosRange(hv.psi)), [dcx, dcx]), dY = sub(mul(hv.lam, sinRange(hv.psi)), [dcy, dcy]);
+            const hubShift = matVecIv(Mi, [dX, dY, [0, 0]]);
+            nextUsH.push({ U: [0, 1, 2].map(r => add(U[r], hubShift[r])), M: Ms, keep: st.keep });
+          }
         } else {
           nextUsH.push({ U: [0, 1, 2].map(r => add(U[r], [noPush[r], noPush[r]])), M: Ms, keep: st.keep });
         }
