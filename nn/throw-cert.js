@@ -537,15 +537,8 @@ function analyse(box, att, pairWant, hubVFull) {
       const ties = [];
       for (let k = 0; k < NSEG; k++) if (legSegIv[own.i][k].d[0] < own.d[1]) ties.push(k);
       if (ties.length > 2) return { ...out, refuse: `hubV closest point not isolated on leg ${own.i} (segments ${ties.join(',')} tie within the box)` };
-      let contactSeg = own.k, contactVertex = -1;
+      let contactSeg = own.k, contactVertex = -1, straddle = false, drift = 0;
       if (ties.length === 2) {
-        // ADJACENT TIE: the closest point dwells at (or straddles) the shared polyline VERTEX.
-        // If the whole hub box lies in the vertex's normal cone -- (H-V).u_prev >= 0 beyond the
-        // previous segment's end and (H-V).u_next <= 0 before the next segment's start, both
-        // LINEAR in the box -- then the VERTEX owns the contact for every pose: an exact fixed
-        // contact point, w = H - V with |dw| <= padT, no projection at all. Otherwise the box
-        // genuinely straddles the interior/interior boundary and the regime refuses (a two-state
-        // split is the later fix, mirroring the leg-leg machinery).
         const lo = Math.min(...ties), hi = Math.max(...ties);
         if (hi !== lo + 1) return { ...out, refuse: `hubV closest point not isolated on leg ${own.i} (non-adjacent segments ${lo},${hi} tie)` };
         const v = hi;   // the vertex shared by segments lo (its end) and hi (its start)
@@ -555,8 +548,19 @@ function analyse(box, att, pairWant, hubVFull) {
         const uNext = [(Vn.x - Vp.x), (Vn.y - Vp.y), (Vn.h - Vp.h)], lNext = Math.hypot(...uNext);
         const linPrev = add(add(mul(sub(hubIv.x, [Vp.x, Vp.x]), [uPrev[0] / lPrev, uPrev[0] / lPrev]), mul(sub(hubIv.y, [Vp.y, Vp.y]), [uPrev[1] / lPrev, uPrev[1] / lPrev])), mul(sub(hubIv.h, [Vp.h, Vp.h]), [uPrev[2] / lPrev, uPrev[2] / lPrev]));
         const linNext = add(add(mul(sub(hubIv.x, [Vp.x, Vp.x]), [uNext[0] / lNext, uNext[0] / lNext]), mul(sub(hubIv.y, [Vp.y, Vp.y]), [uNext[1] / lNext, uNext[1] / lNext])), mul(sub(hubIv.h, [Vp.h, Vp.h]), [uNext[2] / lNext, uNext[2] / lNext]));
-        if (!(linPrev[0] >= -1e-9 && linNext[1] <= 1e-9)) return { ...out, refuse: `hubV box straddles the interior/vertex boundary at leg ${own.i} vertex ${v} (two-state split not implemented)` };
-        contactSeg = lo; contactVertex = v;
+        contactVertex = v; contactSeg = lo;
+        if (linPrev[0] >= -1e-9 && linNext[1] <= 1e-9) {
+          // the VERTEX owns the contact for every pose in the box (the whole box lies in the
+          // vertex's normal cone) -- an exact fixed contact point, w = H - V with |dw| <= padT.
+        } else {
+          // STRADDLE: some poses' closest point is interior to segment lo, others interior to hi.
+          // The contact point ranges within a ball of radius `drift` around the vertex, so
+          // |dw| <= padT + 2*drift. The regime carries the widened cone and the translation route
+          // (the shell pin needs a single exact contact point, which the straddle lacks).
+          const tLo = legSegIv[own.i][lo].t, tHi = legSegIv[own.i][hi].t;
+          drift = Math.max((1 - Math.min(1, tLo[0])) * lPrev, Math.max(0, Math.min(1, tHi[1])) * lNext);
+          straddle = true;
+        }
       } else {
         // single-segment ownership: no other segment ties within the box
         for (let k = 0; k < NSEG; k++) if (k !== own.k && legSegIv[own.i][k].d[0] < own.d[1]) return { ...out, refuse: `hubV closest point not isolated on leg ${own.i} segment ${own.k} (segment ${k} ties within the box)` };
@@ -570,19 +574,22 @@ function analyse(box, att, pairWant, hubVFull) {
       const L = cc0.dist;
       if (!(L > 1e-9)) return { ...out, refuse: 'hubV: the centre hub sits on the leg (degenerate)' };
       const hfC = Math.hypot(c.x - cc0.pt.x, c.y - cc0.pt.y) / L, psiC = Math.atan2(c.y - cc0.pt.y, c.x - cc0.pt.x);
-      const padT = Math.hypot(hx, hy);
-      if (hfC * L - padT <= 1e-9) return { ...out, refuse: 'hubV normal cone degenerate (the box reaches the leg centreline)' };
-      const dPsi = Math.asin(Math.min(0.99, padT / (hfC * L - padT)));
-      // hf = |w_xy|/|w| with BOTH numerator and denominator moving by padT (the residual bound):
+      const padT = Math.hypot(hx, hy), padEff = straddle ? padT + 2 * drift : padT;
+      if (hfC * L - padEff <= 1e-9) return { ...out, refuse: 'hubV normal cone degenerate (the box reaches the leg centreline)' };
+      const dPsi = Math.asin(Math.min(0.99, padEff / (hfC * L - padEff)));
+      // hf = |w_xy|/|w| with BOTH numerator and denominator moving by padEff (the residual bound):
       // the exact division bound, not the +-pad/L shortcut (that one is up to 2x too tight at hf
       // near 1 -- a pre-existing concern in the vertex blanket, noted for a separate audit).
-      const hfIv = [Math.max(0.01, (hfC * L - padT) / (L + padT)), Math.min(1, (hfC * L + padT) / Math.max(L - padT, 1e-9))];
+      const hfIv = [Math.max(0.01, (hfC * L - padEff) / (L + padEff)), Math.min(1, (hfC * L + padEff) / Math.max(L - padEff, 1e-9))];
       const psiIv = [psiC - dPsi, psiC + dPsi];
-      // the distance interval: the vertex case recomputes it exactly from H - V (the segment
-      // interval already contains those values, but the vertex's is tighter and true per-pose)
-      const dIv = contactVertex >= 0
-        ? (() => { const Vp = A[own.i][contactVertex]; const exv = sub(hubIv.x, [Vp.x, Vp.x]), eyv = sub(hubIv.y, [Vp.y, Vp.y]), ehv = sub(hubIv.h, [Vp.h, Vp.h]); const d2 = add(add(mul(exv, exv), mul(eyv, eyv)), mul(ehv, ehv)); return [Math.sqrt(Math.max(0, d2[0])), Math.sqrt(d2[1])]; })()
-        : own.d.slice();
+      // the distance interval: the straddle takes the union of the two tied segments' intervals;
+      // the vertex case recomputes exactly from H - V (tighter and true per-pose); the interior
+      // case takes the owned segment's interval.
+      const dIv = straddle
+        ? (() => { const lo = Math.min(...ties), hi = Math.max(...ties); return [Math.min(legSegIv[own.i][lo].d[0], legSegIv[own.i][hi].d[0]), Math.max(legSegIv[own.i][lo].d[1], legSegIv[own.i][hi].d[1])]; })()
+        : (contactVertex >= 0
+          ? (() => { const Vp = A[own.i][contactVertex]; const exv = sub(hubIv.x, [Vp.x, Vp.x]), eyv = sub(hubIv.y, [Vp.y, Vp.y]), ehv = sub(hubIv.h, [Vp.h, Vp.h]); const d2 = add(add(mul(exv, exv), mul(eyv, eyv)), mul(ehv, ehv)); return [Math.sqrt(Math.max(0, d2[0])), Math.sqrt(d2[1])]; })()
+          : own.d.slice());
       // the law's clean range over the WHOLE box: a pose whose hf dips under the floor or whose
       // push exceeds the cap takes a DIFFERENT push (floored/capped) and the closed-form lambda
       // and the shell identity below fail for it -- refuse rather than model those branches.
@@ -591,7 +598,8 @@ function analyse(box, att, pairWant, hubVFull) {
       const lamIv = [gapIv[0] / hfIv[1], gapIv[1] / Math.max(hfIv[0], 1e-6)];
       if (lamIv[1] > REPLICA.cap) return { ...out, refuse: `hubV push over the law's cap (${lamIv[1].toFixed(3)} > ${REPLICA.cap}) in the box` };
       const vp = contactVertex >= 0 ? A[own.i][contactVertex] : null;
-      out.hubV = { possible: true, regime: { i: own.i, k: contactSeg, vertex: contactVertex, vx: vp ? vp.x : null, vy: vp ? vp.y : null, vh: vp ? vp.h : null, d: dIv, psi: psiIv, hf: hfIv, lam: lamIv, pad: padT } };
+      const seg = contactVertex < 0 ? { t: legSegIv[own.i][contactSeg].t.slice(), ax0: A[own.i][contactSeg].x, ay0: A[own.i][contactSeg].y, ah0: A[own.i][contactSeg].h, ux: A[own.i][contactSeg + 1].x - A[own.i][contactSeg].x, uy: A[own.i][contactSeg + 1].y - A[own.i][contactSeg].y, uh: A[own.i][contactSeg + 1].h - A[own.i][contactSeg].h } : null;
+      out.hubV = { possible: true, regime: { i: own.i, k: contactSeg, vertex: contactVertex, straddle, vx: vp ? vp.x : null, vy: vp ? vp.y : null, vh: vp ? vp.h : null, d: dIv, psi: psiIv, hf: hfIv, lam: lamIv, pad: padT, seg } };
     }
   }
   if (touchable.length === 0) return { ...out, free: true, minDist: Math.min(...pairs.map(p => p.dist)) - pad };
@@ -1035,7 +1043,7 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
         if (pre.hubV && !hv) return fail('hubV possible but the closest leg/segment not isolated in a state', k);
         if (hv) {
           if (pushLeg >= 0 && hv.i !== pushLeg) return fail(`hubV: the set's owned leg ${hv.i} is not the centre's push leg ${pushLeg}`, k);
-          if (hv.vertex >= 0 && hv.d[1] < HUBLEGD) {
+          if (hv.vertex >= 0 && !hv.straddle && hv.d[1] < HUBLEGD) {
             // THE PINNED VERTEX ROUTE -- only for a FULLY-TOUCHING state (d_hi < HUBLEGD): the
             // shell below bounds PUSHED poses (whose gap > 0), but a straddling state's unpushed
             // poses keep their original along-n coordinate, which the shell does not bound
@@ -1069,8 +1077,44 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
             const u1 = sub(bIv, [bC, bC]), u2 = sub(aIv, [aC, aC]), u3 = [bbh.rot[0] - qcNext.rot, bbh.rot[1] - qcNext.rot];
             if (!(u1[0] <= 1e-9 && u1[1] >= -1e-9 && u2[0] <= 1e-9 && u2[1] >= -1e-9 && u3[0] <= 1e-9 && u3[1] >= -1e-9)) return fail('hubV pinning: the centre left the rebuilt state (bug)', k);
             nextUsH.push({ U: [u1, u2, u3], M: colsOf([etx, ety, 0], [nx, ny, 0], [0, 0, 1]), keep: true });
+          } else if (hv.vertex < 0 && hv.d[1] < HUBLEGD && hv.seg) {
+            // THE PINNED INTERIOR ROUTE (the shell is contact-agnostic, so it holds). The contact
+            // point c(p) drifts along the segment with the clamped projection t, and the frame
+            // coordinate of the POSE is c(p)_xy + a' n + b e_t, so the (t - t_c) u_xy drift enters
+            // both u1 and u2. Same (e_t, n_c, rot) frame as the vertex route; b and w_v now vary
+            // with t, so their intervals come from the contact-point box.
+            const sg = hv.seg;
+            const uLen = Math.hypot(sg.ux, sg.uy, sg.uh), uvx = sg.ux / uLen, uvy = sg.uy / uLen, uvh = sg.uh / uLen;
+            const wcx0 = qc.x - sg.ax0, wcy0 = qc.y - sg.ay0, wch0 = H - sg.ah0;
+            let tc = (wcx0 * uvx + wcy0 * uvy + wch0 * uvh) / uLen; tc = Math.max(0, Math.min(1, tc));
+            const ccx = sg.ax0 + tc * sg.ux, ccy = sg.ay0 + tc * sg.uy;
+            const wcx = qc.x - ccx, wcy = qc.y - ccy, wcxy = Math.hypot(wcx, wcy);
+            if (!(wcxy > 1e-9)) return fail('hubV interior pinning: the centre hub sits over the leg (degenerate)', k);
+            const nx = wcx / wcxy, ny = wcy / wcxy, etx = -ny, ety = nx;
+            const aC = wcxy + dcx * nx + dcy * ny;
+            const bbh = aabbOf(qc, Ms, U);
+            const tIv = sg.t;
+            const cxIv = add([sg.ax0, sg.ax0], mul([sg.ux, sg.ux], tIv)), cyIv = add([sg.ay0, sg.ay0], mul([sg.uy, sg.uy], tIv)), chIv = add([sg.ah0, sg.ah0], mul([sg.uh, sg.uh], tIv));
+            const bIv = add(mul(sub(bbh.x, cxIv), [etx, etx]), mul(sub(bbh.y, cyIv), [ety, ety]));
+            const wvIv = sub([H, H], chIv);
+            const bSq = sq(bIv), wvSq = sq(wvIv);
+            const gapIv = sub([HUBLEGD, HUBLEGD], hv.d);
+            const invHfSq = [1 / (hv.hf[1] * hv.hf[1]), 1 / (hv.hf[0] * hv.hf[0])];
+            const d2p = add([HUBLEGD * HUBLEGD, HUBLEGD * HUBLEGD], mul(sq(gapIv), sub(invHfSq, [1, 1])));
+            const a2 = sub(sub(d2p, bSq), wvSq);
+            if (a2[0] < 0) return fail('hubV interior pinning: the shell minus the tangential/vertical squares is negative (bug)', k);
+            const aIv = [Math.sqrt(a2[0]), Math.sqrt(a2[1])];
+            const uu = uvx * nx + uvy * ny, uv = uvx * etx + uvy * ety;
+            const dt = sub(tIv, [tc, tc]);
+            const bC = wcx * etx + wcy * ety;
+            const u1 = add(sub(bIv, [bC, bC]), mul(dt, [uv, uv]));
+            const u2 = add(sub(aIv, [aC, aC]), mul(dt, [uu, uu]));
+            const u3 = [bbh.rot[0] - qcNext.rot, bbh.rot[1] - qcNext.rot];
+            if (!(u1[0] <= 1e-9 && u1[1] >= -1e-9 && u2[0] <= 1e-9 && u2[1] >= -1e-9 && u3[0] <= 1e-9 && u3[1] >= -1e-9)) return fail('hubV interior pinning: the centre left the rebuilt state (bug)', k);
+            nextUsH.push({ U: [u1, u2, u3], M: colsOf([etx, ety, 0], [nx, ny, 0], [0, 0, 1]), keep: true });
           } else {
-            // the segment-interior route: the translation interval M^-1(Delta_iv - Delta_c) ALONE --
+            // the translation route (straddle, or a straddling/clear state): the translation
+            // interval M^-1(Delta_iv - Delta_c) ALONE --
             // the post-push pose is p + Delta(p), the new centre is qc + Delta_c, so relative to
             // it the set is M u + (Delta(p) - Delta_c) -- the noPush (-M^-1 Delta_c) would
             // double-count Delta_c.

@@ -50,7 +50,7 @@ for (let t = 0; t < trials; t++) {
     const hub = { x: vp.x, y: vp.y, h: H };
     const cp = closest(hub, att);
     if (cp.i !== hv.i) { wrongLeg++; if (!worst) worst = { why: 'wrong leg', cp, hv }; continue; }
-    if (hv.vertex >= 0 && cp.atVertex !== hv.vertex) { vertexWrong++; if (!worst) worst = { why: 'vertex ownership', cp, hv }; }
+    if (hv.vertex >= 0 && !hv.straddle && cp.atVertex !== hv.vertex) { vertexWrong++; if (!worst) worst = { why: 'vertex ownership', cp, hv }; }
     // containment: d in the regime's distance interval
     if (cp.d < hv.d[0] - 1e-9 || cp.d > hv.d[1] + 1e-9) { escapes++; if (!worst) worst = { why: 'd escape', cp, hv }; continue; }
     const wX = hub.x - cp.x, wY = hub.y - cp.y, wH = hub.h - cp.h, L = cp.d, hfT = Math.hypot(wX, wY) / L;
