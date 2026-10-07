@@ -183,6 +183,46 @@ the third blocker class now closed.
 
 
 
+## The 2026-10-09 session: the hubV push regime is implemented and falsified
+
+The hub census settled that every hub contact in the deep range of family (2,1) is **hubV** (the
+victim's hub riding a FIXED attacker leg), and two structural facts made it the cheapest regime on
+the board: the push applies *at the victim's own hub*, so its lever arm is zero (`rn = 0` — a pure
+translation, no spin), and `λ = (HUBLEGD − d)/hf` is closed-form from the pre-push distance (no
+a-posteriori pinning, because `rn = 0` uncouples the push from the pose's rotation).
+
+Landed and falsified, in three commits:
+
+1. **Ownership + intervals** (`f22710924`). `analyse` splits the hub guards: hubA and hub-hub still
+   refuse; hubV is OWNED — one leg, and on it either a single isolated segment or, at an adjacent
+   segment tie, the shared VERTEX via its normal-cone wedge (two linear conditions). The regime
+   carries `d/ψ/hf/λ` intervals; the hub's residual is the nonexpansive-projection bound
+   `|Δw| ≤ hypot(hx,hy)` (no rotation term); the law's clean range (hf ≥ floor, λ ≤ cap) is
+   enforced over the *whole box*.
+2. **Vertex shell pin** (`7cdc63fef`). The post-push hub lies on the exact shell
+   `d'² = HUBLEGD² + (HUBLEGD−d)²(1/hf²−1)`, whose `HUBLEGD² − (HUBLEGD−d)²` rewrite keeps the
+   interval tight: the normal coordinate grows ~0.002u/substep instead of ~0.04u. Requires a
+   fully-touching state (the shell does not bound unpushed poses).
+3. **Straddle + interior pin** (`72333b6a4`). A box spanning a vertex's cone boundary is a
+   STRADDLE — the cone widens by `2·drift`, the distance is the union of the tied segments, and it
+   takes the translation route. The segment-INTERIOR contact gets the same shell pin (the shell is
+   contact-agnostic) with the `(t−t_c)u_xy` drift in the frame.
+
+Measured on the deep probe (witness (0,-1) of family (2,1) at [2.4, 2.6] deg), the hubV park now
+carries **substeps 3 → 22** — from a blanket refusal at substep 3, through 6 (unpinned), 20
+(vertex pin), 23 (straddle) to the current stop at substep 23, where the refusal is now the
+*geometric onset of leg-leg contact in the box* (the attacker's other legs sweep toward the
+victim's parked legs) — the **mixed hubV + leg regime**, the next named gap, not a hubV issue.
+Both committed CERT targets revalidate 3/3; the hubV falsification passes against the engine's law
+in both tight and WIDE box modes (0 escapes, 0 wrong-leg, 0 vertex-ownership violations).
+
+The remaining deep-range blocker is the additive composition of the hubV translation with the
+leg-leg machinery (a substep whose box touches both a leg pair and the hub-leg contact), plus the
+same Brief-4 contact-phase smearing for the leg side — the same two gaps the whole-sweep census
+named, now reachable because hubV itself is solved.
+
+
+
 ## The wiring point (rung 3)
 
 `forced-win.js:1611 cellSample -> deadCertificate` is the sampled leaf the retrograde currently
