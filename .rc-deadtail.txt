@@ -1,6 +1,0 @@
-throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 41
-  first possible contact at substep 24 (8.00 deg): legs (1,0), centre distance 2.878, pad 0.039
-  thrown at substep 41 (13.67 deg): foot 1 radius >= 67.1806u over the whole set (centre 67.2167u), rim 67.167
-    witness (0,-1) jF 1 prescreen 7.23u -> CERTIFIED k=41 minR=67.181
-throw arm (0,-1) limit 45.00 deg = 135 substeps of 0.3333 deg; centre thrown 41
-  first possible contact at substep 24 (8.00 deg): legs (1,0), centre distance 2.873, pad 0.078
