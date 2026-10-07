@@ -449,6 +449,13 @@ function parkJacobian(att, q, pair, vk, box, segWant) {
 // each pose's OWN horizontal normal n(p), which tilts from the centre normal n_c by up to dpsi;
 // the tangential coordinate therefore picks up lambda*sin(dpsi) as well (the tilt term) -- the
 // earlier version dropped it and let poses escape by ~7e-7u (Copilot's maths/5.log counterexample).
+// The minimum 3D leg-leg distance between two pieces (the exact arc-arc tube-centreline distance,
+// the quantity the engine's own contact skip compares against D). Used for the correlated leg-gap
+// (Copilot's lemma): the distance between compact sets is 1-Lipschitz in the victim's pose
+// displacement sqrt(dx^2+dy^2) + R|drot|, so a centre distance minus the tube spread is a sound
+// lower bound over the whole set -- no AABB corners.
+const legDist3 = (a, b) => { let m = Infinity; const A = [0, 1, 2].map(i => arcPts(a, i)), V = [0, 1, 2].map(j => arcPts(b, j)); for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) { const c = arcClosest(A[i], V[j]); if (c.dist < m) m = c.dist; } return m; };
+
 function hubVPinnedState(hv, qc, qcNext, bb, dcx, dcy) {
   let Vx, Vy, wv, wcx, wcy, wcxy, cxIv, cyIv, chIv, tIv = null, tc = 0;
   if (hv.vertex >= 0) {
@@ -1077,7 +1084,6 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
     // rotation. Translation commutes with the parallelotope: each state shifts by the interval
     // lambda*n minus the centre's own push, on top of the usual noPush recentering.
     if (preAll.hubV) {
-      if (!preAll.free) return fail('hubV possible while leg pairs are touchable (mixed hubV + leg regime not implemented)', k);
       const hubPushes = t.pushes.filter(pu => pu.kind === 'hubV');
       if (hubPushes.length !== t.pushes.length) return fail(`the centre's push mixed hubV with ${t.pushes.length - hubPushes.length} non-hubV pushes`, k);
       const qcPushH = [qcNext.x - qc.x, qcNext.y - qc.y, qcNext.rot - qc.rot];
@@ -1093,6 +1099,17 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
         if (pre.refuse) return fail(pre.refuse, k);
         const hv = pre.hubV && pre.hubV.regime ? pre.hubV.regime : null;
         if (pre.hubV && !hv) return fail('hubV possible but the closest leg/segment not isolated in a state', k);
+        // correlated leg-gap (Copilot's lemma, maths/6.log): the AABB `free` flag manufactures
+        // fictitious leg contact (401/401 exact states hubV-only with 0.43u of real clearance at
+        // the previously-refusing substep). The true leg distance is 1-Lipschitz in the victim's
+        // pose displacement, so centre distance - (tube spread + push magnitude) is a sound lower
+        // bound over the whole substep: the attacker is already advanced, and the hubV push is a
+        // pure translation of the whole piece by at most lambda.
+        const gC = legDist3(att, qc);
+        const ujM = [0, 1, 2].map(j => Math.max(Math.abs(U[j][0]), Math.abs(U[j][1])));
+        const dMax = Math.hypot(ujM[0] * Math.abs(Ms[0][0]) + ujM[1] * Math.abs(Ms[0][1]) + ujM[2] * Math.abs(Ms[0][2]), ujM[0] * Math.abs(Ms[1][0]) + ujM[1] * Math.abs(Ms[1][1]) + ujM[2] * Math.abs(Ms[1][2])) + R * (ujM[0] * Math.abs(Ms[2][0]) + ujM[1] * Math.abs(Ms[2][1]) + ujM[2] * Math.abs(Ms[2][2]));
+        const lamMax = hv ? hv.lam[1] : 0;
+        if (gC - dMax - lamMax <= D) return fail(`correlated leg gap fails: centre ${gC.toFixed(3)}u - tube ${dMax.toFixed(4)}u - push ${lamMax.toFixed(4)}u <= ${D.toFixed(2)}u`, k);
         if (hv) {
           if (pushLeg >= 0 && hv.i !== pushLeg) return fail(`hubV: the set's owned leg ${hv.i} is not the centre's push leg ${pushLeg}`, k);
           // the pinned shell routes (fully-touching only): rebuild the state in the contact frame
