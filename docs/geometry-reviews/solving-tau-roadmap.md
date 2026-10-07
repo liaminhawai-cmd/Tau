@@ -223,6 +223,47 @@ named, now reachable because hubV itself is solved.
 
 
 
+## 2026-10-09 (later): Copilot's independent audit, reconciled
+
+Three parallel Copilot instances audited the work (`maths/`). Two findings touch this code directly
+and are both correct; one is now fixed, the other reframes the next step.
+
+1. **The hubV tangential pin let poses escape (fixed).** `maths/5.log`: 16 of 1004 sampled poses
+   escaped by up to ~7.4e-7u. Cause: the push acts along each pose's OWN normal `n(p)`, which tilts
+   from the centre normal `n_c` by up to `dψ`, so the tangential coordinate gains `λ·sin(dψ)`;
+   the old pin claimed `b' = b`. Fixed (`c7c5fd260`) by widening the tangential coordinate by
+   `λ_max·sin(dψ)`, and the falsification probe now reproduces Copilot's method directly — sample
+   poses, run the engine `pushSubstep`, transform into the rebuilt state's frame, assert
+   containment (3000 trials, 400 rebuilt-state pin checks, **0 escapes**). Both CERT targets
+   revalidate 3/3. Soundness restored; the park now traverses substeps 3–19 (the sound bound is
+   necessarily a hair wider than the unsound one).
+2. **The substep-23 "mixed hubV + leg" refusal is a HULL artifact (not new physics).** Copilot's
+   pointwise audit: 401/401 exact states hubV-only at substep 23, and the real leg clearance is
+   **0.4347u above D** (the first genuine mixed event is at k51–55, not 23). The axis-aligned hull
+   admits fictitious `(x(s1), y(s2), θ(s3))` combinations. This is the same "boxing a 1D curve"
+   disease, now measured precisely.
+3. **"Angle does not determine the outcome."** The shipped engine partitions a swing into internal
+   substeps; different call schedules of the same nominal stop angle yield final poses differing by
+   ~0.0075u / 0.09° (`maths/7.log`). Doesn't refute a throw theorem, but bounds the "engine-exact
+   successor region" ambition — a whole-turn enclosure must absorb this ~0.01u schedule slack.
+
+Copilot's stronger positive contribution is the reframing (already partially in this roadmap's
+"event walls" language): the reachable set inside a fixed contact regime is a **1D curve** `q(α)`
+(attacker motion known, victim 3 DOF, each contact a scalar constraint), not a 3D box; the proof
+should **certify event ORDERING** (release before leg/hubA/hubhub/ownership/rollback) via the
+first-event theorem, over a **finite regime graph** — plus new infrastructure (an n-ply proof
+kernel tested on 200 synthetic games, and an exact rational cover checker). The KKT active-set
+formulation `q' = −M⁻¹Aᵀ(AM⁻¹Aᵀ)⁻¹b` is a clean continuous one-contact law (the engine is its
+capped Gauss-Seidel approximation).
+
+**Next step** (unchanged in kind, now measured): replace the AABB leg-clearance with the
+**correlated leg-gap** over the contact-frame tube — Copilot's leg-gap lemma
+`|G(A,q) − G(A,q')| ≤ sqrt(Δx²+Δy²) + R|Δθ|` evaluated over the pinned `(t,b,a,θ)` object — which
+should carry the park past substep 19 to the genuine handoff at ~k51–55. After that, the
+first-event / regime-graph architecture is the higher-level target.
+
+
+
 ## The wiring point (rung 3)
 
 `forced-win.js:1611 cellSample -> deadCertificate` is the sampled leaf the retrograde currently
