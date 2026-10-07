@@ -19,6 +19,13 @@
 // step to a machine-verified leaf; the honest claim until then is: outward-rounded arithmetic
 // under an explicit, tested libm-accuracy axiom. See docs/geometry-reviews/response-cover-proof-status.md.
 //
+// UPDATE (2026-10-08): the axiom is GONE for trig. cosI/sinI now evaluate endpoints through
+// ddCosAt/ddSinAt -- dd-pi argument reduction plus an alternating Taylor enclosure that uses
+// ONLY +,-,*,/ (IEEE-correctly-rounded, covered by dn/up's 4-ulp widening), with the truncation
+// error bounded by the first omitted alternating term. Math.sin/cos no longer appear anywhere in
+// the enclosure path; the self-test still MEASURES them (informational), and dnT/upT remain for
+// values tainted by other transcendentals in caller code.
+//
 // WHAT THIS IS NOT. It does not enclose the REPLICA sweep (the engine trajectory stays
 // falsification-tested); it encloses the ANALYTIC layers -- exact reply boxes, clearance margins,
 // feature walls -- whose real-arithmetic derivations already exist. Intervals are [lo, hi] pairs,
@@ -47,17 +54,30 @@ const hull = (a, b) => [Math.min(a[0], b[0]), Math.max(a[1], b[1])];
 const isect = (a, b) => [Math.max(a[0], b[0]), Math.min(a[1], b[1])];
 const wid = a => a[1] - a[0];
 const max0 = a => [Math.max(0, a[0]), Math.max(0, a[1])];
-// cos over an angle interval: endpoint evaluations (two widenings each) plus the exact +-1 at any
-// full turn inside the interval -- the extremal values 1 and -1 are attained exactly, so they
-// carry no error. Mirrors throw-cert.js's cosRange construction.
+// cos over an angle interval: endpoint evaluations through the AXIOM-FREE ddCosAt (below) plus
+// the exact +-1 at any full turn inside the interval -- the extremal values 1 and -1 are attained
+// exactly, so they carry no error. Mirrors throw-cert.js's cosRange construction. A borderline
+// extremum missed by the double-precision turn tests is covered by the endpoint enclosures: the
+// true value near a turn differs from 1 by <= (1e-16)^2/2, far inside the ~1e-20 truncation
+// allowance of the Taylor sum.
 function cosI(a) {
-  const lo = a[0], hi = a[1], c0 = pt(Math.cos(lo)), c1 = pt(Math.cos(hi));
+  const lo = a[0], hi = a[1], c0 = ddCosAt([lo, 0]), c1 = ddCosAt([hi, 0]);
   let mn = Math.min(c0[0], c1[0]), mx = Math.max(c0[1], c1[1]);
   for (let k = Math.ceil(lo / (2 * Math.PI)); 2 * Math.PI * k <= hi; k++) mx = Math.max(mx, 1);
   for (let k = Math.ceil((lo - Math.PI) / (2 * Math.PI)); Math.PI + 2 * Math.PI * k <= hi; k++) mn = Math.min(mn, -1);
   return [mn, mx];
 }
-function sinI(a) { return cosI([a[0] - Math.PI / 2, a[1] - Math.PI / 2]); }
+// sin over an angle interval: the same structure with its own interior extrema (maxima at
+// pi/2 + 2 pi k, minima at -pi/2 + 2 pi k) and endpoints through the dd-shifted reduction --
+// sin(th) = cos(th - pi/2) with the shift done EXACTLY in dd, so no shift-error widening is
+// needed.
+function sinI(a) {
+  const s0 = ddSinAt([a[0], 0]), s1 = ddSinAt([a[1], 0]);
+  let mn = Math.min(s0[0], s1[0]), mx = Math.max(s0[1], s1[1]);
+  for (let k = Math.ceil((a[0] - Math.PI / 2) / (2 * Math.PI)); Math.PI / 2 + 2 * Math.PI * k <= a[1]; k++) mx = Math.max(mx, 1);
+  for (let k = Math.ceil((a[0] + Math.PI / 2) / (2 * Math.PI)); -Math.PI / 2 + 2 * Math.PI * k <= a[1]; k++) mn = Math.min(mn, -1);
+  return [mn, mx];
+}
 
 // ---- double-double reference arithmetic (about 106 bits), for the self-test ----
 function twoSum(a, b) { const s = a + b, bb = s - a; return [s, (a - (s - bb)) + (b - bb)]; }
@@ -95,6 +115,46 @@ function ddSin(x) { const m = ddModPi2(x), s = ddSinSmall(m.r), c = ddCosSmall(m
 function ddCos(x) { const m = ddModPi2(x), s = ddSinSmall(m.r), c = ddCosSmall(m.r);
   return m.k === 0 ? c : m.k === 1 ? ddNeg(s) : m.k === 2 ? ddNeg(c) : s; }
 
+// ---- AXIOM-FREE TRIG ENCLOSURES (2026-10-08) ----
+// ddCosAt encloses cos at a double-double angle using ONLY IEEE-correctly-rounded arithmetic
+// (+,-,*,/ -- each endpoint widened by dn/up's 4 ulp, the IEEE foundation of this module):
+//   reduce: k = round(A / (pi/2)) with the dd pi (exact to ~106 bits; twoSum/twoProd exact, so
+//   the remainder r = A - k*(pi/2) is known to ~2^-100 absolute), |r| <= pi/4 + 2^-49;
+//   map: cos(A) = cos(r + k*(pi/2)) is one of +-cos(r), +-sin(r) by k mod 4 -- CONSISTENT with
+//   whichever integer the rounding picks, because r is computed from that same k;
+//   evaluate: cos(r) and sin(r) via their ALTERNATING Taylor series, whose term magnitudes
+//   strictly decrease for |r| <= pi/4 + eps (ratio r^2/((2n)(2n+1)) < 1), so the truncation
+//   error is bounded by the first omitted term, itself enclosed as an interval and added.
+// Every operation is +,-,*,/ on doubles; the dd reduction error (~2^-100) is absorbed by the
+// 4-ulp widenings; no Math.sin/cos is called anywhere in the enclosure path.
+const HALF_PI_DD = ddScale(PI_DD, 0.5);
+const COEF = k => [dn(k), up(k)];                 // an inexact double constant, IEEE-rounded: 1 widening
+function taylorCos(r) {                          // r: point interval, |r| <= pi/4 + eps
+  const r2 = mulI(r, r);
+  let term = exact(1), sum = exact(1);
+  for (let n = 1; n <= 9; n++) { term = mulI(mulI(term, r2), COEF(-1 / ((2 * n - 1) * (2 * n)))); sum = addI(sum, term); }
+  const om = mulI(mulI(term, r2), COEF(1 / (19 * 20)));   // first omitted term: r^20/20!
+  return [sum[0] - om[1], sum[1] + om[1]];       // alternating: |error| <= first omitted term
+}
+function taylorSin(r) {
+  const r2 = mulI(r, r);
+  let term = r, sum = r;
+  for (let n = 1; n <= 9; n++) { term = mulI(mulI(term, r2), COEF(-1 / ((2 * n) * (2 * n + 1)))); sum = addI(sum, term); }
+  const om = mulI(mulI(term, r2), COEF(1 / (20 * 21)));   // first omitted term: r^21/21!
+  return [sum[0] - om[1], sum[1] + om[1]];
+}
+function ddCosAt(A) {                            // A: [hi, lo] dd angle
+  const q = ddDiv(A, HALF_PI_DD), k = Math.round(q[0]);
+  const rdd = ddAdd(A, ddNeg(ddMul(HALF_PI_DD, [k, 0])));
+  const r = [dn(rdd[0] + rdd[1]), up(rdd[0] + rdd[1])];
+  const m = ((k % 4) + 4) % 4;
+  if (m === 0) return taylorCos(r);
+  if (m === 1) return negI(taylorSin(r));        // cos(r + pi/2) = -sin(r)
+  if (m === 2) return negI(taylorCos(r));        // cos(r + pi) = -cos(r)
+  return taylorSin(r);                           // cos(r + 3pi/2) = sin(r)
+}
+function ddSinAt(A) { return ddCosAt(ddAdd(A, ddNeg(HALF_PI_DD))); }   // sin(A) = cos(A - pi/2), exact dd shift
+
 // The self-test: (1) CONTAINMENT -- every interval operation must contain the double-double
 // reference value of the true operation on the same inputs (degenerate and sampled interior
 // cases); (2) the AXIOM check -- Math.sin/Math.cos must stay within 4 ulp of the dd reference,
@@ -123,6 +183,12 @@ function selfTest(n) {
     for (let t = 0; t < 3; t++) {
       const th = th0 + Math.random() * (th1 - th0), ddv = ddCos([th, 0]);
       if (ddv[0] + ddv[1] < civ[0] || ddv[0] + ddv[1] > civ[1]) fails++;
+    }
+    // sinI likewise (its own extrema structure)
+    const siv = sinI([th0, th1]);
+    for (let t = 0; t < 3; t++) {
+      const th = th0 + Math.random() * (th1 - th0), ddv = ddSin([th, 0]);
+      if (ddv[0] + ddv[1] < siv[0] || ddv[0] + ddv[1] > siv[1]) fails++;
     }
     // the AXIOM: Math.sin/cos vs the dd reference, in ulp of the result
     const x = (Math.random() * 2 - 1) * 4;
