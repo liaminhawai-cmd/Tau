@@ -999,9 +999,6 @@ test('the flat board and the 3D bake shade the same zones of one timber',async t
   // ...and they step in value only, centre lightest to outer lens darkest: the zones are the message.
   const lum=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)).reduce((a,b)=>a+b);
   assert.ok(lum(sk.v4)>lum(sk.v3) && lum(sk.v3)>lum(sk.v2) && lum(sk.v2)>lum(sk.v1), 'a monotone ramp of one timber');
-  // The flat piece is drawn at the real tube's width, not a stick.
-  const legW=g.read('Math.max(2, 2*CFG.legRadius*scale)'), stick=g.read('Math.max(2, CFG.padRadius*scale*1.35)');
-  assert.ok(legW>stick*2.5, `flat legs are tube-width (${legW.toFixed(1)}px vs the old ${stick.toFixed(1)}px)`);
 });
 
 test('the board shader links: every uniform the detail, Math and leg passes read is declared',async t=>{
@@ -1077,7 +1074,7 @@ test('the ambient demo simulates its next endgame behind a flag the render loop 
   assert.deepEqual(g.errors,[]);
 });
 
-test('the walkthrough draws the match\'s own tripod: tube-width legs in the skin\'s colours',async t=>{
+test('the walkthrough draws the match\'s own tripod: slim legs in the skin\'s colours',async t=>{
   const g=await game();t.after(g.close);
   // Record what the walkthrough's flat board asks its context to draw.
   g.read(`(()=>{ const orig=HTMLCanvasElement.prototype.getContext; const rec=window.__rec={widths:new Set(),strokes:new Set()};
@@ -1087,8 +1084,9 @@ test('the walkthrough draws the match\'s own tripod: tube-width legs in the skin
   assert.ok(g.$('htpFull'),'the walkthrough is open');
   g.tick(80);   // slide 0 IS the first rule slide now: a live piece on the flat board
   const cv="document.getElementById('htpBigCanvas')";
-  const legW=g.read(`Math.max(2, 2*CFG.legRadius*htpMap(${cv}.width, ${cv}.height).sc)`);
-  assert.ok(g.read(`[...window.__rec.widths].some(w=>Math.abs(w-${legW})<1e-9)`),'legs are the tube\'s diameter through the slide\'s own scale, as Piece.prototype.draw draws them');
+  const legW=g.read(`3*${cv}.height/230`), tube=g.read(`2*CFG.legRadius*htpMap(${cv}.width, ${cv}.height).sc`);
+  assert.ok(g.read(`[...window.__rec.widths].some(w=>Math.abs(w-${legW})<1e-9)`),'legs are the flat board\'s slim 3px line, scaled with the slide');
+  assert.ok(!g.read(`[...window.__rec.widths].some(w=>Math.abs(w-${tube})<1e-9)`),'not the 3D tube\'s diameter');
   assert.ok(g.read('window.__rec.strokes.has(pieceHex(0))'),'in the board skin\'s blue, not a stock colour');
   assert.deepEqual(g.errors,[]);
 });
@@ -1473,13 +1471,17 @@ test('each board names its materials for the ear, and every surface bakes its ow
   assert.deepEqual(g.errors,[]);
 });
 
-test('the web build\'s skins name their materials too',async t=>{
+test('the web build keeps the original sound on every skin',async t=>{
   const g=await game('');t.after(g.close);
   const at=id=>{ g.read(`skinIdx=BOARD_SKINS.findIndex(s=>s.id==='${id}'); applyTheme()`); return g.read('JSON.stringify(currentAcoustics())'); };
   const is=(p,su)=>JSON.stringify({piece:p,surface:su});
-  assert.equal(at('dojo'),is('metal','wood'));
-  assert.equal(at('yellow'),is('metal','paper'));
-  assert.equal(at('slate'),is('stone','slate'),'slate sounds like stone');
+  for (const id of ['dark','slate','dojo','yellow']) assert.equal(at(id),is('metal','classic'),`${id}: plain noise, the metal click`);
+  assert.ok(g.read('surfaceAcoustics().plain'),'no board texture, contact click, rub or landing thump');
+  // the classic bake is the plain white noise the mix was tuned on, not a textured one
+  const flat=g.read(`(()=>{ const ctx={sampleRate:22050, createBuffer:(c,n)=>{const d=new Float32Array(n); return {getChannelData:()=>d};}};
+    const d=makeMaterialNoise(ctx, SURFACE_ACOUSTICS.classic, 0.5).getChannelData(0); let s=0, m=0;
+    for (const v of d){ s+=v*v; m=Math.max(m,Math.abs(v)); } return {rms:Math.sqrt(s/d.length), peak:m}; })()`);
+  assert.ok(Math.abs(flat.rms-0.577)<0.01 && flat.peak<=1, `white noise: ${JSON.stringify(flat)}`);
   assert.deepEqual(g.errors,[]);
 });
 

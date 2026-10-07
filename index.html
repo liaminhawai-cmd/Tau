@@ -3857,14 +3857,20 @@ const px2b  = (px, py) => ({ x: (px - cx) / scale, y: (py - cy) / scale });
 // centreline as the 3D mesh. A whole-colour draw order always put Red over Blue,
 // even where Blue's arch passes above Red's foot. Segmenting the curved legs and
 // sorting ALL parts together lets either colour pass over the other locally.
+// The legs are drawn slim -- a 3px line and a small hub, the flat board's original look --
+// not at the 3D tube's real diameter. (The walkthrough's big board scales them with htpScale.)
+// A thin line drawn as two dozen round-capped pieces comes out beaded at every joint, so each
+// leg is first stroked whole, under everything; only the stretches that come within reach of
+// the other piece are drawn again in height order, which is all the crossing order needs.
 function drawTripods2D(c, entries, project, sc, t, tutorial) {
-    const layers = [], fr = Math.max(3.5, CFG.padRadius*sc);
+    const lineK = tutorial ? htpScale : 1, legW = 3*lineK, hubR = 4*lineK;
+    const layers = [], legs = [], fr = Math.max(3.5*lineK, CFG.padRadius*sc);
     const base = TRIPOD_PIN_LIFT + TRIPOD_FOOT_LEN;
     const N = CFG.legSegs * 2;
-    for (const entry of entries) {
+    const parts = entries.map(() => ({ segs: [], dots: [] }));   // per piece, canvas px: what the other may cross
+    entries.forEach((entry, owner) => {
         const piece = entry.piece, pin = entry.pin, feet = piece.feet();
         const col = pieceHex(piece.id), hub = project(piece.x, piece.y);
-        const legW = Math.max(2, 2*CFG.legRadius*sc);
         const inviting = !tutorial && typeof tutorOn !== 'undefined' && tutorOn && G && !G.over
                          && G.pinned === null && piece.id === G.active && piece.id === humanIdx;
         if (inviting) {
@@ -3890,6 +3896,8 @@ function drawTripods2D(c, entries, project, sc, t, tutorial) {
         }
         for (let i=0; i<3; i++) {
             const angle=piece.rot+i*2*Math.PI/3, dx=Math.cos(angle), dy=Math.sin(angle);
+            const f=project(feet[i].x,feet[i].y), selected=pin===i;
+            legs.push({ col, a:hub, b:f });
             for (let k=0; k<N; k++) {
                 const a=k*Math.PI/(2*N), b=(k+1)*Math.PI/(2*N);
                 const pa=project(piece.x+dx*Math.sin(a)*CFG.footR,
@@ -3897,16 +3905,16 @@ function drawTripods2D(c, entries, project, sc, t, tutorial) {
                 const pb=project(piece.x+dx*Math.sin(b)*CFG.footR,
                                  piece.y+dy*Math.sin(b)*CFG.footR);
                 const height=base+CFG.footR*(Math.cos(a)+Math.cos(b))/2;
-                layers.push({ height, draw: () => {
-                    c.strokeStyle=col; c.lineWidth=legW; c.lineCap='round';
+                const seg = { a:pa, b:pb, owner };
+                parts[owner].segs.push(seg);
+                layers.push({ height, seg, draw: () => {
+                    // butt ends: over the leg's own whole stroke the joints between pieces vanish
+                    c.strokeStyle=col; c.lineWidth=legW; c.lineCap='butt';
                     c.beginPath(); c.moveTo(pa.x,pa.y); c.lineTo(pb.x,pb.y); c.stroke();
                 } });
             }
-            const f=project(feet[i].x,feet[i].y), selected=pin===i;
+            parts[owner].dots.push({ x:f.x, y:f.y, r:fr+1.5 });
             layers.push({ height:TRIPOD_PIN_LIFT, draw: () => {
-                c.beginPath(); c.arc(f.x,f.y,legW/2,0,2*Math.PI);
-                if (selected) { c.fillStyle='#ffd23f'; c.fill(); }
-                c.lineWidth=1; c.strokeStyle='rgba(12,14,17,0.35)'; c.stroke();
                 c.beginPath(); c.arc(f.x,f.y,selected?fr+1.5:fr,0,2*Math.PI);
                 c.fillStyle=selected?'#ffd23f':(inviting?hexA(col,0.55):col); c.fill();
                 c.lineWidth=selected && boardIsPale()?2.2:1;
@@ -3914,13 +3922,32 @@ function drawTripods2D(c, entries, project, sc, t, tutorial) {
                 c.stroke();
             } });
         }
+        parts[owner].dots.push({ x:hub.x, y:hub.y, r:hubR });
         layers.push({ height:base+CFG.footR, draw: () => {
             c.fillStyle=col; c.beginPath();
-            c.arc(hub.x,hub.y,Math.max(legW*0.6,CFG.legRadius*1.2*sc),0,2*Math.PI); c.fill();
+            c.arc(hub.x,hub.y,hubR,0,2*Math.PI); c.fill();
         } });
+    });
+    for (const L of legs) {
+        c.strokeStyle=L.col; c.lineWidth=legW; c.lineCap='round';
+        c.beginPath(); c.moveTo(L.a.x,L.a.y); c.lineTo(L.b.x,L.b.y); c.stroke();
     }
+    const crosses = seg => parts.some((p, e) => e !== seg.owner && (
+        p.segs.some(s => segSegDist2D(seg.a, seg.b, s.a, s.b) < legW + 1) ||
+        p.dots.some(d => ptSegDist2D(d, seg.a, seg.b) < legW/2 + d.r + 1)));
     layers.sort((a,b) => a.height-b.height);
-    layers.forEach(layer => layer.draw());
+    layers.forEach(layer => { if (!layer.seg || crosses(layer.seg)) layer.draw(); });
+}
+function ptSegDist2D(p, a, b) {
+    const vx = b.x-a.x, vy = b.y-a.y, L2 = vx*vx + vy*vy;
+    const u = L2 > 0 ? Math.max(0, Math.min(1, ((p.x-a.x)*vx + (p.y-a.y)*vy) / L2)) : 0;
+    return Math.hypot(p.x - (a.x + u*vx), p.y - (a.y + u*vy));
+}
+function segSegDist2D(a, b, p, q) {
+    const cross = (o, s, t) => (s.x-o.x)*(t.y-o.y) - (s.y-o.y)*(t.x-o.x);
+    const d1 = cross(a,b,p), d2 = cross(a,b,q), d3 = cross(p,q,a), d4 = cross(p,q,b);
+    if (((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0))) return 0;   // they cross
+    return Math.min(ptSegDist2D(a,p,q), ptSegDist2D(b,p,q), ptSegDist2D(p,a,b), ptSegDist2D(q,a,b));
 }
 
 // ---------- Input ----------
@@ -8437,11 +8464,11 @@ addEventListener('load', () => {
 // the old one), and recolours the rim, both piece materials, the scene backdrop and the 2D pieces.
 // The web build's four skins, as materials: the same steel-and-lacquer pieces on a dark matte
 // slate, on slate, on a pale lacquered wood, on a printed paper board. The desktop names its own.
-const SKIN_ACOUSTICS = { dark:['metal','slate'], slate:['stone','slate'], dojo:['metal','wood'], yellow:['metal','paper'] };
 function applyTheme() {
-    if (!window.tauDesktop && typeof setAcoustics === 'function') {
-        const a = SKIN_ACOUSTICS[BOARD_SKINS[skinIdx].id] || SKIN_ACOUSTICS.dark; setAcoustics(a[0], a[1]);
-    }
+    // The web build keeps the original sound on every skin -- plain noise, no board texture (see
+    // SURFACE_ACOUSTICS.classic). The per-board materials belong to the desktop's boards, which set
+    // their own through tauDesktop.applyMaterials.
+    if (!window.tauDesktop && typeof setAcoustics === 'function') setAcoustics('metal', 'classic');
     const sk = activeSkin();
     if (boardTop && !window.tauDesktop) {
         const tex = boardTexture(currentTheme === 'dark');
@@ -8561,6 +8588,10 @@ const SURFACE_ACOUSTICS = {
     paper:    { tilt:-0.15, grainRate:160, grainDepth:0.35, crackle:30,  ring:0,  q:0.9,  scrapeHz:1.1,  highCut:0.7,  reverb:0.0,  reverbEnd:0.65, reverbTilt:0 },
     clay:     { tilt:-0.50, grainRate:120, grainDepth:0.50, crackle:40,  ring:0,  q:0.7,  scrapeHz:0.7,  highCut:0.6,  reverb:0.05, reverbEnd:0.95, reverbTilt:0 },
     membrane: { tilt:-0.30, grainRate:14,  grainDepth:0.80, crackle:4,   ring:0,  q:1.3,  scrapeHz:0.6,  highCut:0.75, reverb:0.06, reverbEnd:1.0,  reverbTilt:0 },
+    // The original sound, before material acoustics: plain white noise, every factor 1, a dry room,
+    // and none of the board-keyed extras (no leg-contact clicks, no rub, no landing thump). The web
+    // build plays this on every skin (applyTheme); no desktop board uses it.
+    classic:  { plain:true, tilt:0, grainRate:0, grainDepth:0, crackle:0, ring:0, q:1, scrapeHz:1, highCut:1, reverb:0, reverbEnd:1, reverbTilt:0 },
 };
 const PIECE_ACOUSTICS = {
     //          pick-up click | move thump: pitch, length, weight (factors on the tuned 808) | rim impact
@@ -8571,13 +8602,14 @@ const PIECE_ACOUSTICS = {
     graphite: { click:'tok',   bassHz:1.0,  bassLen:0.7, bassVol:0.6, impact:'knock' },
     chitin:   { click:'tok',   bassHz:0.85, bassLen:1.2, bassVol:0.9, impact:'thud'  },
 };
-let acoustics = { piece:'metal', surface:'wood', applied:false };
+let acoustics = { piece:'metal', surface:'classic', applied:false };   // the desktop names its board's own
 const materialNoiseCache = {};
 function currentAcoustics() { return { piece: acoustics.piece, surface: acoustics.surface }; }
 function surfaceAcoustics() { return SURFACE_ACOUSTICS[acoustics.surface] || SURFACE_ACOUSTICS.wood; }
 function pieceAcoustics() { return PIECE_ACOUSTICS[acoustics.piece] || PIECE_ACOUSTICS.metal; }
 // Bake a surface's noise. Seeded, so a board sounds the same every time it is chosen.
 function makeMaterialNoise(ctx, prof, seconds) {
+    if (prof.plain) return makeNoiseBuffer(ctx, seconds);
     const sr = ctx.sampleRate, n = Math.floor(sr*seconds);
     const buf = ctx.createBuffer(1, n, sr), d = buf.getChannelData(0);
     let rng = 0x2545F491; const rnd = () => (rng = (Math.imul(rng, 1664525) + 1013904223) >>> 0) / 4294967296;
@@ -8786,10 +8818,15 @@ function playSelectClick() {
             noiseTick(g, 'bandpass', 900, 2.0, tail);
             tone(g, 'sine', 420, 300, 0.25, tail*0.7);
             break;
-        default:   // 'tick' -- the original click, unchanged: filtered noise only, no added tone.
-                   // Every ordinary board (everything but the six showcase looks) uses this one, so
-                   // it has to stay exactly what it was before material acoustics existed.
-            noiseTick(g, 'highpass', SFX.clickHz, 0.7, len);
+        default: {   // 'tick' -- the original click, unchanged: filtered noise only, no added tone.
+                     // Every ordinary board (everything but the six showcase looks) uses this one, so
+                     // it has to stay exactly what it was before material acoustics existed -- the
+                     // noise under the one envelope above. (noiseTick's own decay on top of it made
+                     // the click about half as long.)
+            const hp = audioCtx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=SFX.clickHz; hp.Q.value=0.7;
+            noiseSrc.connect(hp); hp.connect(g);
+            setTimeout(() => { try { hp.disconnect(); } catch(e){} }, (len+0.1)*1000);
+        }
     }
     g.gain.exponentialRampToValueAtTime(0.0001, t0+tail);
     setTimeout(() => { try { g.disconnect(); } catch(e){} }, (tail+0.2)*1000);
@@ -8846,6 +8883,7 @@ function playImpact() {
 // happen many times in an ordinary match, that happens once at the end of one.
 function playPushContact() {
     if (!audioReady || !soundOn || !gameVisible()) return;
+    if (surfaceAcoustics().plain) return;   // the original sound has no contact click
     const pp = pieceAcoustics();
     const g = audioCtx.createGain(); g.gain.value = 0.5; g.connect(toneLP);
     // Two boards whose legs are something more than the piece's everyday material, keyed on the
@@ -8926,6 +8964,7 @@ function swell(dest, f0, f1, amp, attack, len) {
 // Anything else keeps the piece-material landing it always had.
 function playLandingSound(strength) {
     if (!audioReady || !soundOn || !gameVisible()) return;
+    if (surfaceAcoustics().plain) return;   // the original sound has no landing thump
     const pp = pieceAcoustics();
     const g = audioCtx.createGain();
     const vol = Math.max(0.12, Math.min(1, strength === undefined ? 1 : strength));
@@ -9102,7 +9141,7 @@ function updateAudioMovement(dt) {
     // Legs pressed together and still moving: the rub. Pitch runs hub -> foot, low -> high (the
     // free end of a ruler rings higher than the held end), scaled by the piece's own material.
     if (rubGain) {
-        const rubbing = G.pushContact && pushContactFoot !== null && lvl > 0.001;
+        const rubbing = G.pushContact && pushContactFoot !== null && lvl > 0.001 && !surfaceAcoustics().plain;
         if (rubbing) rubBP.frequency.setTargetAtTime((320 + 1900*pushContactFoot) * pieceAcoustics().bassHz, now, 0.04);
         rubGain.gain.setTargetAtTime(rubbing ? lvl * RUB_LEVEL : 0, now, rubbing ? 0.03 : 0.06);
     }
