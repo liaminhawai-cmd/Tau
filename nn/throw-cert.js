@@ -443,7 +443,7 @@ function parkJacobian(att, q, pair, vk, box, segWant) {
 }
 
 // ---- one substep's analysis over an axis-aligned box of victim poses (throw-cert.js's) ----
-function analyse(box, att, pairWant) {
+function analyse(box, att, pairWant, hubVFull) {
   const c = { x: (box.x[0] + box.x[1]) / 2, y: (box.y[0] + box.y[1]) / 2, rot: (box.rot[0] + box.rot[1]) / 2 };
   const hx = (box.x[1] - box.x[0]) / 2, hy = (box.y[1] - box.y[0]) / 2, ht = (box.rot[1] - box.rot[0]) / 2;
   const pad = Math.hypot(hx, hy) + 2 * R * Math.sin(Math.min(ht, Math.PI) / 2);
@@ -486,13 +486,110 @@ function analyse(box, att, pairWant) {
     return Math.sqrt(Math.max(0, add(add(mul(ex, ex), mul(ey, ey)), mul(eh, eh))[0]));
   };
   const hubIv = { x: box.x, y: box.y, h: [H, H] }, hubAttIv = ivP(att.x, att.y, H);
-  let hubLegLB = Infinity;
-  for (let i = 0; i < 3; i++) for (let k = 0; k < NSEG; k++) { const d = ivSegLB(hubIv, ivP(A[i][k].x, A[i][k].y, A[i][k].h), ivP(A[i][k + 1].x, A[i][k + 1].y, A[i][k + 1].h)); if (d < hubLegLB) hubLegLB = d; }
-  for (let j = 0; j < 3; j++) for (let k = 0; k < NSEG; k++) { const d = ivSegLB(hubAttIv, vertexBoxOf(box, j, k), vertexBoxOf(box, j, k + 1)); if (d < hubLegLB) hubLegLB = d; }
+  // the full-interval point-to-FIXED-segment distance, both ends plus the clamped projection
+  // parameter: the hub is an interval point, the attacker segment EXACT, so u and |u|^2 are exact
+  // and the quotient is tight. Same superset evaluation as ivSegLB (sound lower end).
+  const ivSegIv = (P, A0, A1) => {
+    // A0/A1 arrive as DEGENERATE interval points (ivP of the exact attacker arc points); pull the
+    // scalars out -- raw arithmetic on the interval arrays is what NaN'd the first version.
+    const a0x = A0.x[0], a0y = A0.y[0], a0h = A0.h[0], a1x = A1.x[0], a1y = A1.y[0], a1h = A1.h[0];
+    const uxv = a1x - a0x, uyv = a1y - a0y, uhv = a1h - a0h;
+    const dx = sub(P.x, [a0x, a0x]), dy = sub(P.y, [a0y, a0y]), dh = sub(P.h, [a0h, a0h]);
+    const L2 = uxv * uxv + uyv * uyv + uhv * uhv;
+    if (L2 < 1e-12) { const d2 = add(add(mul(dx, dx), mul(dy, dy)), mul(dh, dh)); return { d: [Math.sqrt(Math.max(0, d2[0])), Math.sqrt(d2[1])], t: [0, 1] }; }
+    // the projection numerator as a proper interval product per component (mixed signs), over the
+    // EXACT segment direction; L2 is a scalar, so the quotient is tight, then clamped to [0, 1] as
+    // a superset of every per-pose clamp.
+    const num = add(add(mul(dx, [uxv, uxv]), mul(dy, [uyv, uyv])), mul(dh, [uhv, uhv]));
+    const t = [Math.max(0, Math.min(1, num[0] / L2)), Math.max(0, Math.min(1, num[1] / L2))];
+    const fx = add([a0x, a0x], mul([uxv, uxv], t)), fy = add([a0y, a0y], mul([uyv, uyv], t)), fh = add([a0h, a0h], mul([uhv, uhv], t));
+    const ex = sub(P.x, fx), ey = sub(P.y, fy), eh = sub(P.h, fh);
+    const d2 = add(add(mul(ex, ex), mul(ey, ey)), mul(eh, eh));
+    return { d: [Math.sqrt(Math.max(0, d2[0])), Math.sqrt(d2[1])], t };
+  };
+  // hubV -- the victim's hub vs the attacker's FIXED legs -- is the REGIME direction; hubA
+  // (attacker hub vs victim legs) and hub-hub stay refusals. hubV itself is refused only when it
+  // cannot be OWNED (the caller asks with hubVFull); detection alone otherwise.
+  let hubV_LB = Infinity;
+  const legSegIv = [[], [], []], legsMin = [Infinity, Infinity, Infinity];
+  for (let i = 0; i < 3; i++) for (let k = 0; k < NSEG; k++) {
+    const s = ivSegIv(hubIv, ivP(A[i][k].x, A[i][k].y, A[i][k].h), ivP(A[i][k + 1].x, A[i][k + 1].y, A[i][k + 1].h));
+    legSegIv[i].push(s); legsMin[i] = Math.min(legsMin[i], s.d[0]); if (s.d[0] < hubV_LB) hubV_LB = s.d[0];
+  }
+  let hubA_LB = Infinity;
+  for (let j = 0; j < 3; j++) for (let k = 0; k < NSEG; k++) { const d = ivSegLB(hubAttIv, vertexBoxOf(box, j, k), vertexBoxOf(box, j, k + 1)); if (d < hubA_LB) hubA_LB = d; }
   const hubHubMin = Math.hypot(Math.max(box.x[0] - att.x, 0, att.x - box.x[1]), Math.max(box.y[0] - att.y, 0, att.y - box.y[1]));
-  out.hubLegLB = hubLegLB; out.hubHubMin = hubHubMin;
-  if (hubLegLB < HUBLEGD) return { ...out, refuse: `hub-leg contact possible (tight LB ${hubLegLB.toFixed(3)} < ${HUBLEGD.toFixed(2)})` };
+  out.hubLegLB = Math.min(hubV_LB, hubA_LB); out.hubHubMin = hubHubMin;
+  if (hubA_LB < HUBLEGD) return { ...out, refuse: `hubA contact possible (attacker hub vs victim legs, tight LB ${hubA_LB.toFixed(3)} < ${HUBLEGD.toFixed(2)})` };
   if (hubHubMin < 2 * HUBR) return { ...out, refuse: `hub-hub contact possible (tight ${hubHubMin.toFixed(3)} < ${(2 * HUBR).toFixed(2)})` };
+  if (hubV_LB < HUBLEGD) {
+    if (!hubVFull) out.hubV = { possible: true, LB: hubV_LB };
+    else {
+      // ---- OWN the closest leg + segment over the whole box ----
+      let own = null;
+      for (let i = 0; i < 3; i++) { let kBest = -1, dBest = [Infinity, Infinity];
+        for (let k = 0; k < NSEG; k++) if (legSegIv[i][k].d[0] < dBest[0]) { dBest = legSegIv[i][k].d; kBest = k; }
+        if (kBest >= 0 && (!own || dBest[0] < own.d[0])) own = { i, k: kBest, d: dBest.slice() };
+      }
+      if (!own) return { ...out, refuse: 'hubV: no attacker leg found (bug)' };
+      for (let i = 0; i < 3; i++) if (i !== own.i && legsMin[i] < HUBLEGD) return { ...out, refuse: `hubV ambiguous: legs ${own.i} and ${i} both reach the hub over the box` };
+      // the tie set on the owned leg: segments that could hold the closest point for some pose
+      const ties = [];
+      for (let k = 0; k < NSEG; k++) if (legSegIv[own.i][k].d[0] < own.d[1]) ties.push(k);
+      if (ties.length > 2) return { ...out, refuse: `hubV closest point not isolated on leg ${own.i} (segments ${ties.join(',')} tie within the box)` };
+      let contactSeg = own.k, contactVertex = -1;
+      if (ties.length === 2) {
+        // ADJACENT TIE: the closest point dwells at (or straddles) the shared polyline VERTEX.
+        // If the whole hub box lies in the vertex's normal cone -- (H-V).u_prev >= 0 beyond the
+        // previous segment's end and (H-V).u_next <= 0 before the next segment's start, both
+        // LINEAR in the box -- then the VERTEX owns the contact for every pose: an exact fixed
+        // contact point, w = H - V with |dw| <= padT, no projection at all. Otherwise the box
+        // genuinely straddles the interior/interior boundary and the regime refuses (a two-state
+        // split is the later fix, mirroring the leg-leg machinery).
+        const lo = Math.min(...ties), hi = Math.max(...ties);
+        if (hi !== lo + 1) return { ...out, refuse: `hubV closest point not isolated on leg ${own.i} (non-adjacent segments ${lo},${hi} tie)` };
+        const v = hi;   // the vertex shared by segments lo (its end) and hi (its start)
+        if (v < 1 || v > NSEG - 1) return { ...out, refuse: `hubV tie at the leg's end vertex ${v} (one-sided wedge not modelled)` };
+        const Vp = A[own.i][v], Vn = A[own.i][v + 1], V0 = A[own.i][v - 1];
+        const uPrev = [(Vp.x - V0.x), (Vp.y - V0.y), (Vp.h - V0.h)], lPrev = Math.hypot(...uPrev);
+        const uNext = [(Vn.x - Vp.x), (Vn.y - Vp.y), (Vn.h - Vp.h)], lNext = Math.hypot(...uNext);
+        const linPrev = add(add(mul(sub(hubIv.x, [Vp.x, Vp.x]), [uPrev[0] / lPrev, uPrev[0] / lPrev]), mul(sub(hubIv.y, [Vp.y, Vp.y]), [uPrev[1] / lPrev, uPrev[1] / lPrev])), mul(sub(hubIv.h, [Vp.h, Vp.h]), [uPrev[2] / lPrev, uPrev[2] / lPrev]));
+        const linNext = add(add(mul(sub(hubIv.x, [Vp.x, Vp.x]), [uNext[0] / lNext, uNext[0] / lNext]), mul(sub(hubIv.y, [Vp.y, Vp.y]), [uNext[1] / lNext, uNext[1] / lNext])), mul(sub(hubIv.h, [Vp.h, Vp.h]), [uNext[2] / lNext, uNext[2] / lNext]));
+        if (!(linPrev[0] >= -1e-9 && linNext[1] <= 1e-9)) return { ...out, refuse: `hubV box straddles the interior/vertex boundary at leg ${own.i} vertex ${v} (two-state split not implemented)` };
+        contactSeg = lo; contactVertex = v;
+      } else {
+        // single-segment ownership: no other segment ties within the box
+        for (let k = 0; k < NSEG; k++) if (k !== own.k && legSegIv[own.i][k].d[0] < own.d[1]) return { ...out, refuse: `hubV closest point not isolated on leg ${own.i} segment ${own.k} (segment ${k} ties within the box)` };
+      }
+      if (own.d[0] <= 1e-6) return { ...out, refuse: 'hubV degenerate: the hub crosses the leg centreline in the box' };
+      // ---- the centre's own contact on the owned leg (exact), then the normal cone ----
+      // w = H_V - proj(H_V) is the RESIDUAL of the hub's projection onto the fixed segment (or,
+      // at a vertex, the fixed vertex itself), so |dw| <= |dH_V| <= hypot(hx, hy): the hub does
+      // not rotate with the piece (no ht term).
+      const cc0 = pointArcClosest({ x: c.x, y: c.y, h: H }, A[own.i]);
+      const L = cc0.dist;
+      if (!(L > 1e-9)) return { ...out, refuse: 'hubV: the centre hub sits on the leg (degenerate)' };
+      const hfC = Math.hypot(c.x - cc0.pt.x, c.y - cc0.pt.y) / L, psiC = Math.atan2(c.y - cc0.pt.y, c.x - cc0.pt.x);
+      const padT = Math.hypot(hx, hy);
+      if (hfC * L - padT <= 1e-9) return { ...out, refuse: 'hubV normal cone degenerate (the box reaches the leg centreline)' };
+      const dPsi = Math.asin(Math.min(0.99, padT / (hfC * L - padT)));
+      // hf = |w_xy|/|w| with BOTH numerator and denominator moving by padT (the residual bound):
+      // the exact division bound, not the +-pad/L shortcut (that one is up to 2x too tight at hf
+      // near 1 -- a pre-existing concern in the vertex blanket, noted for a separate audit).
+      const hfIv = [Math.max(0.01, (hfC * L - padT) / (L + padT)), Math.min(1, (hfC * L + padT) / Math.max(L - padT, 1e-9))];
+      const psiIv = [psiC - dPsi, psiC + dPsi];
+      // the distance interval: the vertex case recomputes it exactly from H - V (the segment
+      // interval already contains those values, but the vertex's is tighter and true per-pose)
+      const dIv = contactVertex >= 0
+        ? (() => { const Vp = A[own.i][contactVertex]; const exv = sub(hubIv.x, [Vp.x, Vp.x]), eyv = sub(hubIv.y, [Vp.y, Vp.y]), ehv = sub(hubIv.h, [Vp.h, Vp.h]); const d2 = add(add(mul(exv, exv), mul(eyv, eyv)), mul(ehv, ehv)); return [Math.sqrt(Math.max(0, d2[0])), Math.sqrt(d2[1])]; })()
+        : own.d.slice();
+      // lambda = (HUBLEGD - d)/hf per pose, max(0, .) for the poses that do not touch: straddling
+      // states carry 0 inside the interval because gapIv dips below 0 there.
+      const gapIv = [HUBLEGD - dIv[1], HUBLEGD - dIv[0]];
+      const lamIv = [gapIv[0] / hfIv[1], gapIv[1] / Math.max(hfIv[0], 1e-6)];
+      out.hubV = { possible: true, regime: { i: own.i, k: contactSeg, vertex: contactVertex, d: dIv, psi: psiIv, hf: hfIv, lam: lamIv, pad: padT } };
+    }
+  }
   if (touchable.length === 0) return { ...out, free: true, minDist: Math.min(...pairs.map(p => p.dist)) - pad };
   if (touchable.length > 1) return { ...out, refuse: `two leg pairs can touch: ${touchable.map(p => `(${p.i},${p.j}) ${p.dist.toFixed(2)}`).join(', ')}` };
   const P = touchable[0];
@@ -876,7 +973,11 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
   };
   for (let k = 1; k <= K; k++) {
     const t = traj[k - 1], att = t.att, qcNext = t.pose;
-    if (t.flags.hub || t.flags.deep || t.flags.cap || t.flags.hfFloor) return fail(`the centre's own push used a hub contact / deep rule / cap / hf floor`, k);
+    // hubV (the victim's hub riding a FIXED attacker leg) is a MODELLED regime (2026-10-09);
+    // hubA and hub-hub are not. deep / cap / hfFloor still refuse -- and a hubV push that floors
+    // hf or hits the cap sets the same flags and refuses here too, keeping the law's clean range.
+    const unmodelledHub = t.pushes.some(pu => pu.kind === 'hubA' || pu.kind === 'hubhub');
+    if (unmodelledHub || t.flags.deep || t.flags.cap || t.flags.hfFloor) return fail(`the centre's own push used ${unmodelledHub ? 'an unmodelled hub contact' : 'a hub contact'} / deep rule / cap / hf floor`, k);
     // the shell argument needs the solver to have STOPPED because nothing was under D, not because
     // it ran out of passes: at the cap the post-push distance is not bounded below by D at all
     // The shell argument needs the solver to have STOPPED because nothing was under D, not because
@@ -902,6 +1003,58 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
     const bbAll = Us.map(st => aabbOf(qc, st.M, st.U)).reduce((a, b) => ({ x: hull(a.x, b.x), y: hull(a.y, b.y), rot: hull(a.rot, b.rot) }));
     const preAll = analyse(bbAll, att, pair);
     if (preAll.refuse) return fail(preAll.refuse, k);
+    // ---- the hubV-only substep (2026-10-09) ----
+    // The victim's hub rides a FIXED attacker leg while no leg pair is touchable and the other hub
+    // contacts are excluded. The centre used exactly that: hubV pushes on one leg (the census,
+    // nn/throw-audit/hubv-substep-census.js, measured one push per substep, one leg, hf >= 0.556,
+    // sep <= 0.180 over the deep range). The push applies AT the victim's own hub, so its lever
+    // arm is ZERO (rn = 0): a pure translation with lambda = (HUBLEGD - d)/hf closed-form from the
+    // PRE-push distance interval -- no pinning, because rn = 0 uncouples the push from the pose's
+    // rotation. Translation commutes with the parallelotope: each state shifts by the interval
+    // lambda*n minus the centre's own push, on top of the usual noPush recentering.
+    if (preAll.hubV) {
+      if (!preAll.free) return fail('hubV possible while leg pairs are touchable (mixed hubV + leg regime not implemented)', k);
+      const hubPushes = t.pushes.filter(pu => pu.kind === 'hubV');
+      if (hubPushes.length !== t.pushes.length) return fail(`the centre's push mixed hubV with ${t.pushes.length - hubPushes.length} non-hubV pushes`, k);
+      const qcPushH = [qcNext.x - qc.x, qcNext.y - qc.y, qcNext.rot - qc.rot];
+      const dcx = hubPushes.reduce((s, pu) => s + pu.lambda * pu.nx, 0), dcy = hubPushes.reduce((s, pu) => s + pu.lambda * pu.ny, 0);
+      for (let r = 0; r < 3; r++) if (Math.abs(qcPushH[r] - (r === 0 ? dcx : r === 1 ? dcy : 0)) > 1e-9) return fail('centre hubV push decomposition off (bug)', k);
+      const pushLeg = hubPushes.length ? hubPushes[0].i : -1;
+      if (hubPushes.some(pu => pu.i !== pushLeg)) return fail('the centre used hubV pushes on more than one leg', k);
+      const nextUsH = [];
+      for (const st of Us) {
+        const U = st.U, Ms = st.M, Mi = matInv(Ms);
+        const noPush = matVec(Mi, qcPushH.map(v => -v));
+        const pre = analyse(aabbOf(qc, Ms, U), att, pair, true);
+        if (pre.refuse) return fail(pre.refuse, k);
+        const hv = pre.hubV && pre.hubV.regime ? pre.hubV.regime : null;
+        if (pre.hubV && !hv) return fail('hubV possible but the closest leg/segment not isolated in a state', k);
+        if (hv) {
+          if (pushLeg >= 0 && hv.i !== pushLeg) return fail(`hubV: the set's owned leg ${hv.i} is not the centre's push leg ${pushLeg}`, k);
+          // the pushed state's shift is M^-1 (Delta_iv - Delta_c) ALONE: the post-push pose is
+          // p + Delta(p), the new centre is qc + Delta_c, so relative to it the set is
+          // M u + (Delta(p) - Delta_c) -- the noPush (-M^-1 Delta_c) would double-count Delta_c.
+          const dX = sub(mul(hv.lam, cosRange(hv.psi)), [dcx, dcx]), dY = sub(mul(hv.lam, sinRange(hv.psi)), [dcy, dcy]);
+          const hubShift = matVecIv(Mi, [dX, dY, [0, 0]]);
+          nextUsH.push({ U: [0, 1, 2].map(r => add(U[r], hubShift[r])), M: Ms, keep: st.keep });
+        } else {
+          nextUsH.push({ U: [0, 1, 2].map(r => add(U[r], [noPush[r], noPush[r]])), M: Ms, keep: st.keep });
+        }
+      }
+      if (!nextUsH.length) return fail('every hubV state proved empty (bug)', k);
+      Us = mergeStates(nextUsH);
+      qc = qcNext;
+      if (!Us.length) return fail('mergeStates emptied the hubV states (bug)', k);
+      if (!Us.some(st => st.U.every(r => r[0] <= 1e-9 && r[1] >= -1e-9))) return fail('centre left every set (bug)', k);
+      const bbh = Us.map(st => aabbOf(qc, st.M, st.U)).reduce((a, b) => ({ x: hull(a.x, b.x), y: hull(a.y, b.y), rot: hull(a.rot, b.rot) }));
+      const minRk = Math.min(...Us.map(st => footBound(qc, st)));
+      if (minRk > EDGE) {
+        log(`  thrown at substep ${k} (${(k * LIM_SUB / DEG).toFixed(2)} deg): foot ${jF} radius >= ${minRk.toFixed(4)}u over the whole set (centre ${t.maxFootR.toFixed(4)}u), rim ${EDGE} [hubV regime]`);
+        return { certified: true, why: null, k, K, rows, minR: minRk, rc: Math.hypot(qc.x + R * Math.cos(qc.rot + jF * 2 * Math.PI / 3), qc.y + R * Math.sin(qc.rot + jF * 2 * Math.PI / 3)), final: { qc, states: Us }, pair, traj, thrownAt: k };
+      }
+      rows.push({ k, deg: +(k * LIM_SUB / DEG).toFixed(2), hubV: true, leg: pushLeg, box: { x: bbh.x.map(v => +v.toFixed(3)), y: bbh.y.map(v => +v.toFixed(3)), rot: bbh.rot.map(v => +(v / DEG).toFixed(3)) }, bbRaw: bbh, footR: +t.maxFootR.toFixed(3) });
+      continue;
+    }
     if (preAll.free) { if (t.pushes.length) return fail('centre pushed while the box was declared free (bug)', k); rows.push({ k, free: true }); continue; }
     if (!pair) { pair = preAll.pair; log(`  first possible contact at substep ${k} (${(k * LIM_SUB / DEG).toFixed(2)} deg): legs (${pair[0]},${pair[1]}), centre distance ${preAll.distC.toFixed(3)}, pad ${preAll.pad.toFixed(3)}`); }
     // the centre's pre-push contact: the push direction a_c and the constraint gradient G_c
@@ -950,6 +1103,10 @@ function certify(pieces, attacker, pv, dir, box0, jF, opts) {
       const noPush = matVec(Mi, qcPush.map(v => -v));
       const pre = analyse(aabbOf(qc, M, U), att, pair);
       if (pre.refuse) return fail(pre.refuse, k);
+      // the hull is a superset of every state, so hubV possible in a state implies possible in the
+      // hull and the routing above has already handled or refused it; this guard keeps the leg
+      // path sound against future edits that might loosen that implication.
+      if (pre.hubV) return fail('hubV possible in a leg-contact substep (mixed hubV + leg regime not implemented)', k);
       // this regime's poses cannot touch this substep: they take no push
       if (pre.free) { nextUs.push({ U: [0, 1, 2].map(r => add(U[r], [noPush[r], noPush[r]])), M, keep: st.keep }); continue; }
       // pre-push distance over the set, by the mean-value form around the centre
