@@ -174,10 +174,12 @@ Three landings, each measured:
    ((1,1) certified 2x wider than (0,-1) at the limit end). Negative-margin arms stay skipped:
    they do not throw at all.
 
-Still in flight at session end: the family (2,1) cover with all three fixes (47+ patches
-certified, last witness (0,-1) at 6.87u prescreen); its record lands in the run log for the next
-session. The deep range [2, ~9.7] deg remains blocked by exactly two named gaps -- the hubV push
-regime and the Brief-4 frame term -- with the third blocker class now closed.
+The family (2,1) cover with all three fixes finished at session end: **47 patches** covering
+[9.68 deg, lim] (the previous run: 46 patches down to 9.73 deg), worst throw margin +0.0021 u over
+the rim; the record superseded the committed artifact at
+`docs/dead-regions/response-cover-family-2-1-target1.json`. The deep range [2, 9.68] deg remains
+blocked by exactly the two named gaps -- the hubV push regime and the Brief-4 frame term -- with
+the third blocker class now closed.
 
 
 

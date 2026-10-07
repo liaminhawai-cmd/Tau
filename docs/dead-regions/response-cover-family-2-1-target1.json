@@ -1712,11 +1712,48 @@
         "minR": 67.18429965984218,
         "prescreenMargin": 6.872321129101806
       }
+    },
+    {
+      "replyArm": [
+        2,
+        1
+      ],
+      "replyInterval": [
+        0.168996958978263,
+        0.16986962360426017
+      ],
+      "witness": {
+        "pv": 0,
+        "dir": -1,
+        "stopRule": "limit",
+        "jF": 1
+      },
+      "eventSignature": "opponent-static+contact-free",
+      "enclosure": {
+        "metric": "L1-foot",
+        "radius": 0.010077094448947109,
+        "halfWidthDeg": 0.025000000000000036,
+        "tangentSeed": {
+          "tau": 0.000436332312998583,
+          "quadraticRemainder": 0.0000021994810343668918,
+          "tangentLen": 32.66126222300663
+        }
+      },
+      "throwMargin": 0.012318848888170919,
+      "proof": {
+        "status": "validated",
+        "method": "interval-parallelotope+tangent-seed",
+        "noEventCrossing": true,
+        "clearance": 4.899020825806223,
+        "k": 51,
+        "minR": 67.17931884888817,
+        "prescreenMargin": 6.872321129101806
+      }
     }
   ],
   "uncovered": [
     0.03490658503988659,
-    0.16986962360426017
+    0.168996958978263
   ],
-  "why": "substep 105 (35.00 deg): after the push: contact point not localised on segments (2,1) (slack 7.245u of 3.02u)"
+  "why": "substep 104 (34.67 deg): after the push: contact point not localised on segments (3,1) (slack 1.690u of 3.02u)"
 }
