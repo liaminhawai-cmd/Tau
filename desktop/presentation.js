@@ -107,20 +107,19 @@
   // instead of the old mixture of "win 3 games" and "play 20 games" counters, which had nothing to
   // do with who you were playing.
   //
-  // Thirteen boards for thirteen rungs, Yellow first and Colossus last. Where a board sits is a
+  // Fourteen boards for fourteen rungs, Yellow first and Colossus last. Where a board sits is a
   // choice of scenery: every rung's actual opponent DIFFICULTY is set by its number alone (see
   // index.html's RUNG_TO_AI_LADDER), so moving a board up or down this list never makes anyone
-  // easier or harder. Dark is the one board still deliberately NOT in this list -- the last
-  // reserved seat, for whichever future rung claims it -- and it keeps its old count-based unlock.
-  // (See index.html's LADDER_N comment.)
+  // easier or harder. Dark was the last board held in reserve; the league ladder's fourth trained
+  // rung claimed it, one below Titan, so the arena stays at the top. (See index.html's LADDER_N.)
   // Each rung has a board and somebody who lives on it. The opponent is a CHARACTER on the board
   // rather than a new name for it: in the ladder you are challenging Sensei, in Settings you are
   // picking the Dojo, and the Dojo never stops being called the Dojo. That is what keeps the two
   // from disagreeing the moment somebody goes back to play an earlier board again.
   // Names are names -- they are not routed through t(), the same as the board names beside them.
   // The order is the FACES only. Rung n always plays RUNG_TO_AI_LADDER[n-1], easiest at 1 and
-  // hardest at 13, whatever board and name sit on it -- this list decides who you meet where, not
-  // how hard they are. (The voting Committee AI is still the top rung's brain, now Titan's.)
+  // hardest at 14, whatever board and name sit on it -- this list decides who you meet where, not
+  // how hard they are. (Titan's brain is the trainer league's strongest net, searching 3 moves.)
   const LADDER_BOARDS = [
     { board:'yellow',   opponent:'Wren' },       // the plain classic: nothing to read but the rules themselves
     { board:'maple',    opponent:'Lily' },
@@ -134,6 +133,7 @@
     { board:'marble',   opponent:'Alabaster' },
     { board:'math',     opponent:'Euclid' },     // compass and straightedge
     { board:'alien',    opponent:'Chorus' },     // it is not one of anything
+    { board:'dark',     opponent:'Nyx' },        // night itself
     { board:'colossus', opponent:'Titan' },      // the arena, at the top
   ];
 
@@ -143,8 +143,9 @@
   // is the one thing a ladder is for: five wins anywhere handed over Ebony -- and Ebony is the
   // Committee's own board at the very top -- so a player could walk straight past eleven rungs to
   // the hardest opponent in the game, on a board the ladder had not given them.
-  // Dark is the only board with no rung of its own, so it is the only one still counted for.
-  const UNLOCKS = { dark: { played: 10 } };
+  // Every board has a rung now, so nothing is still counted for; the count path stays for any
+  // future board that arrives without one.
+  const UNLOCKS = {};
   function boardRung(id) { const i = LADDER_BOARDS.findIndex(r => r.board === id); return i < 0 ? 0 : i + 1; }
   function rungBoard(n) { return (LADDER_BOARDS[n-1] || LADDER_BOARDS[0]).board; }
   function rungName(n) { return (LADDER_BOARDS[n-1] || LADDER_BOARDS[0]).opponent; }
@@ -202,8 +203,8 @@
         for (const k in progress) if (Number.isInteger(p[k]) && p[k] >= 0) progress[k] = p[k]; } catch (_) {}
   function unlockNeed(id) { return UNLOCKS[id] === undefined ? null : UNLOCKS[id]; }
   function earnedTheOldWay(id) {
-    // Only Dark is in the table now. Anything else reaching here has no count-based path at all,
-    // which is false -- not the vacuous true a missing requirement would otherwise read as.
+    // Nothing is in the table now. A board reaching here has no count-based path at all, which is
+    // false -- not the vacuous true a missing requirement would otherwise read as.
     if (!(id in UNLOCKS)) return false;
     const n = UNLOCKS[id]; if (!n) return true;
     return (n.wins ? progress.wins >= n.wins : true) && (n.played ? progress.played >= n.played : true)
@@ -212,7 +213,7 @@
   function isEarned(id) {
     const rung = boardRung(id);
     if (rung) return rung <= ladderReach();   // the rung IS the unlock; nothing opens it early
-    return earnedTheOldWay(id);               // Dark alone -- no rung, so still a count
+    return earnedTheOldWay(id);               // a board with no rung -- none at present
   }
   function isUnlocked(id) { return testBoards || isEarned(id); }
   function unlockText(id) {

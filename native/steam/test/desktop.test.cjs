@@ -790,8 +790,8 @@ test('a board is an opponent: the next one opens the moment this one is beaten, 
   assert.match(by('ebony').unlock,/beat Lily/,'which names ITS opponent, not a game count');
   g.read('markLadderCleared(1,1)');
   assert.ok(by('maple').unlocked,'and finishing the other colour never closes it again');
-  // The one board still waiting for a rung of its own keeps the old counter.
-  assert.match(by('dark').unlock,/10 games/);
+  // Dark has its rung now (13), so it too names the opponent below it rather than a game count.
+  assert.match(by('dark').unlock,/beat /);
   // A pile of wins somewhere else is NOT a way in any more: the rung is the unlock, full stop.
   D.recordResult({humanWon:true,vsAI:true,online:false,lab:false,level:8});
   assert.ok(!by('noir').unlocked,'winning games elsewhere does not open a rung you have not climbed to');
@@ -862,13 +862,13 @@ test('the opponent is a board with somebody on it, and the sheet shows the whole
   assert.equal(g.$('desktopLevel').value,'1','the select underneath is still the control');
   tile.click();
   const rungs=[...g.w.document.querySelectorAll('.desktop-ladder .desktop-rung')];
-  assert.equal(rungs.length,13,'every rung of the ladder is on the sheet');
+  assert.equal(rungs.length,14,'every rung of the ladder is on the sheet');
   assert.match(rungs[3].textContent,/Hazel/,'the rungs within sight wear their faces');
   assert.match(rungs[3].textContent,/Level 4 · Walnut/);
-  // The top of the ladder keeps its slot -- so it still reads as thirteen boards -- and nothing else.
-  assert.ok(rungs[12].classList.contains('secret'),'a rung you are nowhere near is a silhouette');
-  assert.match(rungs[12].textContent,/Level 13/,'which still says where it sits');
-  assert.ok(!/Titan|Colossus/.test(rungs[12].textContent),'and gives away neither the face nor the name');
+  // The top of the ladder keeps its slot -- so it still reads as fourteen boards -- and nothing else.
+  assert.ok(rungs[13].classList.contains('secret'),'a rung you are nowhere near is a silhouette');
+  assert.match(rungs[13].textContent,/Level 14/,'which still says where it sits');
+  assert.ok(!/Titan|Colossus/.test(rungs[13].textContent),'and gives away neither the face nor the name');
   assert.equal(rungs[0].getAttribute('aria-current'),'true','the one you are on is marked');
   // A locked rung is shown greyed with what it is waiting for, never hidden.
   assert.ok(rungs[1].disabled,'a rung whose board is locked cannot be picked');
@@ -3426,7 +3426,7 @@ test('a ladder loss drops half a step, with the rematch beside it',async t=>{
   assert.equal(b[0],'Half step down: Hazel as Blue','from Red it is the same level as Blue');
   b=sheet(0,0,false);
   assert.ok(!b.some(l=>/Half step down/.test(l)),'Level 1 as Blue is the floor');
-  b=sheet(12,1,true);
+  b=sheet(13,1,true);
   assert.ok(!b.some(l=>/Up a level|Half step up/.test(l)),'and the top has nowhere higher to go');
   // The step actually starts that rung and colour.
   sheet(3,0,false);

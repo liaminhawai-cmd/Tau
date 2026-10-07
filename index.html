@@ -4323,7 +4323,8 @@ const AI_LADDER = [
     // list: the browser's ladderNetsEnsureLoaded fetches them, nn/committee-nets.js reads them off
     // disk so the arena can measure the real thing.
     { kind:'committee', label:'Committee', nets:['pw-silver','pw-gold','lean'] },
-    // L16 -> the player ladder's rung 12: the strongest single value net we have, searching on its
+    // L16 (the player ladder's rung 12 until the league ladder, Oct 2026 -- it lost both games to
+    // rung 10 when rung 10 opened with the corner cross): the strongest single value net we had, searching on its
     // own instead of voting. Which net is not a guess. Every checkpoint was first screened over 12
     // games against L11, then the top four were re-run over 40 games each -- worth doing, because
     // the 12-game screen was almost pure noise (two BYTE-IDENTICAL nets scored +0 and +173 in it).
@@ -4342,13 +4343,38 @@ const AI_LADDER = [
     // stronger than the best one of them alone. What the Committee has over this rung is that it
     // always plays its considered best; this rung, by a hair, does not.
     { kind:'net', label:'Champion', nets:['champion'], o:{ depth:1, keepStops:3, temperature:0.04 } },
-    // L17 -> the player ladder's rung 13, on trial: the same champion net, searching three plies
+    // L17 (the player ladder's rung 13 until the league ladder): the same champion net, searching three plies
     // (its best 3 stops, each opponent reply's best 3, and the answer to that). It topped the
     // 4-round L13 round robin (nn/l13-roundrobin.js): 34 points, 20-4 as Blue and 14-10 as Red --
     // the only brain in the field with a winning record as Red -- ahead of the Committee's 26.
     // It plays its considered best every move (temperature 0). The Committee stays at L15 for the
     // lab and the arena; putting it back on rung 13 is one number in RUNG_TO_AI_LADDER.
     { kind:'net', label:'Champion d3', nets:['champion'], o:{ depth:3, keepStops:3, temperature:0, sliceMs:12, guardMs:45000 } },
+    // ---- The league ladder: the player ladder's rungs 11-14 (Oct 2026) ----
+    // The trainer's league plays every pair as two games from the real start, one as each colour,
+    // temperature 0 -- so whether one brain beats another as Blue AND as Red is a fixed fact about
+    // the pair, and the league's own record says how big a gap that takes: under 100 Elo almost
+    // every match splits 1-1, at 200-250 the stronger side takes both games 82% of the time, and
+    // only past ~450 does it always. Rungs 1-10 sit within about 150 Elo of each other; the
+    // league's best nets were ~500 above rung 10. These four close that gap one checked step at a
+    // time: each was played against the rung below it on THIS file's code (nn's extracted engine
+    // and nnPlanForGame, with these exact float32 weights) and won both games, as Blue and as Red,
+    // and rung 11 beat rung 10 both with and without the corner opening.
+    //
+    // Every one is a league face shipped exactly as it was rated: the net, the depth, keep 4,
+    // temperature 0, and no corner-opening coin (noCorner) -- a coin would make it a different
+    // brain from the one that was measured. The search is the backed-up one (see
+    // nnPlanForGameGen), which picks the same move as nn/nnai.js's at depths 1-3.
+    // Weights: committee/<model>.bin, exported from the trainer's medal files.
+    { kind:'net', label:'resume-607 D1', nets:['resume-607'], noCorner:true, o:{ depth:1, keepStops:4, temperature:0, sliceMs:10 } },
+    { kind:'net', label:'resume-619 D1', nets:['resume-619'], noCorner:true, o:{ depth:1, keepStops:4, temperature:0, sliceMs:10 } },
+    { kind:'net', label:'resume-607 D2', nets:['resume-607'], noCorner:true, o:{ depth:2, keepStops:4, temperature:0, sliceMs:12, guardMs:30000 } },
+    // The summit: the top of a chain where every step won both games, as Blue and as Red. Not
+    // the league's top-rated face, resume-607 D3: it split 1-1 with every net it was tried against
+    // up here (resume-607 D2, resume-619 D2, resume-619 D3 -- Blue won both games each time), so
+    // it beats nothing at this height as both colours. resume-619 D3 beat resume-607 D2 2-0.
+    // ~9s of thinking a move in Chrome at depth 3, so it takes most of each frame and a long guard.
+    { kind:'net', label:'resume-619 D3', nets:['resume-619'], noCorner:true, o:{ depth:3, keepStops:4, temperature:0, sliceMs:13, guardMs:90000 } },
 ];
 let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
 // The player-visible ladder's rung NUMBER and the AI it plays are deliberately two different axes.
@@ -4358,7 +4384,7 @@ let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder
 // into AI_LADDER's own numbering -- every existing board keeps the exact opponent it always had,
 // however its position in the menu moves. New rung 1 (Yellow) reuses L1's pushover outright: it is
 // a new SLOT in the menu, not a new difficulty tier nobody asked for or tuned.
-const RUNG_TO_AI_LADDER = [0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16];
+const RUNG_TO_AI_LADDER = [0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 17, 18, 19, 20];
 // One-time migration for a save written under the old 11-rung numbering (Walnut at rung 1 ...
 // Colossus at rung 11), now that Yellow has taken rung 1 and everything else shifted up by one.
 // Left un-migrated, a player's own saved clears would be read back under the WRONG rung the moment
@@ -4966,7 +4992,8 @@ function ladderPlanFor(levelIdx, idx){ return drainPlan(ladderPlanForGen(levelId
 function* ladderPlanForGen(levelIdx, idx){
     const def=AI_LADDER[levelIdx]; if (!def) return null;
     if (!G.cornerOpening) G.cornerOpening=[null,null];
-    if (G.cornerOpening[idx]==null) G.cornerOpening[idx] = levelIdx+1 >= CORNER_OPENING_MIN_LEVEL && Math.random() < CORNER_OPENING_P;
+    // A rung marked noCorner is a league face shipped as it was rated: it never flips the coin.
+    if (G.cornerOpening[idx]==null) G.cornerOpening[idx] = !def.noCorner && levelIdx+1 >= CORNER_OPENING_MIN_LEVEL && Math.random() < CORNER_OPENING_P;
     if (G.cornerOpening[idx] && !(G.cornerDone && G.cornerDone[idx]))
         return yield* ladderPlanCornerGen(idx, def.w && def.w.zone ? def.w : CORNER_CHOICE_W, def.o||{}, () => ladderPlanRungGen(def, idx));
     return yield* ladderPlanRungGen(def, idx);
@@ -5043,7 +5070,14 @@ let ladderNetPromises = {};
 // {sizes,fanIns,topology,W,b} rebuilt from the compact export (nn/export-committee-net.js) -- same
 // shape nnForwardGame already reads for a #nn/#lab model, so scoring a candidate through it is the
 // exact same call as every other net-backed brain in this file already makes.
+// One fetch per net file, however many rungs read it: the league ladder's top rungs share nets at
+// different search depths, and a net is 8MB on the wire and several times that once unpacked.
+const committeeNetCache = {};
 function committeeLoadNet(name) {
+    if (committeeNetCache[name]) return committeeNetCache[name];
+    return (committeeNetCache[name] = committeeFetchNet(name).catch(e => { committeeNetCache[name] = null; throw e; }));
+}
+function committeeFetchNet(name) {
     const base = COMMITTEE_BASE + name;
     return Promise.all([
         fetch(base + '.meta.json').then(r => { if (!r.ok) throw new Error(base + '.meta.json: ' + r.status); return r.json(); }),
@@ -5775,21 +5809,33 @@ function* nnPlanForGameGen(idx, temperature, depth, keepForDepth, model, policyM
             endTurn();
         };
         const keep = Math.min(cands.length, keepForDepth||4);
+        // idx's view of the position as it stands, whoever is to move in it (the net scores for
+        // the side to move).
+        const evalIdx = () => { const v = nnForwardGame(nnFeaturesGame(), model); return G.active === idx ? v : -v; };
         for (let i = 0; i < keep; i++) {
             const c = cands[i];
             commit(c);
-            let deep;
+            let deep, line = null;
             if (G.over) deep = G.winner === idx ? 1e6 : -1e6;
             else {
                 const oppPlan = yield* nnPlanForGameGen(1 - idx, 0, depth - 1, keepForDepth, model, policyModel);
-                if (!oppPlan) deep = nnForwardGame(nnFeaturesGame(), model);
+                if (!oppPlan) deep = evalIdx();
                 else {
+                    // Play the reply's own principal line out to its end and score THAT position, so
+                    // a depth-N search looks N moves ahead -- nn/nnai.js's backed-up search, which the
+                    // trainer's league rates every face with. This used to score right after the
+                    // reply: two moves ahead at every depth, so depth 3 only changed which reply was
+                    // assumed and never what a move was worth (the same net searching three moves
+                    // beat that version 64-40). At depth 2 the two are identical.
                     commit(oppPlan);
-                    deep = G.over ? (G.winner === idx ? 1e6 : -1e6) : nnForwardGame(nnFeaturesGame(), model);
+                    line = [oppPlan];
+                    for (const p of oppPlan.pv || []) { if (G.over) break; commit(p); line.push(p); }
+                    deep = G.over ? (G.winner === idx ? 1e6 : -1e6) : evalIdx();
                 }
             }
             roll();
             c.deep = deep;
+            if (line) c.pv = line;
         }
         cands.splice(0, keep, ...cands.slice(0, keep).sort((a, b) => b.deep - a.deep));
     }
@@ -6926,11 +6972,11 @@ function chooseAiColour(difficulty) {
 // ===================== AI Ladder UI (vs Computer) =====================
 // Progress is per level AND per colour: beating a rung as Blue and as Red are separate clears.
 // The tripods carry the state (faint = not yet, lit = beaten) — no status text, per the design.
-// The shipped player ladder runs Yellow at rung 1 through Colossus at rung 12 (L1-L11's own
-// difficulties, unmoved -- see RUNG_TO_AI_LADDER), plus the Committee at rung 13. L12/L13 in
-// AI_LADDER's own numbering are retained internally only so old arena logs remain reproducible;
-// L14 is an explicit experiment reached through the NN toolkit; neither is a player-visible rung.
-const LADDER_N = 13;
+// The shipped player ladder is fourteen rungs: L1-L9's hand-tuned difficulties at rungs 1-10
+// (L1 twice), then the league ladder at rungs 11-14 -- four trained nets, each checked to beat the
+// rung below it as Blue and as Red (see the league ladder's note at the end of AI_LADDER). L10-L17
+// in AI_LADDER's own numbering stay for the lab, the arena and old logs; none is a player rung now.
+const LADDER_N = 14;
 function ladderProgress(){ try { return JSON.parse(localStorage.getItem('tauLadder')||'{"b":{},"r":{}}'); } catch(e){ return {b:{},r:{}}; } }
 function saveLadderProgress(p){ try { localStorage.setItem('tauLadder', JSON.stringify(p)); } catch(e){} }
 function ladderCleared(n, color){ const p=ladderProgress(); return !!(color===0?p.b:p.r)[n]; }
