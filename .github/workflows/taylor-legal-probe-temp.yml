@@ -1,4 +1,5 @@
 name: Target1 legality probe (temporary)
+# Follow-up trigger for the diagnostics run.
 
 on:
   push:
