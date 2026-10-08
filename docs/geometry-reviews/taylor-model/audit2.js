@@ -5,8 +5,10 @@
 const fs = require('fs'), path = require('path');
 const { run2 } = require('./cert2.js');
 const { MODES } = require('./modes2.js');
+const { fromEnv, armResultsDir } = require('./problem.js');
+const PR = fromEnv();
 const [bp, bd] = process.argv.slice(2, 4).map(Number);
-const dir = path.join(__dirname, 'results', `arm_${bp}_${bd > 0 ? 'p' : 'm'}`);
+const dir = armResultsDir(PR, bp, bd);
 const leaves = [];
 for (const f of fs.readdirSync(dir)) if (/^cover_.*_d\d+\.json$/.test(f)) leaves.push(...JSON.parse(fs.readFileSync(path.join(dir, f))).leaves);
 leaves.sort((p, q) => p.a - q.a);
@@ -18,7 +20,7 @@ const optsFor = (mode, sym, vtx) => { const m = MODES.find(x => x[0] === mode); 
 const out = []; let mismatches = 0;
 const tally = { floor: 0, cap: 0, hubPush: 0, hubHub: 0, relaxed: 0, branched: 0, straddle: 0 };
 for (const c of cells) {
-  const r = run2(bp, bd, c.a, c.b, deg, optsFor(c.mode, c.sym, c.vtx)), i = r.info;
+  const r = run2(bp, bd, c.a, c.b, deg, { ...optsFor(c.mode, c.sym, c.vtx), problem: PR }), i = r.info;
   const rec = { a: c.a, b: c.b, mode: c.mode, sym: c.sym || 0, vtx: c.vtx || 0, margin: r.marginLo, hubMove: r.hubMoveLo, branches: i.maxBranches || 1, regimes: r.regimes, redBranches: r.redBranches,
     floor: i.floorUsed || 0, cap: i.capUsed || 0, hubPushes: i.hubPushes || 0, hubHub: i.hubHubPushes || 0, relaxed: i.relaxed, straddle: i.straddleSplits || 0, aPushes: r.aPushes };
   if (r.marginLo !== c.m) mismatches++;
