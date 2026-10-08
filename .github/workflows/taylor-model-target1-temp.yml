@@ -14,14 +14,37 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-          filter: blob:none
-          sparse-checkout-cone-mode: true
-          sparse-checkout: |
-            docs/geometry-reviews/taylor-model
-            nn
+      - name: Fetch only Taylor-model sources
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+
+          owner_repo = "liaminhawai-cmd/Tau"
+          branch = "claude/target1-param-taylor-cert"
+          tree_url = f"https://api.github.com/repos/{owner_repo}/git/trees/{branch}?recursive=1"
+          req = Request(tree_url, headers={"Accept": "application/vnd.github+json", "User-Agent": "tau-taylor-regression"})
+          tree = json.load(urlopen(req))
+          wanted = []
+          for item in tree["tree"]:
+              p = item["path"]
+              if p == "index.html" or p == "nn/engine.js" or (
+                  p.startswith("docs/geometry-reviews/taylor-model/") and
+                  not p.startswith("docs/geometry-reviews/taylor-model/results/")
+              ):
+                  if item["type"] == "blob":
+                      wanted.append(p)
+          for p in wanted:
+              url = f"https://raw.githubusercontent.com/{owner_repo}/{branch}/{p}"
+              req = Request(url, headers={"User-Agent": "tau-taylor-regression"})
+              data = urlopen(req).read()
+              out = Path(p)
+              out.parent.mkdir(parents=True, exist_ok=True)
+              out.write_bytes(data)
+          print("fetched", len(wanted), "source files")
+          PY
       - uses: actions/setup-node@v4
         with:
           node-version: 22
