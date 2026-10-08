@@ -11,7 +11,7 @@ const { containment } = require('./contain2.js');
 const { checkCell } = require('./legal-red.js');
 
 const [bp, bd, fromArg, toArg] = process.argv.slice(2, 4).map(Number);
-const samples = +(process.argv[5] || 3), deg = +(process.argv[6] || 4);
+const samples = +(process.argv[6] || 3), deg = +(process.argv[7] || 4);
 const PR = fromEnv(), dir = armResultsDir(PR, bp, bd);
 if (!fs.existsSync(dir)) throw new Error('no cover result directory: ' + dir);
 
