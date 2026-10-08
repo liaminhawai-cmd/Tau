@@ -23,8 +23,11 @@ const BRIEF6 = {
 // Resolve opts.problem to a problem object. Accepts nothing (default Brief 6), a name like
 // "target1" (loaded from problems/<name>.json), a path to a .json file, or an object.
 function resolveProblem(opts) {
-  const p = opts && opts.problem;
-  if (p == null) return BRIEF6;
+  const p0 = opts && opts.problem;
+  // Existing library callers may omit opts.problem; in that case honor PROBLEM so CLI runs
+  // cannot silently fall back to the Brief 6 seed.
+  const p = p0 == null ? process.env.PROBLEM : p0;
+  if (p == null || p === '') return BRIEF6;
   if (typeof p === 'string') {
     const file = path.isAbsolute(p) ? p : path.join(__dirname, 'problems', p.endsWith('.json') ? p : p + '.json');
     return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -34,7 +37,13 @@ function resolveProblem(opts) {
 
 // The problem named by the PROBLEM env var (used by the CLI tools), defaulting to Brief 6.
 function fromEnv() {
-  return process.env.PROBLEM ? resolveProblem({ problem: process.env.PROBLEM }) : BRIEF6;
+  return resolveProblem();
 }
 
-module.exports = { BRIEF6, resolveProblem, fromEnv };
+// Keep the legacy Brief 6 result layout for existing corpora; named problems get an isolated subtree.
+function armResultsDir(problem, bp, bd) {
+  const root = problem && problem.name && problem.name !== BRIEF6.name ? problem.name : null;
+  return path.join(__dirname, 'results', ...(root ? [root] : []), 'arm_' + bp + '_' + (bd > 0 ? 'p' : 'm'));
+}
+
+module.exports = { BRIEF6, resolveProblem, fromEnv, armResultsDir };
