@@ -13,6 +13,9 @@ Command: `SYMREM=1 VTX=1 PROBLEM=target1 node cert2.js 2 1 <a0> <a1> 4`
 | half | [2.5, 2.6] | **refused**: phase B substep 45: sqrt range not positive [-0.601, 5.226] |
 
 The whole cell and both halves refuse in phase B with a Taylor-model `sqrt` whose operand
-range crosses zero (a squared-sum enclosure dips below 0 under interval over-approximation);
-the centre proves the terminal throw with margin ≈ 5.9u. No proof code was changed to force a
-pass; the centre proof is the current certified slice.
+range crosses zero (a squared-sum enclosure dips below 0 under interval over-approximation).
+The 0.2° refusal is therefore a cell-splitting limitation, not a newly identified physical refusal;
+Brief 6 already handles such cases by subdividing the parameter interval. The centre proves the
+terminal throw with margin ≈ 5.9u. No proof code was changed to force a pass; the centre proof is
+the current certified slice. The next cover target is the remaining [2°, 9.6828°] portion of
+Target 1, since [9.73°, 14.33°] is already covered by the response-cover work.
