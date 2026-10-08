@@ -14,12 +14,15 @@
 // Sufficient condition checked here, for every red branch of every regime of a cell, with each foot's
 // position at each substep an interval (red's pose is a Taylor model; its range is taken):
 //   1. at the start no non-pivot foot is possibly on any line;
-//   2. over substeps 1..123 the only (foot, line) pair that is possibly on a line is one fixed pair,
-//      and a ring (the two side arcs are treated as full circles, which can only add possible touches);
-//   3. that foot's radius from the board centre is strictly monotone over the substeps around its window,
-//      so the substeps where it is truly within the band are consecutive: one crossing, spent once.
-// Then the engine opens at most one crossing and every one of the 123 substeps is legal. If no pair is
-// ever possibly on a line there is no crossing at all.
+//   2. over substeps 1..123, collect every (foot,line) pair that is possibly on a line (the two side
+//      arcs are treated as full circles, which can only add possible touches);
+//   3. each candidate pair is strictly monotone around its contact window, so its true contact interval
+//      is consecutive;
+//   4. different feet may hand one whole-tripod crossing episode from one line to another, so from the
+//      first possible contact through the last, at least one candidate line is guaranteed ON at every
+//      substep; a single foot touching two distinct lines is rejected here unless corner handling is
+//      separately certified.
+// Then the engine opens at most one whole-tripod crossing and every one of the 123 substeps is legal.
 //
 //   node legal-red.js <bluePivot> <blueDir> [from] [to] [degree]   ->  results/arm_X/legal_<from>_<to>.json
 'use strict';
