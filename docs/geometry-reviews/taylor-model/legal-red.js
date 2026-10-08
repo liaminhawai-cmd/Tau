@@ -128,7 +128,7 @@ function crossingCheck(r0) {
   for (let k = first; k <= last; k++) {
     const guaranteed = [...new Set(possible[k].map(([j, c]) => j + ':' + c))].some(key => {
       const [j, c] = key.split(':').map(Number);
-      return upperDist(rho[k][j][c], CIRCLES[c].r) <= TOUCH;
+      return upperDist(rho[k][j][c], CIRCLES[c].r) < TOUCH;
     });
     if (!guaranteed) return { ok: false, why: 'line-contact episode may close between substeps ' + (k - 1) + ' and ' + k, clearance };
   }
