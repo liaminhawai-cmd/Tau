@@ -1,0 +1,61 @@
+name: Target1 parallel cover validation (temporary)
+
+on:
+  push:
+    branches:
+      - claude/target1-param-taylor-cert
+
+permissions:
+  contents: read
+
+jobs:
+  cover:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - from: 2
+            to: 4
+          - from: 4
+            to: 6
+          - from: 6
+            to: 8
+          - from: 8
+            to: 9.6828
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Fetch certificate sources
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+          repo="liaminhawai-cmd/Tau"; branch="claude/target1-param-taylor-cert"
+          req=Request(f"https://api.github.com/repos/{repo}/git/trees/{branch}?recursive=1",
+                      headers={"User-Agent":"tau-target1-parallel"})
+          tree=json.load(urlopen(req)); wanted=[]
+          for x in tree["tree"]:
+              p=x["path"]
+              if x["type"]=="blob" and (p=="index.html" or p=="nn/engine.js" or
+                  (p.startswith("docs/geometry-reviews/taylor-model/") and
+                   not p.startswith("docs/geometry-reviews/taylor-model/results/"))):
+                  wanted.append(p)
+          for p in wanted:
+              req=Request(f"https://raw.githubusercontent.com/{repo}/{branch}/{p}",
+                          headers={"User-Agent":"tau-target1-parallel"})
+              q=Path(p); q.parent.mkdir(parents=True,exist_ok=True); q.write_bytes(urlopen(req).read())
+          print("fetched",len(wanted))
+          PY
+      - name: Cover and validate
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1
+          SYMREM: "1"
+          VTX: "1"
+          MAXPASSES: "8000"
+          MAXOPS: "3500000"
+        run: |
+          node cover2.js 2 1 \${{ matrix.from }} \${{ matrix.to }} 4
+          node validate-cover2.js 2 1 \${{ matrix.from }} \${{ matrix.to }} 3 4
