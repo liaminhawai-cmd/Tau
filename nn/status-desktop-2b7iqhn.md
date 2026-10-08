@@ -1,14 +1,14 @@
 # Tau NN training status
-_Last updated: 2026-10-08T20:16:46.446Z_
+_Last updated: 2026-10-08T20:27:20.734Z_
 
-**Self-play batch:** 817
-**Stage:** self-play batch 817 running, next check in 5 min
+**Self-play batch:** 818
+**Stage:** self-play batch 818 running (started 2026-10-08T20:22:09.397Z)
 **mix:** (see selfplay log: fixed-rung training reference)
 
-**Dual pool:** 4 active (minimum 4) (dual-pop-063-e60, dual-pop-084-e60, dual-pop-114-e60, dual-pop-115-e20)
+**Dual pool:** (not initialized yet)
 
 **Last gate result:** (none yet)
 
-**Last checkpoint:** ckpt-693.json at 2026-10-08T20:06:22.973Z
+**Last checkpoint:** (none yet)
 
 **Last ladder sweep:** (none yet)
