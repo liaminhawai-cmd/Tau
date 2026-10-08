@@ -92,8 +92,6 @@ function crossingCheck(r0) {
   }
   // The crossing budget is PER TRIPOD, not per foot. Two different feet may therefore be on two
   // different lines at once, provided the piece never becomes clear of all lines in between.
-  // The old checker rejected every such case, which incorrectly declared Target1 illegal:
-  // foot 2 is on r0 for k=23..39 and foot 1 is on r1 for k=38..82, so the episodes overlap.
   const clearance = pairs.size ? (pairs.size === 1 ? clearOf([...pairs.keys()][0]) : -Infinity) : clearOf(null);
   if (!pairs.size) return { ok: true, crossing: 'none', clearance };
 
@@ -106,24 +104,22 @@ function crossingCheck(r0) {
   for (const [j, es] of byFoot) if (es.length > 1)
     return { ok: false, why: 'foot ' + j + ' may touch multiple distinct lines: ' + es.map(e => CIRCLES[e.c].id).join(' '), clearance };
 
-  // Every pair has to be monotone around its own contact window. This turns its possible window into
-  // a single contiguous true-contact interval rather than a potentially disconnected event.
+  // Every pair must be monotone around its own contact window, so its possible window describes
+  // one contiguous true-contact interval rather than a disconnected event.
   for (const e of pairs.values()) {
-    if (e.c > 1) return { ok: false, why: \`foot \${e.j} may touch side arc \${CIRCLES[e.c].id}\`, clearance };
+    if (e.c > 1) return { ok: false, why: 'foot ' + e.j + ' may touch side arc ' + CIRCLES[e.c].id, clearance };
     const lo = Math.max(0, e.k1 - 1), hi = Math.min(KRED, e.k2 + 1);
     let dec = true, inc = true;
     for (let k = lo; k < hi; k++) {
       if (!(rho[k + 1][e.j][e.c][1] < rho[k][e.j][e.c][0])) dec = false;
       if (!(rho[k + 1][e.j][e.c][0] > rho[k][e.j][e.c][1])) inc = false;
     }
-    if (!dec && !inc)
-      return { ok: false, why: \`foot \${e.j}'s radius is not monotone around its window [\${e.k1}, \${e.k2}] on \${CIRCLES[e.c].id}\`, clearance };
+    if (!dec && !inc) return { ok: false, why: 'foot ' + e.j + ' radius is not monotone around window [' + e.k1 + ', ' + e.k2 + '] on ' + CIRCLES[e.c].id, clearance };
   }
 
-  // The whole tripod must remain in one continuous line-contact episode. It is sufficient to have
-  // at least one line guaranteed ON at every substep from the first possible contact through the last.
-  // At a boundary substep only some parameters may be on the line; monotonicity above guarantees that
-  // any trajectory which has entered the episode cannot leave before the guaranteed core carries it on.
+  // The whole tripod must remain in one continuous line-contact episode. A sufficient enclosure
+  // condition is that at every substep from the first possible contact to the last, at least one
+  // candidate line is guaranteed ON. Combined with monotonicity, there can be no hidden close-and-reopen.
   const first = Math.min(...[...pairs.values()].map(e => e.k1));
   const last = Math.max(...[...pairs.values()].map(e => e.k2));
   for (let k = first; k <= last; k++) {
@@ -131,11 +127,10 @@ function crossingCheck(r0) {
       const [j, c] = key.split(':').map(Number);
       return upperDist(rho[k][j][c], CIRCLES[c].r) <= TOUCH;
     });
-    if (!guaranteed)
-      return { ok: false, why: \`line-contact episode may close between substeps \${k - 1} and \${k}\`, clearance };
+    if (!guaranteed) return { ok: false, why: 'line-contact episode may close between substeps ' + (k - 1) + ' and ' + k, clearance };
   }
-  const labels = [...pairs.values()].map(e => \`foot \${e.j} / \${CIRCLES[e.c].id} substeps \${e.k1}..\${e.k2}\`);
-  return { ok: true, crossing: `foot ${j} / ${CIRCLES[c].id} substeps ${k1}..${k2}`, window: [k1, k2], clearance };
+  const labels = [...pairs.values()].map(e => 'foot ' + e.j + ' / ' + CIRCLES[e.c].id + ' substeps ' + e.k1 + '..' + e.k2);
+  return { ok: true, crossing: labels.join('; '), window: [first, last], clearance };
 }
 
 // every red branch of every regime of one cell
