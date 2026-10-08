@@ -1,0 +1,19 @@
+{
+  "name": "target1",
+  "seed": {
+    "blue": { "x": 12.2195, "y": 37.7663, "rot": 11.0497 },
+    "red":  { "x": 2.8121, "y": 28.9609, "rot": -13.703 }
+  },
+  "firstMover": 0,
+  "reply": { "pivot": 2, "dir": 1, "stopsDeg": [2.4, 2.6] },
+  "witness": { "pivot": 0, "dir": -1 },
+  "kRed": 120,
+  "ko": 0,
+  "source": {
+    "file": "docs/dead-regions/dead-points-mined.jsonl",
+    "line": 176,
+    "game": "retro-ratchet-20260804214008-pck-w14-j2-0-41",
+    "branch": "claude/board-game-video-adaptation-cf8a93",
+    "notes": "seed/mover/k from the dead-point record; reply family (2,+) and witness (0,-) are the CERT target. kRed=120 = red's (0,-1) swing limit (45.0 deg, reason 'cross') at the cert2.js DELTA=0.375 deg/substep grid (45.0/0.375 = 120); computed with nn/engine.js createEngine(), matching the witness limit the same way Brief 6's 123 = 46.125/0.375."
+  }
+}

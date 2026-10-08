@@ -224,7 +224,11 @@ if (require.main === module) {
   const [bp, bd, a0, a1] = process.argv.slice(2, 6).map(Number);
   const deg = +(process.argv[6] || 6);
   try {
-    const push = process.env.BRANCH ? { branch: true, branchStraddle: !!process.env.STRADDLE, tolHull: +(process.env.TOLH || 1e-7), maxBranches: +(process.env.MAXB || 8) } : (process.env.HULLSTRADDLE ? { hullStraddle: true } : {});
+    const push = {
+      ...(process.env.SYMREM ? { symRem: true } : {}),
+      ...(process.env.VTX ? { vertexDedup: true } : {}),
+      ...(process.env.BRANCH ? { branch: true, branchStraddle: !!process.env.STRADDLE, tolHull: +(process.env.TOLH || 1e-7), maxBranches: +(process.env.MAXB || 8) } : (process.env.HULLSTRADDLE ? { hullStraddle: true } : {})),
+    };
     const r = run2(bp, bd, a0, a1, deg, { push, verbose: !!process.env.V, problem: process.env.PROBLEM });
     console.log(JSON.stringify({ arm: [bp, bd], interval: [a0, a1], deg, ms: r.ms, margin: [r.marginLo, r.marginHi], foot: r.foot, hubMoveLo: r.hubMoveLo, regimes: r.regimes, redBranches: r.redBranches, aPushes: r.aPushes, info: r.info }));
   } catch (e) { console.log(JSON.stringify({ arm: [bp, bd], interval: [a0, a1], deg, error: e.message })); }
