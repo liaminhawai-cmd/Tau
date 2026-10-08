@@ -19,3 +19,12 @@ Brief 6 already handles such cases by subdividing the parameter interval. The ce
 terminal throw with margin ≈ 5.9u. No proof code was changed to force a pass; the centre proof is
 the current certified slice. The next cover target is the remaining [2°, 9.6828°] portion of
 Target 1, since [9.73°, 14.33°] is already covered by the response-cover work.
+## Full Target1 cover result
+
+The adaptive Taylor cover was run on the remaining Target1 interval [2°, 9.6828°] with SYMREM=1, VTX=1, DEG=4. It produced 427 accepted cells and 0 failed leaves in 853 cover attempts. Cell widths ranged from 0.000234460449° to 0.12004375°, with median 0.007502734375°. The smallest certified terminal margin was 5.409085263853455u and the smallest hub-motion lower bound was 17.64584513837921u.
+
+An independent audit reproduced 427/427 cells with 0 mismatches. The accepted cover used 330 plain cells, 8 branch cells, 15 branch+merge cells, 59 straddle cells, and 15 straddle+merge cells.
+
+The first red-legality diagnostic exposed an over-conservative checker, not an engine refusal: in the first Target1 cell, foot 2 is guaranteed on r0 for substeps 23..39 while foot 1 is guaranteed on r1 for 38..82, with guaranteed overlap at 38..39. Because the shipped rule's crossing budget is whole-tripod, those two different-foot contacts form one continuous crossing episode. The legality checker has been corrected accordingly; a concrete checkCell run now returns ok=true with that two-contact episode.
+
+Containment must be checked cell-by-cell: running the entire [2°, 9.6828°] interval as one hull is intentionally too wide and stops on a deep-crossing enclosure. The reusable validate-cover2.js runner performs containment using each leaf's actual mode and symbol settings, rather than treating the complete target as one interval.
