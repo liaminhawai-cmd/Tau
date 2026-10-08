@@ -43,6 +43,7 @@ function fromEnv() {
 // Keep the legacy Brief 6 result layout for existing corpora; named problems get an isolated subtree.
 // This also keeps independent problem covers from ever reusing another problem's labels or cells.
 // The isolation is part of the proof-input provenance: a named problem never consumes Brief 6 cover cells.
+// The test runner fetches this same pinned branch source set before executing the certificate.
 function armResultsDir(problem, bp, bd) {
   const root = problem && problem.name && problem.name !== BRIEF6.name ? problem.name : null;
   return path.join(__dirname, 'results', ...(root ? [root] : []), 'arm_' + bp + '_' + (bd > 0 ? 'p' : 'm'));
