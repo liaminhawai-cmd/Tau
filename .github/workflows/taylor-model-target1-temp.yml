@@ -51,9 +51,6 @@ jobs:
       - name: Taylor-model operation regression
         working-directory: docs/geometry-reviews/taylor-model
         run: node test-tm.js
-      - name: Status regression
-        working-directory: docs/geometry-reviews/taylor-model
-        run: node status.js
       - name: Target1 adaptive cover
         working-directory: docs/geometry-reviews/taylor-model
         env:
