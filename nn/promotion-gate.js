@@ -22,6 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const { eloFromScore, fmtEloRange } = require('./elo.js');
+const { atomicWrite } = require('./atomic-write.js');
 const { createEngine } = require('./engine.js');
 const dir = __dirname;
 
@@ -155,9 +156,13 @@ function readCache(file = PANEL_CACHE) {
     return Object.fromEntries(Object.entries(old).filter(([k]) => !deepCell(k)));
   } catch (e) { return {}; }
 }
+// Through the shared retrying writer, never a bare rename: the cache is tracked in git, so the
+// trainer's own pulls and status commits hold it open for a moment, and on Windows a rename onto an
+// open file fails with EPERM. A bare rename threw that out of runPanelGate and threw away the whole
+// gate -- every cycle on 2026-10-08 from 12:20 on ended "pool promotion skipped (EPERM ...)". A
+// skipped write costs nothing: the cell is still in `cache`, and the next cell's write carries it.
 function writeCache(c, file = PANEL_CACHE) {
-  const tmp = file + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(c, null, 1)); fs.renameSync(tmp, file);
+  atomicWrite(file, JSON.stringify(c, null, 1));
 }
 function playCell(job) {
   const args = [path.join(dir, 'arena.js'),

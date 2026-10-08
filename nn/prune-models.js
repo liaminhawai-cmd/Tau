@@ -129,7 +129,7 @@ function protectedNames(files) {
   // history logs, the results store, and the gate's cell cache (promotion-gate.js is handed its
   // panel by run.js; the cache only saves replaying a cell it has already played).
   const skip = f => f === '.evolution-roster.json' || f === '.pruned.jsonl' || f === '.model-meta-cache.json' || /history/i.test(f) ||
-    f === 'elo-results.json' || f === '.gate-panel-cache.json' || !/\.(json|jsonl)$/.test(f);
+    f === 'elo-results.json' || /^\.gate-panel-cache/.test(f) || !/\.(json|jsonl)$/.test(f);
   const stateFiles = [
     ...listFiles(modelsDir).filter(f => f.startsWith('.') && !skip(f)).map(f => path.join(modelsDir, f)),
     ...listFiles(dir).filter(f => !skip(f)).map(f => path.join(dir, f)),
