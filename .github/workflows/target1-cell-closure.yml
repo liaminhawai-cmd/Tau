@@ -15,6 +15,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Rebuild Target1 recorded cover corpus
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1
+          SYMREM: "1"
+          VTX: "1"
+          MAXPASSES: "8000"
+          MAXOPS: "3500000"
+        run: |
+          node cover2.js 2 1 2 9.6828 6 1e-5 | tee target1-cover.json
+          node -e "const r=require('./target1-cover.json'); if(r.cells!==427 || r.failed!==0) { console.error(r); process.exit(1) }"
       - name: Run Target1 cell-wise containment and legality validation
         working-directory: docs/geometry-reviews/taylor-model
         env:
