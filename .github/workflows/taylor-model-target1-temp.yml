@@ -1,0 +1,56 @@
+name: Taylor model Target1 regression (temporary)
+
+on:
+  push:
+    branches:
+      - claude/target1-param-taylor-cert
+
+permissions:
+  contents: read
+
+jobs:
+  taylor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Taylor-model operation regression
+        working-directory: docs/geometry-reviews/taylor-model
+        run: node test-tm.js
+      - name: Status regression
+        working-directory: docs/geometry-reviews/taylor-model
+        run: node status.js
+      - name: Target1 adaptive cover
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1
+          SYMREM: "1"
+          VTX: "1"
+          MAXPASSES: "8000"
+          MAXOPS: "3500000"
+        run: node cover2.js 2 1 2 9.6828 4
+      - name: Target1 audit
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1
+          SYMREM: "1"
+          VTX: "1"
+        run: node audit2.js 2 1 2 9.6828 4
+      - name: Target1 containment
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1
+          SYMREM: "1"
+          VTX: "1"
+          DEG: "4"
+        run: node contain2.js 2 1 2 9.6828 plain 5
+      - name: Target1 red legality
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1
+          SYMREM: "1"
+          VTX: "1"
+        run: node legal-red.js 2 1 2 9.6828 4
