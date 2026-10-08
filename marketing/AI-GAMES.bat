@@ -22,8 +22,8 @@ if exist "%WT%\index.html" (
 
 echo.
 set "GAMES=" & set "TIERS="
-set /p "GAMES=Games per strength (Enter for 4): "
-if not defined GAMES set "GAMES=4"
+set /p "GAMES=Games per strength, up to 6 (Enter for 6): "
+if not defined GAMES set "GAMES=6"
 echo Strengths: low, mid, high. Type some separated by commas, or press Enter for all three.
 set /p "TIERS=Strengths: "
 if not defined TIERS set "TIERS=low,mid,high"

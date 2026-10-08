@@ -1,9 +1,9 @@
 // Plays AI-vs-AI games at three strengths and writes replay links for video.
 //
-//   node showcase.js --root <checkout of main> [--games 4] [--tiers low,mid,high] [--out dir]
+//   node showcase.js --root <checkout of main> [--games 6] [--tiers low,mid,high] [--out dir]
 //
 // Each tier pits brains of similar strength against each other, so the games are close:
-//   low   hand-tuned levels 4 and 5 (the early web ladder)
+//   low   hand-tuned levels 4, 5 and 6 (the early web ladder)
 //   mid   hand-tuned levels 9, 10 and 11 (deep search, no neural net)
 //   high  the retired neural-net rungs: the Committee and the Champion, at depth 1 and 3
 // The current rungs 11 to 14 (the resume-607 and resume-619 nets) are refused, so the challenge
@@ -23,20 +23,22 @@ function arg(name, dflt) {
 
 const ROOT = path.resolve(arg('root', path.join(__dirname, '..', '..')));
 const { createEngine } = require(path.join(ROOT, 'nn', 'engine.js'));
-const { randomOpeningPlan } = require(path.join(ROOT, 'nn', 'opening.js'));
 
 // Brains by AI_LADDER index (arena.js's L<n> is index + 1). Names are what the replay shows.
 const BRAINS = {
-  L4: { idx: 3, name: 'Centre-dancer' }, L5: { idx: 4, name: 'Corner-cutter' },
+  L4: { idx: 3, name: 'Centre-dancer' }, L5: { idx: 4, name: 'Corner-cutter' }, L6: { idx: 5, name: 'Solid' },
   L9: { idx: 8, name: 'Deep' }, L10: { idx: 9, name: 'Territory' }, L11: { idx: 10, name: 'Triangle' },
   committee: { idx: 14, name: 'Committee' }, champion: { idx: 15, name: 'Champion' },
   champion3: { idx: 16, name: 'Champion (deep)' },
 };
+// Every pairing is played with each brain as Blue once. There are no random moves, and most brains
+// always play the same move in the same position, so a given matchup and colour gives one game.
 const TIERS = {
-  low: [['L4', 'L5'], ['L5', 'L4']],
-  mid: [['L9', 'L10'], ['L10', 'L11'], ['L11', 'L9']],
-  high: [['committee', 'champion'], ['champion', 'champion3'], ['champion3', 'committee']],
+  low: ['L4', 'L5', 'L6'],
+  mid: ['L9', 'L10', 'L11'],
+  high: ['committee', 'champion', 'champion3'],
 };
+const matchups = names => names.flatMap(a => names.filter(b => b !== a).map(b => [a, b]));
 const BASE = arg('url', 'https://tau-game.com/');
 
 const eng = createEngine();
@@ -67,7 +69,7 @@ function playTurn(plan, frames) {
   snap();
 }
 
-function playGame(blue, red, openingPlies) {
+function playGame(blue, red) {
   eng.CFG.moveCap = 300;
   eng.newGame();
   const G = eng.getG();
@@ -76,8 +78,7 @@ function playGame(blue, red, openingPlies) {
   const brains = [blue, red];
   let plies = 0;
   while (!G.over && plies < 300) {
-    const plan = plies < openingPlies ? randomOpeningPlan(eng) : eng.ladderPlanFor(brains[G.active].idx, G.active);
-    playTurn(plan, frames);
+    playTurn(eng.ladderPlanFor(brains[G.active].idx, G.active), frames);
     plies++;
   }
   return { frames, winner: G.over ? G.winner : null, plies };
@@ -129,20 +130,19 @@ function links(raw) {
 }
 
 function main() {
-  const games = +arg('games', 4);
+  const games = +arg('games', 6);
   const tiers = arg('tiers', 'low,mid,high').split(',');
-  const openingPlies = +arg('openingPlies', 1);
   const out = path.resolve(arg('out', path.join(__dirname, 'showcase')));
   fs.mkdirSync(out, { recursive: true });
   const rows = [];
   for (const tier of tiers) {
-    const pairs = TIERS[tier];
-    if (!pairs) throw new Error('unknown tier: ' + tier);
-    for (let g = 0; g < games; g++) {
-      const [a, b] = pairs[g % pairs.length];
+    if (!TIERS[tier]) throw new Error('unknown tier: ' + tier);
+    const pairs = matchups(TIERS[tier]).slice(0, games);
+    for (let g = 0; g < pairs.length; g++) {
+      const [a, b] = pairs[g];
       const blue = BRAINS[a], red = BRAINS[b];
       const t0 = Date.now();
-      const r = playGame(blue, red, openingPlies);
+      const r = playGame(blue, red);
       const names = [blue.name, red.name];
       const l = links(encodeRaw(r.frames, r.winner, names));
       const result = r.winner === 0 ? blue.name + ' (Blue) wins' : r.winner === 1 ? red.name + ' (Red) wins' : 'no result';
@@ -167,7 +167,7 @@ function write(out, rows) {
 td,th{padding:6px 12px;border-bottom:1px solid #2c3138;text-align:left}button{font:inherit;cursor:pointer}</style>
 <h1>Tau AI vs AI</h1>
 <p>low: hand-tuned early levels. mid: hand-tuned deep search. high: retired neural-net rungs.
-The first move of each game is random, so the games differ.</p>
+Every move is the brain's own choice.</p>
 <p><b>Director</b> opens the replay with Director mode on (Hide UI, safe areas, logo). <b>Plain</b> is the
 short link, for posting.</p>
 <table><tr><th>Tier</th><th>Game</th><th>Result</th><th>Moves</th><th>Open</th></tr>
