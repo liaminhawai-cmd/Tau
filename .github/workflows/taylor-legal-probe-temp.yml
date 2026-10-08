@@ -37,9 +37,6 @@ jobs:
               q=Path(p); q.parent.mkdir(parents=True,exist_ok=True); q.write_bytes(urlopen(req).read())
           print("fetched",len(wanted))
           PY
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
       - name: Validate corrected Target1 legality cell
         working-directory: docs/geometry-reviews/taylor-model
         env:
