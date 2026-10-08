@@ -10,8 +10,9 @@ const { fromEnv, armResultsDir } = require('./problem.js');
 const { containment } = require('./contain2.js');
 const { checkCell } = require('./legal-red.js');
 
-const [bp, bd, fromArg, toArg] = process.argv.slice(2, 4).map(Number);
-const samples = +(process.argv[6] || 3), deg = +(process.argv[7] || 4);
+const [bp, bd, fromArg, toArg, samplesArg, degArg] = process.argv.slice(2, 8).map(Number);
+const samples = Number.isFinite(samplesArg) ? samplesArg : 3;
+const deg = Number.isFinite(degArg) ? degArg : 4;
 const PR = fromEnv(), dir = armResultsDir(PR, bp, bd);
 if (!fs.existsSync(dir)) throw new Error('no cover result directory: ' + dir);
 
