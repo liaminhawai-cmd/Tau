@@ -28,7 +28,7 @@ const iv = require('./iv.js');
 const P = require('./push-tm.js');
 const { run2, redPath } = require('./cert2.js');
 const { MODES } = require('./modes2.js');
-const { fromEnv } = require('./problem.js');
+const { fromEnv, armResultsDir } = require('./problem.js');
 const PR = fromEnv();          // the problem this run is for (PROBLEM env, default Brief 6)
 if (PR.firstMover !== 0) throw new Error('legal-red.js assumes firstMover 0 (blue moves first, red is the witness); got ' + PR.firstMover);
 const KRED = PR.kRed, WIT = PR.witness;
@@ -121,7 +121,7 @@ module.exports = { checkPose, checkCell };
 
 if (require.main === module) {
   const [bp, bd] = process.argv.slice(2, 4).map(Number);
-  const dir = path.join(__dirname, 'results', `arm_${bp}_${bd > 0 ? 'p' : 'm'}`);
+  const dir = armResultsDir(PR, bp, bd);
   const leaves = [];
   for (const f of fs.readdirSync(dir)) if (/^cover_.*_d\d+\.json$/.test(f)) leaves.push(...JSON.parse(fs.readFileSync(path.join(dir, f))).leaves);
   leaves.sort((p, q) => p.a - q.a);
