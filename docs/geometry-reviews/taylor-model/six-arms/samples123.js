@@ -9,7 +9,11 @@ const fs = require('fs'), path = require('path');
 const { createEngine } = require(path.join(__dirname, '../../../../nn/engine.js'));
 const eng = createEngine();
 const EDGE = eng.CFG.edgeU + eng.CFG.edgeEps;
-const SEED = [-27.3934, -36.4088, 1.2052, -11.7593, -23.2838, 2.9442], DELTA = 3 * Math.PI / 180 / 8, K_RED = 123;
+const { fromEnv } = require('../problem.js');
+const pr = fromEnv();
+if (pr.firstMover !== 0) throw new Error('samples123.js assumes firstMover 0 (blue moves first); got ' + pr.firstMover);
+const SEED = [pr.seed.blue.x, pr.seed.blue.y, pr.seed.blue.rot, pr.seed.red.x, pr.seed.red.y, pr.seed.red.rot];
+const DELTA = 3 * Math.PI / 180 / 8, KRED = pr.kRed, WIT = pr.witness;
 const [bp, bd] = process.argv.slice(2, 4).map(Number);
 const D = path.join(__dirname, 'data');
 const alphas = [];
@@ -20,15 +24,15 @@ for (const name of [`red-0m-0.01deg_b${bp}_${bd}.csv`, `red-0m-ext-0.001deg_b${b
 const out = ['alpha,reached,redSubsteps,margin123'];
 for (const a of alphas) {
   const G = eng.newGame(); const [B, R] = G.pieces;
-  B.x = SEED[0]; B.y = SEED[1]; B.rot = SEED[2]; R.x = SEED[3]; R.y = SEED[4]; R.rot = SEED[5]; G.active = 0;
+  B.x = SEED[0]; B.y = SEED[1]; B.rot = SEED[2]; R.x = SEED[3]; R.y = SEED[4]; R.rot = SEED[5]; G.active = pr.firstMover;
   eng.applyPlanSearch({ pivotIdx: bp, dir: bd, targetRad: a * Math.PI / 180 });
   if (G.over) { out.push(`${a},,0,`); continue; }
   const reached = Math.abs(G.pieces[0].rot - SEED[2]) * 180 / Math.PI;
-  eng.pinFoot(0);
+  eng.pinFoot(WIT.pivot);
   let k = 0;
-  while (k < K_RED && !G.atLimit) { eng.applySwing(-DELTA); k++; }
+  while (k < KRED && !G.atLimit) { eng.applySwing(WIT.dir * DELTA); k++; }
   const margin = Math.max(...G.pieces[0].feet().map(f => Math.hypot(f.x, f.y))) - EDGE;
   out.push(`${a},${reached},${k},${margin}`);
 }
-fs.writeFileSync(path.join(D, `red-0m-123_b${bp}_${bd}.csv`), out.join('\n') + '\n');
+fs.writeFileSync(path.join(D, `red-${WIT.pivot}${WIT.dir > 0 ? 'p' : 'm'}-${KRED}_b${bp}_${bd}.csv`), out.join('\n') + '\n');
 console.log(`arm (${bp},${bd}): ${alphas.length} stops`);

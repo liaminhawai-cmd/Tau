@@ -26,8 +26,12 @@
 const fs = require('fs'), path = require('path');
 const iv = require('./iv.js');
 const P = require('./push-tm.js');
-const { run2, redPath, K_RED } = require('./cert2.js');
+const { run2, redPath } = require('./cert2.js');
 const { MODES } = require('./modes2.js');
+const { fromEnv } = require('./problem.js');
+const PR = fromEnv();          // the problem this run is for (PROBLEM env, default Brief 6)
+if (PR.firstMover !== 0) throw new Error('legal-red.js assumes firstMover 0 (blue moves first, red is the witness); got ' + PR.firstMover);
+const KRED = PR.kRed, WIT = PR.witness;
 
 const R = P.footR, TWO_PI_3 = P.TWO_PI_3;
 const TOUCH = 0.81;                                   // CFG.touchEps (lineStick is 0, so stickEps is the same)
@@ -65,12 +69,12 @@ function pivotBorderline(r0) {
 function checkPose(r0) { const v = crossingCheck(r0); v.borderline = pivotBorderline(r0); return v; }
 function crossingCheck(r0) {
   const poses = [{ x: r0.x.range(), y: r0.y.range(), rot: r0.rot.range() }];
-  for (const p of redPath(r0, 0, -1)) poses.push({ x: p.x, y: p.y, rot: p.rot });
+  for (const p of redPath(r0, WIT.pivot, WIT.dir, KRED)) poses.push({ x: p.x, y: p.y, rot: p.rot });
   // rho[k][j][c] = radius interval of foot j about circle c at substep k
   const rho = poses.map(p => feetAt(p).map(f => CIRCLES.map(c => radiusIv(f, c))));
   const possible = [];                                   // possible[k] = list of [j, c]
   const closest = new Map();                             // smallest guaranteed distance of each (foot, line) pair that never possibly touches
-  for (let k = 0; k <= K_RED; k++) {
+  for (let k = 0; k <= KRED; k++) {
     const list = [];
     for (const j of [1, 2]) for (let c = 0; c < CIRCLES.length; c++) {
       const d = lowerDist(rho[k][j][c], CIRCLES[c].r), key = j + ':' + c;
@@ -81,7 +85,7 @@ function crossingCheck(r0) {
   const clearOf = skip => { let m = Infinity; for (const [key, d] of closest) if (key !== skip) m = Math.min(m, d); return m; };
   if (possible[0].length) return { ok: false, why: 'a foot may start on a line', clearance: Infinity };
   const pairs = new Map();
-  for (let k = 1; k <= K_RED; k++) for (const [j, c] of possible[k]) { const key = j + ':' + c; const e = pairs.get(key) || { j, c, k1: k, k2: k }; e.k2 = k; pairs.set(key, e); }
+  for (let k = 1; k <= KRED; k++) for (const [j, c] of possible[k]) { const key = j + ':' + c; const e = pairs.get(key) || { j, c, k1: k, k2: k }; e.k2 = k; pairs.set(key, e); }
   // clearance: how far the other (foot, line) pairs stay from touching; pairs that may touch have none to report
   const clearance = pairs.size ? (pairs.size === 1 ? clearOf([...pairs.keys()][0]) : -Infinity) : clearOf(null);
   if (!pairs.size) return { ok: true, crossing: 'none', clearance };
@@ -89,7 +93,7 @@ function crossingCheck(r0) {
   const { j, c, k1, k2 } = [...pairs.values()][0];
   if (c > 1) return { ok: false, why: `foot ${j} may touch side arc ${CIRCLES[c].id}`, clearance };
   // the pair's radius must be strictly monotone from one substep before its window to one after
-  const lo = Math.max(0, k1 - 1), hi = Math.min(K_RED, k2 + 1);
+  const lo = Math.max(0, k1 - 1), hi = Math.min(KRED, k2 + 1);
   let dec = true, inc = true;
   for (let k = lo; k < hi; k++) {
     if (!(rho[k + 1][j][c][1] < rho[k][j][c][0])) dec = false;
@@ -102,7 +106,7 @@ function crossingCheck(r0) {
 // every red branch of every regime of one cell
 function checkCell(bp, bd, a, b, deg, mode, sym, vtx) {
   const m = MODES.find(x => x[0] === mode);
-  const r = run2(bp, bd, a, b, deg, { push: { ...(sym ? { symRem: true } : {}), ...(vtx ? { vertexDedup: true } : {}), ...(m ? m[2] : {}) }, keepTrace: true, phaseAOnly: true });
+  const r = run2(bp, bd, a, b, deg, { push: { ...(sym ? { symRem: true } : {}), ...(vtx ? { vertexDedup: true } : {}), ...(m ? m[2] : {}) }, keepTrace: true, phaseAOnly: true, problem: PR });
   let ok = true, why = null, clearance = Infinity, branches = 0, borderline = null; const crossings = new Set();
   for (const it of r.trace.items) for (const red of it.red) {
     branches++;

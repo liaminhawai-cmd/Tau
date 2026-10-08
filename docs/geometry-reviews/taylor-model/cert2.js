@@ -18,14 +18,14 @@ const iv = require('./iv.js');
 const { TM, setDegree } = require('./tm.js');
 const P = require('./push-tm.js');
 const { opCount } = require('./tm.js');
+const { BRIEF6, resolveProblem } = require('./problem.js');
 
 const R = P.footR, TWO_PI_3 = P.TWO_PI_3;
-const SEED = { blue: { x: -27.3934, y: -36.4088, rot: 1.2052 }, red: { x: -11.7593, y: -23.2838, rot: 2.9442 } };
 // the engine's constants, as binary64 values, in the engine's own evaluation order
 const STEP3 = 3 * Math.PI / 180;            // AI_STEP_RAD
 const STEP_MAX = 0.4 * Math.PI / 180;       // CFG.substepDeg * Math.PI / 180
 const DELTA = STEP3 / 8;                    // a full call is ceil(STEP3 / STEP_MAX) = 8 substeps, exact division
-const K_RED = 123;                          // red's swing: 123 substeps of DELTA (46.125 degrees)
+const K_RED = BRIEF6.kRed;                  // default witness swing length (Brief 6): red swings kRed substeps of DELTA
 const EDGE = iv.add([66.667, 66.667], [0.5, 0.5]);
 const DEG = iv.div([Math.PI, Math.PI], [180, 180]);
 
@@ -96,14 +96,14 @@ function feetRadii(b) {
   });
 }
 
-// red's pose at each of K_RED substeps, from its (Taylor model) start pose: the engine rotates the
+// red's pose at each of kRed substeps, from its (Taylor model) start pose: the engine rotates the
 // piece about the fixed position of its pinned foot, so hub_k = hub + (I - Rot(ang)) e with e the
 // hub-to-pivot-foot vector
-function redPath(r0, pivotIdx, dir) {
+function redPath(r0, pivotIdx, dir, kRed = K_RED) {
   const phi = r0.rot.addI(iv.mul([pivotIdx, pivotIdx], TWO_PI_3));
   const ex = phi.cos().scaleI([R, R]), ey = phi.sin().scaleI([R, R]);
   const poses = [];
-  for (let k = 1; k <= K_RED; k++) {
+  for (let k = 1; k <= kRed; k++) {
     const ang = [dir * k * DELTA, dir * k * DELTA];
     const c = iv.cos(ang), s = iv.sin(ang), omc = iv.sub([1, 1], c);
     const x = r0.x.add(ex.scaleI(omc)).add(ey.scaleI(s)), y = r0.y.add(ey.scaleI(omc)).add(ex.scaleI(iv.neg(s)));
@@ -115,6 +115,9 @@ function redPath(r0, pivotIdx, dir) {
 
 function run2(bp, bd, a0, a1, deg, opts = {}) {
   setDegree(deg);
+  const pr = resolveProblem(opts);
+  const SEED = pr.seed, KRED = pr.kRed, WIT = pr.witness;
+  if (pr.firstMover !== 0) throw new Error('cert2.js supports firstMover 0 (blue moves first) only; got ' + pr.firstMover);
   const push = opts.push || {};
   if (opts.maxOps) push.maxOps = opts.maxOps;       // the work budget travels with the push options to the solver
   const t0 = Date.now();
@@ -177,7 +180,7 @@ function run2(bp, bd, a0, a1, deg, opts = {}) {
       // red must still be on the board after being pushed (else blue has won and there is no reply)
       const ro = feetRadii(r0);
       if (!(Math.max(...ro.map(r => r[1])) < EDGE[0])) throw new Error('red may be pushed off the board by blue\'s reply');
-      const path = redPath(r0, 0, -1);
+      const path = redPath(r0, WIT.pivot, WIT.dir, KRED);
       // red must not swing itself off during its 123 substeps
       for (const p of path) {
         const fr = [0, 1, 2].map(j => { const an = iv.add(p.rot, iv.mul([j, j], TWO_PI_3)); return iv.sqrt(iv.add(iv.sqr(iv.add(p.x, iv.mul(iv.cos(an), [R, R]))), iv.sqr(iv.add(p.y, iv.mul(iv.sin(an), [R, R])))))[1]; });
@@ -186,7 +189,7 @@ function run2(bp, bd, a0, a1, deg, opts = {}) {
       let st = [{ x: blue0.x, y: blue0.y, rot: blue0.rot }];
       const Bs = []; item.B.push(Bs);
       const start = { x: blue0.x, y: blue0.y };
-      for (let kk = 1; kk <= K_RED; kk++) {
+      for (let kk = 1; kk <= KRED; kk++) {
         const p = path[kk - 1];
         const pusher = P.tmGeometry(p.tm);
         const before = info.pushes;
@@ -215,14 +218,14 @@ function run2(bp, bd, a0, a1, deg, opts = {}) {
   }
   return { a0, a1, deg, ms: Date.now() - t0, info, ...all, trace };
 }
-module.exports = { run2, regimes, rotPose, redPath, K_RED, DELTA, STEP3, STEP_MAX };
+module.exports = { run2, regimes, rotPose, redPath, K_RED, DELTA, STEP3, STEP_MAX, BRIEF6 };
 
 if (require.main === module) {
   const [bp, bd, a0, a1] = process.argv.slice(2, 6).map(Number);
   const deg = +(process.argv[6] || 6);
   try {
     const push = process.env.BRANCH ? { branch: true, branchStraddle: !!process.env.STRADDLE, tolHull: +(process.env.TOLH || 1e-7), maxBranches: +(process.env.MAXB || 8) } : (process.env.HULLSTRADDLE ? { hullStraddle: true } : {});
-    const r = run2(bp, bd, a0, a1, deg, { push, verbose: !!process.env.V });
+    const r = run2(bp, bd, a0, a1, deg, { push, verbose: !!process.env.V, problem: process.env.PROBLEM });
     console.log(JSON.stringify({ arm: [bp, bd], interval: [a0, a1], deg, ms: r.ms, margin: [r.marginLo, r.marginHi], foot: r.foot, hubMoveLo: r.hubMoveLo, regimes: r.regimes, redBranches: r.redBranches, aPushes: r.aPushes, info: r.info }));
   } catch (e) { console.log(JSON.stringify({ arm: [bp, bd], interval: [a0, a1], deg, error: e.message })); }
 }

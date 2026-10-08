@@ -8,17 +8,21 @@
 //   node contain2.js <bluePivot> <blueDir> <a0> <a1> [mode=plain|straddle|branch] [samples=5]
 'use strict';
 const path = require('path');
-const { run2, regimes, DELTA, STEP3, STEP_MAX, K_RED } = require('./cert2.js');
+const { run2, regimes, DELTA, STEP3, STEP_MAX } = require('./cert2.js');
+const { fromEnv } = require('./problem.js');
 const { createEngine } = require(path.join(__dirname, '../../../nn/engine.js'));
 const { MODES } = require('./modes2.js');
 const eng = createEngine();
-const SEED = [-27.3934, -36.4088, 1.2052, -11.7593, -23.2838, 2.9442];
 
 function containment(bp, bd, a0, a1, mode = 'plain', ns = 5, deg = 6) {
   const m = MODES.find(x => x[0] === mode);
+  const pr = fromEnv();
+  if (pr.firstMover !== 0) throw new Error('contain2.js supports firstMover 0 (blue moves first) only; got ' + pr.firstMover);
+  const SEED = [pr.seed.blue.x, pr.seed.blue.y, pr.seed.blue.rot, pr.seed.red.x, pr.seed.red.y, pr.seed.red.rot];
+  const KRED = pr.kRed, WIT = pr.witness;
   // SYMREM=1 / VTX=1: the cell was proved with remainders moved into symbols / with a hub on a vertex counted once
   const base = { ...(process.env.SYMREM ? { symRem: true } : {}), ...(process.env.VTX ? { vertexDedup: true } : {}) };
-  const r = run2(bp, bd, a0, a1, deg, { push: { ...base, ...(m ? m[2] : {}) }, keepTrace: true });
+  const r = run2(bp, bd, a0, a1, deg, { push: { ...base, ...(m ? m[2] : {}) }, keepTrace: true, problem: pr });
   const am = 0.5 * a0 + 0.5 * a1, ar = Math.max(a1 - am, am - a0);
   let checks = 0, fails = 0, worst = 0, skipped = 0; const bad = [];
   for (let i = 0; i < ns; i++) {
@@ -28,7 +32,7 @@ function containment(bp, bd, a0, a1, mode = 'plain', ns = 5, deg = 6) {
     // schedules float rounding decides which, so any regime of the same j may be the one it followed)
     const A = alpha * Math.PI / 180, target = A;
     const G = eng.newGame(); const [B, R] = G.pieces;
-    B.x = SEED[0]; B.y = SEED[1]; B.rot = SEED[2]; R.x = SEED[3]; R.y = SEED[4]; R.rot = SEED[5]; G.active = 0;
+    B.x = SEED[0]; B.y = SEED[1]; B.rot = SEED[2]; R.x = SEED[3]; R.y = SEED[4]; R.rot = SEED[5]; G.active = pr.firstMover;
     eng.pinFoot(bp);
     let guard = 0, fullCalls = 0;
     while (!G.atLimit && Math.abs(G.netRad) < target && guard++ < 5000) {
@@ -58,9 +62,9 @@ function containment(bp, bd, a0, a1, mode = 'plain', ns = 5, deg = 6) {
     worst = 0;
     eng.endTurn();                        // blue's turn ends, red becomes active (the engine's own handoff)
     if (G.over) { fails++; bad.push(`alpha ${alpha}: game over after blue's reply`); continue; }
-    eng.pinFoot(0);
-    for (let k = 1; k <= K_RED; k++) {
-      eng.applySwing(-DELTA);
+    eng.pinFoot(WIT.pivot);
+    for (let k = 1; k <= KRED; k++) {
+      eng.applySwing(WIT.dir * DELTA);
       const branches = found.it.B[found.b][k - 1];
       let best = Infinity;
       for (const bs of branches) {
