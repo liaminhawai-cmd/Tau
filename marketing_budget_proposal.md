@@ -6,7 +6,11 @@
 - **Beat level 13:** you get a free Steam key.
 - **Be the first to beat level 14 as Red:** you get a physical set.
 
-All figures are in AUD. Part prices come from `tau_cost_model_v5.html` (quotes from July 2026), and anything marked *est.* is my estimate. Re-check prices at order time, because the disc quote was only valid for 30 days.
+All figures are in AUD and come from the two cost models in the repo:
+- `tau_cost_model_v5.html`: firm quotes from July 2026 for the disc, pieces, magnets, stickers and postage.
+- `physical/tau_cost_model_v2.1.html`: the cheaper options (home-printed pieces, QR rules card, print-on-demand boxes, card inserts).
+
+Anything marked *est.* is an estimate in those models or mine. Re-check prices at order time, because the disc quote was only valid for 30 days.
 
 ---
 
@@ -24,17 +28,25 @@ All figures are in AUD. Part prices come from `tau_cost_model_v5.html` (quotes f
 - **Organic posting** on Reddit, YouTube Shorts, TikTok, Instagram and BGG.
 - **Box design.** `physical/make_box.py` already produces the dielines (`tau_box_dieline.svg`, flat-pack 267 and 400, insert tray).
 
-## Cost of one set (267 mm, 10-set run, you assemble)
+## Cost of one set (267 mm, made as cheaply as possible)
 
-| Part | A$ per set | Source |
-|---|---|---|
-| Steel disc, finished 430 (Jiangy, MOQ 10) | 4.75 | firm quote |
-| Ring artwork: UV print on the disc *or* vinyl decal | 6 *est.* / about 8 at small quantity *est.* | estimate / Sticker Mule (the model's price starts at 50 stickers) |
-| Two tripod pieces, bare black MJF nylon | 9.30 | confirmed US$3 per piece |
-| Magnets, 6 per set | 1.20 | bulk quote |
-| Spray paint for red and blue | about 2.50 *est.* | one can of each covers about 10 sets |
-| Box + insert + rules card | 9 *est.* | model estimate. Home-printed card is about 2 |
-| **Parts, per set** | **about 30** (or about 23 with a home-printed box) | |
+| Part | Cheapest (A$) | Nicer (A$) | Source |
+|---|---|---|---|
+| Steel disc, finished 430 (Jiangy, MOQ 10) | 4.75 | 4.75 | v5, firm quote |
+| Ring artwork | vinyl decal, about 8 *est.* | UV print on the steel, 6 *est.* | v5 (Sticker Mule pricing starts at 50; UV needs a sample test) |
+| Two tripod pieces | 2, home-printed on your Ender 3 in PLA+ or PETG | 9.30, bare MJF nylon (US$3 per piece) | v2.1 / v5, confirmed |
+| Magnets, 6 per set | 1.20 | 1.20 | v5, bulk |
+| Paint, red and blue | 2.50 *est.* | 2.50 *est.* | about 10 sets per can |
+| Rules | 0.40, QR card to tau-game.com | 0.70, folded rules card | v2.1 |
+| Insert | about 0, hand-cut card | 3, die-cut card tray | v2.1 |
+| Box | about 2, printed from your dieline | 6, print-on-demand box, no minimum | v2.1 |
+| **Per set** | **about 21** | **about 34** | |
+
+**Avoid at this stage:** a custom round box carries about A$200 in tooling and needs 100 to 500 units (v2.1), and a moulded pulp insert is A$1200 in tooling. Both are for a later 100+ run.
+
+**Home-printed pieces:** v2.1 warns these are fragile at the ankles. Fillet the joints, widen the foot pads, and avoid silk PLA or resin. They're fine for prizes and gifts.
+
+**Your proven Taiwan route:** 430 steel with UV print from a Taiwan shop is A$38 per disc (v2.1). It's dearer, but family can collect the discs and check them. Jiangy is the cheap option.
 
 **Not in the model:** shipping the parts to you. Ten discs and the pieces sent from China will probably cost **A$100–150** *est.* Ask Jiangy and the printer for a shipping quote with the order.
 
@@ -67,14 +79,14 @@ You make no new sets and run everything with the free tools.
 |---|---|
 | 10 steel discs | 48 |
 | 10 vinyl decals (small run) | 80 *est.* |
-| 10 pairs of pieces, bare | 93 |
-| Magnets and paint | 40 |
+| Pieces for 10 sets, home-printed | 20 |
+| Magnets, paint, QR cards | 45 |
+| 10 print-on-demand boxes, hand-cut inserts | 60 |
 | Parts shipped to you | 120 *est.* |
 | Prize postage | 64 |
 | One gift set posted (Firas Zahabi first) | 64 |
-| **Total** | **about 509** |
+| **Total** | **about 500** |
 
-- **Boxes** are home-printed from the existing dieline.
 - **Spare sets:** that leaves 8, for photos, video props, a Melbourne club or meetup, and replacements for breakages.
 - **Firas Zahabi first:** he fits best. He talks about chess and strategy and answers his community.
 
@@ -82,11 +94,14 @@ You make no new sets and run everything with the free tools.
 
 | Item | A$ |
 |---|---|
-| The 10-set run, UV-printed instead of decals | 380 |
-| Short run of printed boxes with inserts (10) | 150 *est.* |
+| 10 discs, UV-printed instead of decals | 110 *est.* |
+| 10 pairs of MJF nylon pieces (tougher than home prints) | 93 |
+| Magnets, paint, folded rules cards | 45 |
+| 10 print-on-demand boxes with die-cut card trays | 90 |
+| Parts shipped to you | 150 *est.* |
 | Prize postage plus 3 gift sets | 256 |
 | Paid boosts on the 2 best organic videos | 150 |
-| Spare (breakages, a reprint) | 64 |
+| Spare (breakages, a reprint, the UV sample) | 106 |
 | **Total** | **1000** |
 
 - **Gift sets:** Firas Zahabi, Mighty Mouse, and one sumo-analysis channel. The go-to-market notes call sumo channels the overlooked fit, because their ring-out rule is Tau's win condition.
@@ -96,16 +111,18 @@ You make no new sets and run everything with the free tools.
 
 | Item | A$ |
 |---|---|
-| 20 sets, UV-printed, plus parts shipping | 650 *est.* |
-| Printed boxes with inserts (20) | 250 *est.* |
+| 20 UV-printed discs and 20 pairs of MJF pieces | 410 *est.* |
+| Magnets, paint, rules cards | 80 |
+| 20 print-on-demand boxes with card trays | 180 |
+| Parts shipped to you | 200 *est.* |
 | Prize postage plus 6 gift sets | 450 |
 | Paid boosts | 300 |
 | A freelance editor for the long YouTube video | 300 *est.* |
-| Spare | 50 |
+| Spare | 80 |
 | **Total** | **2000** |
 
 - **Gift sets:** Firas Zahabi and Mighty Mouse, plus two sumo channels and two analytical grappling creators with 10k–80k subscribers. The go-to-market notes rate that size as the best return.
-- **The 20 sets** also give you something to sell at a pre-order price, which tests demand before a 100-set run. That's the point where the printer will paint pieces and fit the magnets for you.
+- **The 20 sets** also give you something to sell at a pre-order price, which tests demand before a 100-set run. That's the point where the printer will paint pieces and fit the magnets for you (US$4 per piece, v5).
 
 ---
 
@@ -132,4 +149,4 @@ You make no new sets and run everything with the free tools.
 - **Shipping parts to you:** get a real quote.
 - **UV print price on brushed 430:** the model's one open board number. Order a sample first.
 - **Disc quote currency:** confirm whether Jiangy's A$4.75 is AUD. An earlier note had US$3.87 at 500 units.
-- **Box cost:** the model figure is an estimate.
+- **Box cost:** print-on-demand boxes cost about A$6 each in v2.1, but check one fits a 267 mm disc. A standard size may need to be square.
