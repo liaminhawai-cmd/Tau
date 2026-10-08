@@ -27,3 +27,7 @@ Everything in `clips\` stays on your computer and isn't committed to git.
 ## Ads
 
 Menu options 6 and 7 make ad variations and pair a throw with Tau footage. See `ads/PLAN.md` for the tools, the level 13 challenge rules and the ad and video outlines.
+
+## AI games for video
+
+Double-click **AI-GAMES.bat** (needs Node.js and Git). It plays AI-vs-AI games at low, mid and high strength and opens a page of replay links. **Director** opens a game with Director mode on, ready to record. **Plain** is the short link for posting. The current ladder rungs 11 to 14 never play, so the challenge opponents stay out of videos.

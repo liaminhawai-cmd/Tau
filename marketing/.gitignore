@@ -3,3 +3,6 @@
 # limit -- and one committed here blocks every push the trainer makes until it's cut back out of
 # history. The GIF of the same animation is the copy to share.
 *.zip
+
+# AI-GAMES.bat checks out the website code here
+.main/
