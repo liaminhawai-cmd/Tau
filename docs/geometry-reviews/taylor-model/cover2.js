@@ -5,6 +5,7 @@
 const fs = require('fs'), path = require('path');
 const { run2 } = require('./cert2.js');
 const { MODES } = require('./modes2.js');
+const { fromEnv, armResultsDir } = require('./problem.js');
 // An attempt that needs more than this many solver passes is given up on and the cell is split. Accepted
 // cells use at most about 3,700 (a failing attempt in a mode that carries up to eight branches can otherwise
 // run for many minutes before it gives up, and wide cells fail more often than not). A cell is only accepted
@@ -23,6 +24,7 @@ const MERGE_MAXW = +(process.env.MERGE_MAXW || Infinity), MAX_OPS_MERGE = +(proc
 // moves the remainders of push amounts into noise symbols (see remToSym in push-tm.js), { vertexDedup: true }
 // counts a hub resting on a leg vertex once (see sameVertex). Each cell records the options that proved it.
 function cover(bp, bd, a0, a1, deg = 6, minW = 1e-5, log, base = {}) {
+  const problem = fromEnv();
   const sym = base.symRem ? 1 : 0, tag = base.vertexDedup ? { vtx: 1 } : {};
   const leaves = [], fails = [], reasons = {};
   let runs = 0;
@@ -30,7 +32,7 @@ function cover(bp, bd, a0, a1, deg = 6, minW = 1e-5, log, base = {}) {
   function go(a, b) {
     runs++;
     let r = null, err = null;
-    try { r = run2(bp, bd, a, b, deg, { push: base, maxPasses: MAX_PASSES, maxOps: MAX_OPS }); } catch (e) { err = e.message; }
+    try { r = run2(bp, bd, a, b, deg, { push: base, maxPasses: MAX_PASSES, maxOps: MAX_OPS, problem }); } catch (e) { err = e.message; }
     if (r && r.marginLo > 0) { leaves.push({ a, b, m: r.marginLo, hub: r.hubMoveLo, ms: r.ms, branches: 1, mode: 'plain', sym, ...tag }); return; }
     const errOf = {};
     for (const [mode, maxW, push] of MODES) {
@@ -42,7 +44,7 @@ function cover(bp, bd, a0, a1, deg = 6, minW = 1e-5, log, base = {}) {
       if (base_mode !== mode && !/branch cap reached/.test(errOf[base_mode] || '')) continue;
       if (base_mode !== mode && b - a > MERGE_MAXW) continue;
       let r2 = null;
-      try { r2 = run2(bp, bd, a, b, deg, { push: { ...base, ...push }, maxPasses: MAX_PASSES, maxOps: base_mode !== mode ? MAX_OPS_MERGE : MAX_OPS }); } catch (e) { err = err || e.message; errOf[mode] = e.message; }
+      try { r2 = run2(bp, bd, a, b, deg, { push: { ...base, ...push }, maxPasses: MAX_PASSES, maxOps: base_mode !== mode ? MAX_OPS_MERGE : MAX_OPS, problem }); } catch (e) { err = err || e.message; errOf[mode] = e.message; }
       if (r2 && r2.marginLo > 0) { leaves.push({ a, b, m: r2.marginLo, hub: r2.hubMoveLo, ms: r2.ms, branches: r2.info.maxBranches || 1, mode, sym, ...tag }); return; }
     }
     const why = err ? err.replace(/[-\d.e+,]+/g, '#').slice(0, 80) : 'margin not positive';
@@ -68,7 +70,7 @@ if (require.main === module) {
     minMargin: Math.min(...res.leaves.map(l => l.m)), minHubMove: Math.min(...res.leaves.map(l => l.hub)),
     modes, splitReasons: res.reasons, fails: res.fails.slice(0, 5),
   }, null, 1));
-  const dir = path.join(__dirname, 'results', `arm_${bp}_${bd > 0 ? 'p' : 'm'}`);
+  const dir = armResultsDir(fromEnv(), bp, bd);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, `cover_${a0}_${a1}_d${deg}.json`), JSON.stringify({ leaves: res.leaves, fails: res.fails }));
 }
