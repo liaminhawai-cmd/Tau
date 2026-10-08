@@ -85,21 +85,56 @@ function crossingCheck(r0) {
   const clearOf = skip => { let m = Infinity; for (const [key, d] of closest) if (key !== skip) m = Math.min(m, d); return m; };
   if (possible[0].length) return { ok: false, why: 'a foot may start on a line', clearance: Infinity };
   const pairs = new Map();
-  for (let k = 1; k <= KRED; k++) for (const [j, c] of possible[k]) { const key = j + ':' + c; const e = pairs.get(key) || { j, c, k1: k, k2: k }; e.k2 = k; pairs.set(key, e); }
-  // clearance: how far the other (foot, line) pairs stay from touching; pairs that may touch have none to report
+  for (let k = 1; k <= KRED; k++) for (const [j, c] of possible[k]) {
+    const key = j + ':' + c;
+    const e = pairs.get(key) || { j, c, k1: k, k2: k };
+    e.k2 = k; pairs.set(key, e);
+  }
+  // The crossing budget is PER TRIPOD, not per foot. Two different feet may therefore be on two
+  // different lines at once, provided the piece never becomes clear of all lines in between.
+  // The old checker rejected every such case, which incorrectly declared Target1 illegal:
+  // foot 2 is on r0 for k=23..39 and foot 1 is on r1 for k=38..82, so the episodes overlap.
   const clearance = pairs.size ? (pairs.size === 1 ? clearOf([...pairs.keys()][0]) : -Infinity) : clearOf(null);
   if (!pairs.size) return { ok: true, crossing: 'none', clearance };
-  if (pairs.size > 1) return { ok: false, why: 'more than one (foot, line) pair may touch: ' + [...pairs.keys()].join(' '), clearance };
-  const { j, c, k1, k2 } = [...pairs.values()][0];
-  if (c > 1) return { ok: false, why: `foot ${j} may touch side arc ${CIRCLES[c].id}`, clearance };
-  // the pair's radius must be strictly monotone from one substep before its window to one after
-  const lo = Math.max(0, k1 - 1), hi = Math.min(KRED, k2 + 1);
-  let dec = true, inc = true;
-  for (let k = lo; k < hi; k++) {
-    if (!(rho[k + 1][j][c][1] < rho[k][j][c][0])) dec = false;
-    if (!(rho[k + 1][j][c][0] > rho[k][j][c][1])) inc = false;
+
+  // A single foot touching a second distinct line is still illegal unless the lines meet at a printed
+  // corner. Keep this conservative here; Target1's overlapping contacts are on different feet.
+  const byFoot = new Map();
+  for (const e of pairs.values()) {
+    const a = byFoot.get(e.j) || []; a.push(e); byFoot.set(e.j, a);
   }
-  if (!dec && !inc) return { ok: false, why: `foot ${j}'s radius is not monotone around its window [${k1}, ${k2}] on ${CIRCLES[c].id}`, clearance };
+  for (const [j, es] of byFoot) if (es.length > 1)
+    return { ok: false, why: 'foot ' + j + ' may touch multiple distinct lines: ' + es.map(e => CIRCLES[e.c].id).join(' '), clearance };
+
+  // Every pair has to be monotone around its own contact window. This turns its possible window into
+  // a single contiguous true-contact interval rather than a potentially disconnected event.
+  for (const e of pairs.values()) {
+    if (e.c > 1) return { ok: false, why: \`foot \${e.j} may touch side arc \${CIRCLES[e.c].id}\`, clearance };
+    const lo = Math.max(0, e.k1 - 1), hi = Math.min(KRED, e.k2 + 1);
+    let dec = true, inc = true;
+    for (let k = lo; k < hi; k++) {
+      if (!(rho[k + 1][e.j][e.c][1] < rho[k][e.j][e.c][0])) dec = false;
+      if (!(rho[k + 1][e.j][e.c][0] > rho[k][e.j][e.c][1])) inc = false;
+    }
+    if (!dec && !inc)
+      return { ok: false, why: \`foot \${e.j}'s radius is not monotone around its window [\${e.k1}, \${e.k2}] on \${CIRCLES[e.c].id}\`, clearance };
+  }
+
+  // The whole tripod must remain in one continuous line-contact episode. It is sufficient to have
+  // at least one line guaranteed ON at every substep from the first possible contact through the last.
+  // At a boundary substep only some parameters may be on the line; monotonicity above guarantees that
+  // any trajectory which has entered the episode cannot leave before the guaranteed core carries it on.
+  const first = Math.min(...[...pairs.values()].map(e => e.k1));
+  const last = Math.max(...[...pairs.values()].map(e => e.k2));
+  for (let k = first; k <= last; k++) {
+    const guaranteed = [...new Set(possible[k].map(([j, c]) => j + ':' + c))].some(key => {
+      const [j, c] = key.split(':').map(Number);
+      return upperDist(rho[k][j][c], CIRCLES[c].r) <= TOUCH;
+    });
+    if (!guaranteed)
+      return { ok: false, why: \`line-contact episode may close between substeps \${k - 1} and \${k}\`, clearance };
+  }
+  const labels = [...pairs.values()].map(e => \`foot \${e.j} / \${CIRCLES[e.c].id} substeps \${e.k1}..\${e.k2}\`);
   return { ok: true, crossing: `foot ${j} / ${CIRCLES[c].id} substeps ${k1}..${k2}`, window: [k1, k2], clearance };
 }
 
