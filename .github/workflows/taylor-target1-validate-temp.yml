@@ -1,0 +1,52 @@
+name: Target1 cover validation (temporary)
+
+on:
+  push:
+    branches:
+      - claude/target1-param-taylor-cert
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Fetch certificate sources
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+          repo="liaminhawai-cmd/Tau"; branch="claude/target1-param-taylor-cert"
+          req=Request(f"https://api.github.com/repos/{repo}/git/trees/{branch}?recursive=1",
+                      headers={"User-Agent":"tau-target1-validate"})
+          tree=json.load(urlopen(req)); wanted=[]
+          for x in tree["tree"]:
+              p=x["path"]
+              if x["type"]=="blob" and (p=="index.html" or p=="nn/engine.js" or
+                  (p.startswith("docs/geometry-reviews/taylor-model/") and
+                   not p.startswith("docs/geometry-reviews/taylor-model/results/"))):
+                  wanted.append(p)
+          for p in wanted:
+              req=Request(f"https://raw.githubusercontent.com/{repo}/{branch}/{p}",
+                          headers={"User-Agent":"tau-target1-validate"})
+              q=Path(p); q.parent.mkdir(parents=True,exist_ok=True); q.write_bytes(urlopen(req).read())
+          print("fetched",len(wanted))
+          PY
+      - name: Target1 adaptive cover
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1
+          SYMREM: "1"
+          VTX: "1"
+          MAXPASSES: "8000"
+          MAXOPS: "3500000"
+        run: node cover2.js 2 1 2 9.6828 4
+      - name: Validate every cover cell
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1
+        run: node validate-cover2.js 2 1 2 9.6828 3 4
