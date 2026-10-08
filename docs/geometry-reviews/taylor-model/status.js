@@ -4,6 +4,8 @@
 'use strict';
 const fs = require('fs'), path = require('path');
 const R = path.join(__dirname, 'results');
+const { fromEnv, armResultsDir } = require('./problem.js');
+const PR = fromEnv();
 // the engine's largest fully executed target per arm (six-arms/blue-limits.js) and the 3-degree-call limit
 const ARMS = [
   { bp: 0, bd: -1, L: 63.375, B: 63.692659668 }, { bp: 0, bd: 1, L: 44.25, B: 44.343482055 },
@@ -17,7 +19,7 @@ const parseOut = f => {
 };
 
 function collect(a) {
-  const tag = `${a.bp}_${a.bd > 0 ? 'p' : 'm'}`, dir = path.join(R, `arm_${tag}`);
+  const tag = `${a.bp}_${a.bd > 0 ? 'p' : 'm'}`, dir = armResultsDir(PR, a.bp, a.bd);
   let covers = [], audits = [], contain = [], legal = null, source = `arm_${tag}`;
   if (fs.existsSync(dir)) {
     for (const f of fs.readdirSync(dir)) {
@@ -27,7 +29,7 @@ function collect(a) {
       else if (f === 'legal.out') legal = path.join(dir, f);
     }
   }
-  if (!covers.length && a.bp === 1 && a.bd < 0) {            // the first pipeline's results
+  if (!covers.length && PR.name === 'brief6' && a.bp === 1 && a.bd < 0) {            // the first pipeline's results
     source = 'results (first pipeline)';
     for (const f of fs.readdirSync(R)) {
       if (/^cover_.*_d6\.json$/.test(f)) covers.push(path.join(R, f));
