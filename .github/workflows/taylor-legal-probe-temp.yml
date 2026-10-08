@@ -40,45 +40,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Inspect first Target1 legality cell
+      - name: Validate corrected Target1 legality cell
         working-directory: docs/geometry-reviews/taylor-model
         env:
           PROBLEM: target1
+          SYMREM: "1"
+          VTX: "1"
         run: |
+          node --check legal-red.js
           node - <<'NODE'
-          const iv=require('./iv.js'), P=require('./push-tm.js');
-          const {run2,redPath}=require('./cert2.js');
-          const {fromEnv}=require('./problem.js');
-          const pr=fromEnv(), bp=2, bd=1, a=2, b=2.0037513671875002, deg=4;
-          const TOUCH=0.81;
-          const CIRCLES=[
-            {id:'r0',cx:0,cy:0,r:40},{id:'r1',cx:0,cy:0,r:53.3},
-            {id:'a0',cx:-66.667,cy:0,r:40},{id:'a1',cx:66.667,cy:0,r:40}
-          ];
-          const feetAt=pose=>[0,1,2].map(j=>{
-            const an=iv.add(pose.rot,iv.mul([j,j],P.TWO_PI_3));
-            return {x:iv.add(pose.x,iv.mul(iv.cos(an),[P.footR,P.footR])),
-                    y:iv.add(pose.y,iv.mul(iv.sin(an),[P.footR,P.footR]))};
-          });
-          const rad=(f,c)=>iv.sqrt(iv.add(iv.sqr(iv.sub(f.x,[c.cx,c.cx])),
-                                           iv.sqr(iv.sub(f.y,[c.cy,c.cy]))));
-          const upper=(rho,r)=>iv.up(Math.max(Math.abs(rho[0]-r),Math.abs(rho[1]-r)));
-          const r=run2(bp,bd,a,b,deg,{push:{symRem:true,vertexDedup:true},keepTrace:true,phaseAOnly:true,problem:pr});
-          const it=r.trace.items[0], red=P.fold(it.red[0]), path=redPath(red,pr.witness.pivot,pr.witness.dir,pr.kRed);
-          const poses=[{x:red.x.range(),y:red.y.range(),rot:red.rot.range()},...path.map(p=>({x:p.x,y:p.y,rot:p.rot}))];
-          const data=[];
-          for(let k=0;k<poses.length;k++){
-            const fs=feetAt(poses[k]);
-            for(const j of [1,2]) for(const c of CIRCLES.slice(0,2)){
-              const rho=rad(fs[j],c), d=[rho[0]>c.r?rho[0]-c.r:rho[1]<c.r?c.r-rho[1]:0, upper(rho,c.r)];
-              if(d[0]<=TOUCH) data.push({k,pair:j+':'+c.id,lo:+d[0].toFixed(9),hi:+d[1].toFixed(9)});
-            }
-          }
-          const by={};
-          for(const x of data)(by[x.pair]??=[]).push(x);
-          for(const [pair,xs] of Object.entries(by)){
-            console.log(pair,'k-window',xs[0].k,'..',xs.at(-1).k,'minGuaranteed',Math.min(...xs.map(x=>x.hi)));
-            console.log(xs.filter((x,i,a)=>i===0||i===a.length-1||x.hi<=TOUCH).slice(0,30));
-          }
-          console.log('margin',r.marginLo,'firstContact',r.info.firstContact,'redBranches',r.redBranches);
+          const {checkCell}=require('./legal-red.js');
+          const r=checkCell(2,1,2,2.0037513671875002,4,'plain',1,1);
+          console.log(JSON.stringify(r,null,2));
+          if(!r.ok) process.exit(2);
           NODE
+
