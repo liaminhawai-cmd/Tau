@@ -1,4 +1,4 @@
-// Randomised soundness test of the Taylor-model operations. For random models (degree-N polynomials in t,
+// Randomised soundness test of the Taylor-model operations. A clean-run CI check does not require the historical result corpus; cover/audit/containment generate their own Target1 outputs. For random models (degree-N polynomials in t,
 // two noise symbols, an interval remainder), every operation's result is compared with the same operation
 // done in plain doubles on sampled members of the inputs: each sampled value must lie inside the result's
 // enclosure at that t. This catches a wrong bound, a dropped term or a sign error; it does not prove the
