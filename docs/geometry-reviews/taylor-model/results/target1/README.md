@@ -1,60 +1,28 @@
-# Target 1 — first cert2.js run (reply family (2,+), witness (0,-))
+# Target 1 — Taylor-model counter-response cover
 
-Problem: `problems/target1.json` (seed `[12.2195,37.7663,11.0497,2.8121,28.9609,-13.703]`,
-first mover blue, witness red (0,-1), kRed = 120 substeps = 45.0° red crossing limit).
+Target 1 is the mined seed from record line 176, with blue first to move. The blue move family currently addressed is pivot 2, direction +. The fixed seed and original witness setup are in `problems/target1.json`.
 
-Command: `SYMREM=1 VTX=1 PROBLEM=target1 node cert2.js 2 1 <a0> <a1> 4`
+## Initial diagnostic
 
-| run | interval | result |
-| --- | --- | --- |
-| whole cell | [2.4, 2.6] | **refused**: phase B substep 19: sqrt range not positive [-19.158, 93.535] |
-| centre point | [2.4999, 2.5001] | **proved**: margin [5.9147, 5.9149]u, foot 1, hubMoveLo 19.651u, firstContact substep 3 |
-| half | [2.4, 2.5] | **refused**: phase B substep 46: sqrt range not positive [-2.651, 31.062] |
-| half | [2.5, 2.6] | **refused**: phase B substep 45: sqrt range not positive [-0.601, 5.226] |
+A single broad interval `[2.4°,2.6°]` refused because a Taylor-model square-root enclosure crossed zero. That was an over-wide enclosure, not evidence that the physical move itself was illegal. Adaptive interval subdivision then produced the covers below.
 
-The whole cell and both halves refuse in phase B with a Taylor-model `sqrt` whose operand
-range crosses zero (a squared-sum enclosure dips below 0 under interval over-approximation).
-The centre proves the terminal throw with margin ≈ 5.9u. No proof code was changed to force a pass.
+## Response cover
 
-## Recorded lower-interval cover
+The current per-cell result is summarized in [REPLY-COVER-MAP.md](REPLY-COVER-MAP.md):
 
-The adaptive Taylor cover for Target 1 on [2°, 9.6828°], with SYMREM=1, VTX=1 and degree 4,
-has a recorded result of 427 accepted cells and 0 failed leaves in 853 attempts. The independent
-audit record reports 427/427 cells reproduced and 0 mismatches. Its recorded minimum margin was
-5.409085263853455u and minimum hub-motion lower bound was 17.64584513837921u.
+- [2°, 9.6828°]: red response (pivot 0, direction −), 120 substeps; 427 accepted cells.
+- [9.6828°, 9.73°]: same red response; 2 accepted cells.
+- [9.73°, 14.33°]: red response (pivot 2, direction +), 36 substeps; 51 accepted cells.
 
-The cell-by-cell engine containment and legality closure is being re-run by
-[Target1 cell closure](https://github.com/liaminhawai-cmd/Tau/actions/runs/37889490556);
-until that workflow completes, the recorded cover and audit should not be described as a fresh
-end-to-end closure run.
+Across these intervals there are 480 accepted cells with positive recorded Taylor-model throw margins. The smallest is 0.097729u in the upper interval. The intervals join at both shared boundaries, so the current cover has no angular gap within [2°,14.33°] for this blue move family.
 
-## Newly certified gap
+## Saved certificate files
 
-The interval [9.6828°, 9.73°] is covered by two degree-4 Taylor-model cells:
-[9.6828°, 9.7064°] and [9.7064°, 9.73°]. Both were accepted, independently reproduced (2/2,
-zero mismatches), and passed the cell-wise legality check. The minimum certified throw margin
-is 6.816387359537115u and the minimum hub-motion lower bound is 17.636291379074123u.
+- Lower interval: `arm_2_p/cover_2_9.6828_d4.json` (being regenerated as part of the full certificate-bundle job); the recorded cover has 427 accepted cells and no failed leaves.
+- Middle gap: [arm_2_p/cover_9.6828_9.73_d4.json](arm_2_p/cover_9.6828_9.73_d4.json), with [audit summary](angle-gap-audit.json) and [closure record](angle-gap-closure.json).
+- Upper interval: [target1-red2plus per-cell cover](../target1-red2plus/arm_2_p/cover_9.73_14.33_d4.json), with the saved audit and closure summaries.
+- The full interval-by-interval picture is [REPLY-COVER-MAP.md](REPLY-COVER-MAP.md).
 
-See [ANGLE-GAP.md](ANGLE-GAP.md), the [cover cells](arm_2_p/cover_9.6828_9.73_d4.json),
-and the saved [audit](angle-gap-audit.json) / [closure diagnostics](angle-gap-closure.json).
-The engine/model containment diagnostic sampled three points per cell, for 2,178 comparisons:
-zero failures under the checker's 1e-9 tolerance; the largest reported excess was 1.78e-14.
+## Claim boundary
 
-## Upper interval status
-
-The earlier sentence claiming [9.73°, 14.33°] was "already covered by response-cover work" was
-too strong for this Target 1 seed: that response-cover material is not a committed, matching
-per-cell certificate for this fixture. A fixed-witness degree-4 cover is now being attempted in
-[Target1 upper response witness test](https://github.com/liaminhawai-cmd/Tau/actions/runs/37891119459).
-A separate discovery-only engine scan found a winning red response at all 47 grid points spaced
-0.1° apart; red arms (0,-) and (2,+) each won at all 47 sampled points. Those samples suggest
-good candidate witnesses but do not prove the angles between them. The upper interval must remain
-unclaimed until the Taylor cover, audit, and cell-wise checks close.
-
-## Scope and remaining work
-
-This is one blue reply arm (2,+) against a fixed red witness. Even if all the angular intervals close,
-that is not by itself a proof that the original position is dead against every legal blue move. The
-full theorem still needs all relevant reply families and explicit justification of the Taylor-model
-remainder and interval arithmetic assumptions. Sampled engine containment is a correspondence check,
-not a universal proof for every floating-point trajectory.
+This is a counter-response cover for one blue arm, not a proof that the starting position is dead against every legal Blue move. The accepted cells are intended as interval proof objects under the soundness of the Taylor-model remainder and arithmetic operations. Cell-wise comparison with the shipped engine samples several angles per cell; that is useful consistency evidence, not proof of all floating-point executions. The other blue arms and the formal soundness argument remain necessary for the full theorem.

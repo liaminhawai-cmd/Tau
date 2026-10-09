@@ -1,11 +1,11 @@
 # Target 1 angle-gap certificate
 
-**Run:** [GitHub Actions #1](https://github.com/liaminhawai-cmd/Tau/actions/runs/37890116267)  
+**Run:** [GitHub Actions](https://github.com/liaminhawai-cmd/Tau/actions/runs/37890116267)  
 **Branch:** `claude/target1-gap-cert`  
 **Problem fixture:** `problems/target1.json`  
 **Proof source:** `cover2.js`, degree 4; `SYMREM=1`, `VTX=1`.
 
-## Result
+## Middle-gap result
 
 The fixed red witness arm `(0,-)`, `kRed=120` substeps, certifies the whole closed blue stop-angle interval
 `[9.6828°, 9.73°]` using two accepted Taylor-model cells on blue arm `(2,+)`.
@@ -19,32 +19,14 @@ No cell failed. Independent replay reproduced the two recorded margins exactly (
 
 ## Engine correspondence checks
 
-The cellwise checker reported:
-- 0 containment failures and 0 red-legality failures under its (10^{-9}) point-in-enclosure tolerance;
-- 0 stopped cells;
-- 2,178 sampled containment comparisons across three sample points per cell; the largest reported excess was (1.78\times10^{-14}), far below the checker tolerance;
-- crossing episode remains the same across both cells: foot 2 on ring r0 at substeps 23–39 overlaps foot 1 on ring r1 at substeps 38–82.
+The cellwise checker reported 0 containment failures, 0 red-legality failures and 0 stopped cells under its 1e-9 point-in-enclosure tolerance. Across three sample angles per cell it made 2,178 comparisons; the largest reported excess was 1.7763568394002505e-14. The red crossing episode was foot 2 on ring r0 at substeps 23–39 overlapping foot 1 on ring r1 at substeps 38–82.
 
-The containment figures are **sampled engine/model correspondence evidence**, not a universal proof about every floating-point trajectory. The mathematical result comes from the accepted Taylor cells, assuming the Taylor-model interval/remainder operations and legality encoding are sound.
+These are sampled engine/model correspondence diagnostics, not a universal proof about every floating-point trajectory. The conditional interval result relies on the Taylor-model enclosure and the correctness of its arithmetic/remainder rules.
+
+## The upper neighbour is now covered too
+
+The adjacent interval `[9.73°,14.33°]` was subsequently covered using a different fixed red witness: pivot 2, direction +, 36 substeps. Its degree-4 cover has 51 accepted cells, zero failed leaves, exact replay audit 51/51 with zero mismatches, and zero containment/legality/stopped-cell failures. Its minimum recorded throw margin is 0.09772912589987467u. See [REPLY-COVER-MAP.md](REPLY-COVER-MAP.md) and [the upper cell corpus](../target1-red2plus/arm_2_p/cover_9.73_14.33_d4.json).
 
 ## Scope warning
 
-This closes the small interval `[9.6828°, 9.73°]` for this Target 1 fixture and this fixed red response. It does **not** by itself close the full `[2°, 14.33°]` interval. The current Target 1 branch contains a recorded cover for `[2°, 9.6828°]` and this new gap certificate, but no corresponding committed per-cell certificate for `[9.73°, 14.33°]`.
-
-The separate response-cover research notes explicitly distinguish sampled response-band discovery from a proof: sampled apparent covers were contradicted by later probes, and a formal response-patch cover remained unimplemented. Therefore the upper interval must not be counted as proved until a matching certificate for this exact seed is produced and audited.
-
-## Reproduction
-
-From `docs/geometry-reviews/taylor-model`:
-
-```sh
-PROBLEM=target1 SYMREM=1 VTX=1 node cover2.js 2 1 9.6828 9.73 4 1e-5
-PROBLEM=target1 SYMREM=1 VTX=1 node audit2.js 2 1 9.6828 9.73 4
-PROBLEM=target1 SYMREM=1 VTX=1 node validate-cover2.js 2 1 9.6828 9.73 3 4
-```
-
-Committed records:
-- `arm_2_p/cover_9.6828_9.73_d4.json`: accepted leaves and their proof bounds.
-- `angle-gap-cover-summary.json`: cover statistics.
-- `angle-gap-audit.json`: replay/audit summary.
-- `angle-gap-closure.json`: containment and legality check summary.
+Together with the recorded lower interval `[2°,9.6828°]`, these certificates leave no angular gap in `[2°,14.33°]` for blue arm `(2,+)`. This is not a proof that the starting position is dead against every legal blue move: the other blue arms still need coverage. In addition, the Taylor-model arithmetic/remainder and idealised collision-rule encoding need a complete soundness argument before claiming a fully formal theorem.

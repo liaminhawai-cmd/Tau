@@ -1,0 +1,34 @@
+{
+  "arm": [
+    2,
+    1
+  ],
+  "interval": [
+    9.73,
+    14.33
+  ],
+  "deg": 4,
+  "cells": 51,
+  "failed": 0,
+  "runs": 101,
+  "seconds": 23.539,
+  "width": {
+    "min": 0.0022460937499992895,
+    "median": 0.035937500000001066,
+    "max": 0.5749999999999993
+  },
+  "minMargin": 0.09772912589987467,
+  "minHubMove": 2.388222849258422,
+  "modes": {
+    "plain": 37,
+    "straddle": 14
+  },
+  "splitReasons": {
+    "phase B substep: inv range contains zero": 2,
+    "phase B substep: sqrt range not positive": 33,
+    "phase B substep: vertical contact not excluded": 4,
+    "phase B substep: near-parallel segments": 4,
+    "phase B substep: deep-crossing rule not excluded": 7
+  },
+  "fails": []
+}
