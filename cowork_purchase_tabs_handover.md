@@ -32,7 +32,7 @@ Tau is a two-player abstract strategy game designed by Liam in Melbourne. It beg
 - A neural network Liam trained on the game, which plays the top AI levels.
 - A physical prototype that exists and works, but nothing has been made in quantity yet.
 
-**What these parts are for.** Liam is about to launch a challenge: the first person to beat AI level 14 playing as Red wins a physical set, and anyone who beats level 13 gets a free Steam key. He's also sending sets as gifts to martial artists who might feature the game, starting with Firas Zahabi (Tristar Gym, Montreal) and later Demetrious "Mighty Mouse" Johnson. Those sets need to exist first. This order is **10 sets made as cheaply as possible**, which Liam assembles and paints himself in Melbourne. The budget for everything, including posting two sets overseas, is **A$500**.
+**What these parts are for.** Liam is about to launch a challenge: the first person to beat AI level 14 playing as Red wins a physical set, and anyone who beats level 13 gets a free Steam key. He's also sending sets as gifts to martial artists who might feature the game, starting with Firas Zahabi (Tristar Gym, Montreal) and later Demetrious "Mighty Mouse" Johnson. Those sets need to exist first. This order is **10 sets made as cheaply as possible**, which Liam prints and assembles himself in Melbourne. The budget for everything, including posting two sets overseas, is **A$500**.
 
 ---
 
@@ -61,8 +61,7 @@ Why each spec matters, so you can judge listings.
 ### The pieces: two tripods, one red and one blue
 
 - **Size:** about 86 × 75 × 54 mm, with feet about 46 mm from the centre.
-- **Material:** Liam prints them himself on his Ender 3 in PETG or PLA+. Resin or silk PLA would snap at the ankles.
-- **Paint:** red and blue spray paint over a plastic primer.
+- **Material:** Liam prints them himself on his Ender 3 in PETG, in **red and blue filament**, so nothing gets painted. Resin or silk PLA would snap at the ankles.
 
 ### The magnets: tiny discs in the feet
 
@@ -74,7 +73,7 @@ Why each spec matters, so you can judge listings.
 ### The base: the ring the disc sits in
 
 - A plastic rim that holds the disc flush with its top edge, so a piece slides right off the edge rather than hitting a lip. It's printed in 4 snap-together segments.
-- Liam prints it himself in PETG, so it comes out of the same filament roll. No separate purchase is needed, apart from an optional quote for having it printed by a service.
+- Liam prints it himself in PETG, from whatever is left on the red and blue rolls. No separate purchase is needed, apart from an optional quote for having it printed by a service.
 
 ### Packaging and paperwork
 
@@ -94,15 +93,14 @@ These are the plan's figures in AUD. Flag anything that comes out more than 25% 
 |---|---|---|---|
 | 1 | Steel discs, 430 stainless | 10 | 47.50 |
 | 2 | Vinyl ring decals | 10 | 80.00 |
-| 3 | PETG filament, 1 kg | 1 roll | 30.00 |
+| 3 | PETG filament, 1 kg, red and blue | 2 rolls | 55.00 |
 | 4 | Magnets | 100+ | 15.00 |
-| 5 | Spray paint red and blue, plus plastic primer | 2 cans + primer | 16.00 |
 | 6 | QR rules cards | 10 | 10.00 |
 | 7 | Card stock for boxes and inserts | enough for 10 boxes | 20.00 |
 | 8 | Outer mailers | 2 | 6.00 |
 | 9 | Freight for the discs | 1 order | 120.00 |
 | 10 | Postage, gift set to Canada plus prize set | 2 | 128.00 |
-| | Spare | | 27.50 |
+| | Spare | | 18.50 |
 | | **Total** | | **500.00** |
 
 ### 1. Steel discs: Guangzhou Jiangy on Alibaba
@@ -125,10 +123,11 @@ These are the plan's figures in AUD. Flag anything that comes out more than 25% 
 - Stop before the artwork upload.
 - **If Sticker Mule is far over budget,** also open one Melbourne vinyl or sign printer that does custom round decals, and note its quote form without filling it in.
 
-### 3. PETG filament
+### 3. PETG filament, one red roll and one blue roll
 
-- Find 1 kg of 1.75 mm PETG from an Australian seller with fast delivery to Melbourne, for example Amazon AU or a local 3D printing store.
-- A neutral colour (white or grey) takes red and blue paint best. Pick a listing with good reviews, around A$30.
+- Find 1 kg of 1.75 mm PETG in **red** and 1 kg in **blue** from an Australian seller with fast delivery to Melbourne, for example Amazon AU or a local 3D printing store.
+- Strong, solid colours (not translucent or silk), close to the game's red (#d05a48) and blue (#2f4bd6 to #5487c4). The same brand for both is best. Around A$25 to A$30 a roll.
+- eSUN and Overture both make PETG. Check that their red and blue are in stock.
 
 ### 4. Magnets
 
@@ -136,14 +135,7 @@ These are the plan's figures in AUD. Flag anything that comes out more than 25% 
 - Then find **6 mm × 2 mm** in the same grade and quantity.
 - Prefer an Australian eBay or Amazon AU seller if one is near A$15. Otherwise use AliExpress, and note the delivery time, which can be about a month. That lead time matters, because magnets are the slowest part of the order.
 
-### 5. Spray paint: Bunnings
-
-- Open Bunnings (bunnings.com.au) for:
-  - a red spray paint suitable for plastic
-  - a blue spray paint suitable for plastic
-  - a plastic primer
-- Brands like Rust-Oleum or Dulux Duramax are fine. Pick a strong red and a strong blue.
-- Note the prices and whether the nearest Melbourne store has them in stock, if the site shows that without signing in.
+### 5. (Removed: no paint. The pieces are printed in coloured filament, and the discs get a decal or UV print.)
 
 ### 6. QR rules cards: Vistaprint Australia
 
