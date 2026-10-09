@@ -1,0 +1,86 @@
+name: Target1 full lower certificate bundle
+on:
+  push:
+    branches:
+      - claude/target1-gap-cert
+    paths:
+      - '.github/workflows/target1-full-certificate-bundle.yml'
+      - 'docs/geometry-reviews/taylor-model/cover2.js'
+      - 'docs/geometry-reviews/taylor-model/audit2.js'
+      - 'docs/geometry-reviews/taylor-model/validate-cover2.js'
+      - 'docs/geometry-reviews/taylor-model/cert2.js'
+      - 'docs/geometry-reviews/taylor-model/contain2.js'
+      - 'docs/geometry-reviews/taylor-model/legal-red.js'
+      - 'docs/geometry-reviews/taylor-model/modes2.js'
+      - 'docs/geometry-reviews/taylor-model/tm.js'
+      - 'docs/geometry-reviews/taylor-model/iv.js'
+      - 'docs/geometry-reviews/taylor-model/push-tm.js'
+      - 'docs/geometry-reviews/taylor-model/problem.js'
+      - 'docs/geometry-reviews/taylor-model/problems/target1.json'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/target1-gap-cert
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Rebuild lower Target1 cover
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1
+          SYMREM: "1"
+          VTX: "1"
+          MAXPASSES: "8000"
+          MAXOPS: "3500000"
+        run: |
+          node cover2.js 2 1 2 9.6828 4 1e-5 | tee target1-lower-cover-summary.json
+          node -e "const r=require('./target1-lower-cover-summary.json'); if(r.cells!==427 || r.failed!==0) { console.error(r); process.exit(1) }"
+      - name: Independently replay every lower cell
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1
+          SYMREM: "1"
+          VTX: "1"
+        run: |
+          node audit2.js 2 1 2 9.6828 4 | tee target1-lower-audit-summary.json
+          node -e "const r=require('./target1-lower-audit-summary.json'); if(r.cells!==427 || r.reproduced!==427 || r.mismatches!==0) { console.error(r); process.exit(1) }"
+      - name: Validate lower cells against engine samples and red-legality rules
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1
+          SYMREM: "1"
+          VTX: "1"
+        run: |
+          node validate-cover2.js 2 1 2 9.6828 3 4 | tee target1-lower-closure.json
+          node -e "const r=require('./target1-lower-closure.json'); if(r.cells!==427 || r.containBad!==0 || r.legalBad!==0 || r.stopped!==0) { console.error(r); process.exit(1) }"
+      - name: Persist the full certificate and summaries on the branch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/geometry-reviews/taylor-model/results/target1/arm_2_p/cover_2_9.6828_d4.json
+          git add docs/geometry-reviews/taylor-model/results/target1/arm_2_p/audit_2_9.6828.json
+          git add docs/geometry-reviews/taylor-model/target1-lower-cover-summary.json
+          git add docs/geometry-reviews/taylor-model/target1-lower-audit-summary.json
+          git add docs/geometry-reviews/taylor-model/target1-lower-closure.json
+          git commit -m "proof(taylor-model): persist Target1 lower-interval certificate"
+          git push origin HEAD:claude/target1-gap-cert
+      - name: Upload full certificate bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: target1-full-lower-certificate
+          path: |
+            docs/geometry-reviews/taylor-model/results/target1/arm_2_p/cover_2_9.6828_d4.json
+            docs/geometry-reviews/taylor-model/results/target1/arm_2_p/audit_2_9.6828.json
+            docs/geometry-reviews/taylor-model/target1-lower-cover-summary.json
+            docs/geometry-reviews/taylor-model/target1-lower-audit-summary.json
+            docs/geometry-reviews/taylor-model/target1-lower-closure.json
+          if-no-files-found: error
