@@ -21,7 +21,7 @@ jobs:
         working-directory: docs/geometry-reviews/taylor-model
         env:
           PROBLEM: target1
-        run: node response-scan.js 9.73 14.33 0.1 2 1 | tee target1-response-scan-summary.json
+        run: node response-scan.js 9.73 14.33 0.01 2 1 | tee target1-response-scan-summary.json
       - name: Upload discovery results
         uses: actions/upload-artifact@v4
         with:
