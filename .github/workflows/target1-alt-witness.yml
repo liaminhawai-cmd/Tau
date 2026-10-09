@@ -1,0 +1,72 @@
+name: Target1 alternate upper witness certificate
+on:
+  push:
+    branches:
+      - claude/target1-gap-cert
+    paths:
+      - 'docs/geometry-reviews/taylor-model/problems/target1-red2plus.json'
+      - 'docs/geometry-reviews/taylor-model/cover2.js'
+      - 'docs/geometry-reviews/taylor-model/audit2.js'
+      - 'docs/geometry-reviews/taylor-model/validate-cover2.js'
+      - 'docs/geometry-reviews/taylor-model/cert2.js'
+      - 'docs/geometry-reviews/taylor-model/contain2.js'
+      - 'docs/geometry-reviews/taylor-model/legal-red.js'
+      - 'docs/geometry-reviews/taylor-model/modes2.js'
+      - 'docs/geometry-reviews/taylor-model/tm.js'
+      - 'docs/geometry-reviews/taylor-model/iv.js'
+      - 'docs/geometry-reviews/taylor-model/push-tm.js'
+      - 'docs/geometry-reviews/taylor-model/problem.js'
+      - '.github/workflows/target1-alt-witness.yml'
+jobs:
+  alternate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Cover upper interval with red witness (2,+), 36 substeps
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1-red2plus
+          SYMREM: "1"
+          VTX: "1"
+          MAXPASSES: "8000"
+          MAXOPS: "3500000"
+        run: |
+          node cover2.js 2 1 9.73 14.33 4 1e-5 | tee target1-alt-cover.json
+          node -e "const r=require('./target1-alt-cover.json'); if(r.cells===0 || r.failed!==0) { console.error(r); process.exit(1) }"
+      - name: Replay audit
+        if: always()
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1-red2plus
+          SYMREM: "1"
+          VTX: "1"
+        run: node audit2.js 2 1 9.73 14.33 4 | tee target1-alt-audit.json
+      - name: Cellwise correspondence and legality
+        if: always()
+        continue-on-error: true
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1-red2plus
+          SYMREM: "1"
+          VTX: "1"
+        run: node validate-cover2.js 2 1 9.73 14.33 3 4 | tee target1-alt-closure.json
+      - name: Upload certificate diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: target1-alt-witness-certificate
+          path: |
+            docs/geometry-reviews/taylor-model/results/target1-red2plus/arm_2_p/cover_9.73_14.33_d4.json
+            docs/geometry-reviews/taylor-model/target1-alt-cover.json
+            docs/geometry-reviews/taylor-model/target1-alt-audit.json
+            docs/geometry-reviews/taylor-model/target1-alt-closure.json
+          if-no-files-found: warn
+      - name: Gate proof and correspondence checks
+        if: always()
+        working-directory: docs/geometry-reviews/taylor-model
+        run: |
+          node -e "const fs=require('fs'); const names=['target1-alt-cover.json','target1-alt-audit.json','target1-alt-closure.json']; if(names.some(n=>!fs.existsSync(n))) { console.error('missing diagnostic output'); process.exit(1) } const c=require('./target1-alt-cover.json'),a=require('./target1-alt-audit.json'),v=require('./target1-alt-closure.json'); if(c.cells===0 || c.failed!==0 || a.cells!==c.cells || a.reproduced!==c.cells || a.mismatches!==0 || v.cells!==c.cells || v.containBad!==0 || v.legalBad!==0 || v.stopped!==0) { console.error({cover:c,audit:a,closure:v}); process.exit(1) }"

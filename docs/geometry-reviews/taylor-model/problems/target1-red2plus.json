@@ -1,0 +1,37 @@
+{
+  "name": "target1-red2plus",
+  "seed": {
+    "blue": {
+      "x": 12.2195,
+      "y": 37.7663,
+      "rot": 11.0497
+    },
+    "red": {
+      "x": 2.8121,
+      "y": 28.9609,
+      "rot": -13.703
+    }
+  },
+  "firstMover": 0,
+  "reply": {
+    "pivot": 2,
+    "dir": 1,
+    "stopsDeg": [
+      9.73,
+      14.33
+    ]
+  },
+  "witness": {
+    "pivot": 2,
+    "dir": 1
+  },
+  "kRed": 36,
+  "ko": 0,
+  "source": {
+    "file": "docs/dead-regions/dead-points-mined.jsonl",
+    "line": 176,
+    "game": "retro-ratchet-20260804214008-pck-w14-j2-0-41",
+    "branch": "claude/board-game-video-adaptation-cf8a93",
+    "notes": "Alternate response-discovery candidate: same Target1 seed, red witness (2,+), kRed=36 substeps (13.5 degrees). A 0.1-degree engine scan found this response throws blue at all 47 sampled angles in [9.73,14.33]. This scan motivated the candidate only; legality and every-angle coverage must be established by the Taylor cover and checker."
+  }
+}
