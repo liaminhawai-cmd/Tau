@@ -14,17 +14,47 @@ Command: `SYMREM=1 VTX=1 PROBLEM=target1 node cert2.js 2 1 <a0> <a1> 4`
 
 The whole cell and both halves refuse in phase B with a Taylor-model `sqrt` whose operand
 range crosses zero (a squared-sum enclosure dips below 0 under interval over-approximation).
-The 0.2° refusal is therefore a cell-splitting limitation, not a newly identified physical refusal;
-Brief 6 already handles such cases by subdividing the parameter interval. The centre proves the
-terminal throw with margin ≈ 5.9u. No proof code was changed to force a pass; the centre proof is
-the current certified slice. The next cover target is the remaining [2°, 9.6828°] portion of
-Target 1, since [9.73°, 14.33°] is already covered by the response-cover work.
-## Full Target1 cover result
+The centre proves the terminal throw with margin ≈ 5.9u. No proof code was changed to force a pass.
 
-The adaptive Taylor cover was run on the remaining Target1 interval [2°, 9.6828°] with SYMREM=1, VTX=1, DEG=4. It produced 427 accepted cells and 0 failed leaves in 853 cover attempts. Cell widths ranged from 0.000234460449° to 0.12004375°, with median 0.007502734375°. The smallest certified terminal margin was 5.409085263853455u and the smallest hub-motion lower bound was 17.64584513837921u.
+## Recorded lower-interval cover
 
-An independent audit reproduced 427/427 cells with 0 mismatches. The accepted cover used 330 plain cells, 8 branch cells, 15 branch+merge cells, 59 straddle cells, and 15 straddle+merge cells.
+The adaptive Taylor cover for Target 1 on [2°, 9.6828°], with SYMREM=1, VTX=1 and degree 4,
+has a recorded result of 427 accepted cells and 0 failed leaves in 853 attempts. The independent
+audit record reports 427/427 cells reproduced and 0 mismatches. Its recorded minimum margin was
+5.409085263853455u and minimum hub-motion lower bound was 17.64584513837921u.
 
-The first red-legality diagnostic exposed an over-conservative checker, not an engine refusal: in the first Target1 cell, foot 2 is guaranteed on r0 for substeps 23..39 while foot 1 is guaranteed on r1 for 38..82, with guaranteed overlap at 38..39. Because the shipped rule's crossing budget is whole-tripod, those two different-foot contacts form one continuous crossing episode. The legality checker has been corrected accordingly; a concrete checkCell run now returns ok=true with that two-contact episode.
+The cell-by-cell engine containment and legality closure is being re-run by
+[Target1 cell closure](https://github.com/liaminhawai-cmd/Tau/actions/runs/37889490556);
+until that workflow completes, the recorded cover and audit should not be described as a fresh
+end-to-end closure run.
 
-Containment must be checked cell-by-cell: running the entire [2°, 9.6828°] interval as one hull is intentionally too wide and stops on a deep-crossing enclosure. The reusable validate-cover2.js runner performs containment using each leaf's actual mode and symbol settings, rather than treating the complete target as one interval.
+## Newly certified gap
+
+The interval [9.6828°, 9.73°] is covered by two degree-4 Taylor-model cells:
+[9.6828°, 9.7064°] and [9.7064°, 9.73°]. Both were accepted, independently reproduced (2/2,
+zero mismatches), and passed the cell-wise legality check. The minimum certified throw margin
+is 6.816387359537115u and the minimum hub-motion lower bound is 17.636291379074123u.
+
+See [ANGLE-GAP.md](ANGLE-GAP.md), the [cover cells](arm_2_p/cover_9.6828_9.73_d4.json),
+and the saved [audit](angle-gap-audit.json) / [closure diagnostics](angle-gap-closure.json).
+The engine/model containment diagnostic sampled three points per cell, for 2,178 comparisons:
+zero failures under the checker's 1e-9 tolerance; the largest reported excess was 1.78e-14.
+
+## Upper interval status
+
+The earlier sentence claiming [9.73°, 14.33°] was "already covered by response-cover work" was
+too strong for this Target 1 seed: that response-cover material is not a committed, matching
+per-cell certificate for this fixture. A fixed-witness degree-4 cover is now being attempted in
+[Target1 upper response witness test](https://github.com/liaminhawai-cmd/Tau/actions/runs/37891119459).
+A separate discovery-only engine scan found a winning red response at all 47 grid points spaced
+0.1° apart; red arms (0,-) and (2,+) each won at all 47 sampled points. Those samples suggest
+good candidate witnesses but do not prove the angles between them. The upper interval must remain
+unclaimed until the Taylor cover, audit, and cell-wise checks close.
+
+## Scope and remaining work
+
+This is one blue reply arm (2,+) against a fixed red witness. Even if all the angular intervals close,
+that is not by itself a proof that the original position is dead against every legal blue move. The
+full theorem still needs all relevant reply families and explicit justification of the Taylor-model
+remainder and interval arithmetic assumptions. Sampled engine containment is a correspondence check,
+not a universal proof for every floating-point trajectory.
