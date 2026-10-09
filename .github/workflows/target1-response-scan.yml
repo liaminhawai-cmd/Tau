@@ -1,0 +1,32 @@
+name: Target1 sampled response discovery
+on:
+  push:
+    branches:
+      - claude/target1-gap-cert
+    paths:
+      - 'docs/geometry-reviews/taylor-model/response-scan.js'
+      - 'docs/geometry-reviews/taylor-model/problems/target1.json'
+      - 'docs/geometry-reviews/taylor-model/problem.js'
+      - '.github/workflows/target1-response-scan.yml'
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Sample response witnesses
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1
+        run: node response-scan.js 9.73 14.33 0.1 2 1 | tee target1-response-scan-summary.json
+      - name: Upload discovery results
+        uses: actions/upload-artifact@v4
+        with:
+          name: target1-response-scan
+          path: |
+            docs/geometry-reviews/taylor-model/target1-response-scan.json
+            docs/geometry-reviews/taylor-model/target1-response-scan-summary.json
+          if-no-files-found: error
