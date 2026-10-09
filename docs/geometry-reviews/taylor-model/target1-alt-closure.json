@@ -1,0 +1,28 @@
+{
+  "problem": "target1-red2plus",
+  "arm": [
+    2,
+    1
+  ],
+  "range": [
+    9.73,
+    14.33
+  ],
+  "cells": 51,
+  "containBad": 0,
+  "legalBad": 0,
+  "stopped": 0,
+  "containment": {
+    "samples": 3,
+    "degree": 4,
+    "checks": 17085,
+    "outside": 0,
+    "worstExcess": 2.4868995751603507e-14
+  },
+  "minMargin": 0.09772912589987467,
+  "minHub": 2.388222849258422,
+  "crossingKinds": {
+    "foot 1 / r1 substeps 11..19": 51
+  },
+  "firstBad": []
+}
