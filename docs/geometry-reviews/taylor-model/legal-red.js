@@ -35,6 +35,10 @@ const { fromEnv, armResultsDir } = require('./problem.js');
 const PR = fromEnv();          // the problem this run is for (PROBLEM env, default Brief 6)
 if (PR.firstMover !== 0) throw new Error('legal-red.js assumes firstMover 0 (blue moves first, red is the witness); got ' + PR.firstMover);
 const KRED = PR.kRed, WIT = PR.witness;
+// The feet that move in the witness swing: every foot but the pinned one. (This was hard-coded as feet 1
+// and 2, which is right only for a witness that pins foot 0: with pivot 2 it checked the stationary foot
+// and never looked at foot 0. The engine excludes exactly the pinned foot, `i !== st.pinned`.)
+const MOVING = [0, 1, 2].filter(j => j !== WIT.pivot);
 
 const R = P.footR, TWO_PI_3 = P.TWO_PI_3;
 const TOUCH = 0.81;                                   // CFG.touchEps (lineStick is 0, so stickEps is the same)
@@ -60,7 +64,7 @@ const PIVOT_MARGIN = 1e-6;
 // by rounding. The exact-arithmetic model ignores this, but cells where the pivot foot may sit that
 // close to a band edge are flagged and counted.
 function pivotBorderline(r0) {
-  const pivot = feetAt({ x: r0.x.range(), y: r0.y.range(), rot: r0.rot.range() })[0];
+  const pivot = feetAt({ x: r0.x.range(), y: r0.y.range(), rot: r0.rot.range() })[WIT.pivot];
   for (const c of CIRCLES) {
     const rho = radiusIv(pivot, c), lo = lowerDist(rho, c.r), up = upperDist(rho, c.r);
     if (!(lo > TOUCH + PIVOT_MARGIN || up < TOUCH - PIVOT_MARGIN)) return `${c.id} band edge, distance in [${lo.toFixed(6)}, ${up.toFixed(6)}]`;
@@ -79,7 +83,7 @@ function crossingCheck(r0) {
   const closest = new Map();                             // smallest guaranteed distance of each (foot, line) pair that never possibly touches
   for (let k = 0; k <= KRED; k++) {
     const list = [];
-    for (const j of [1, 2]) for (let c = 0; c < CIRCLES.length; c++) {
+    for (const j of MOVING) for (let c = 0; c < CIRCLES.length; c++) {
       const d = lowerDist(rho[k][j][c], CIRCLES[c].r), key = j + ':' + c;
       if (d <= TOUCH) list.push([j, c]); closest.set(key, Math.min(closest.has(key) ? closest.get(key) : Infinity, d));
     }
@@ -120,17 +124,29 @@ function crossingCheck(r0) {
     if (!dec && !inc) return { ok: false, why: 'foot ' + e.j + ' radius is not monotone around window [' + e.k1 + ', ' + e.k2 + '] on ' + CIRCLES[e.c].id, clearance };
   }
 
-  // The whole tripod must remain in one continuous line-contact episode. A sufficient enclosure
-  // condition is that at every substep from the first possible contact to the last, at least one
-  // candidate line is guaranteed ON. Combined with monotonicity, there can be no hidden close-and-reopen.
+  // The whole tripod must make exactly one continuous line-contact episode (the engine bills a crossing
+  // when an episode opens and refuses a second one; the episode stays open while any moving foot is
+  // within touchEps of a line). Each pair's true contact substeps are one contiguous run (monotone
+  // radius, checked above). With one pair that is the whole episode. With several, let the guaranteed
+  // block be the substeps where some pair is certainly on a line. If that block has no gap, every pair
+  // that is certainly on somewhere in it joins it (its run is contiguous and meets the block), and a pair
+  // that is never certainly on must have its possible window inside the block. Then the union of the
+  // true runs is one contiguous run: one episode. (Requiring certainty at every possible substep, as
+  // before, refused any episode whose first or last substep is uncertain, which is the usual case.)
   const first = Math.min(...[...pairs.values()].map(e => e.k1));
   const last = Math.max(...[...pairs.values()].map(e => e.k2));
-  for (let k = first; k <= last; k++) {
-    const guaranteed = [...new Set(possible[k].map(([j, c]) => j + ':' + c))].some(key => {
-      const [j, c] = key.split(':').map(Number);
-      return upperDist(rho[k][j][c], CIRCLES[c].r) < TOUCH;
-    });
-    if (!guaranteed) return { ok: false, why: 'line-contact episode may close between substeps ' + (k - 1) + ' and ' + k, clearance };
+  if (pairs.size > 1) {
+    const sure = (e, k) => upperDist(rho[k][e.j][e.c], CIRCLES[e.c].r) < TOUCH;
+    const G = [];
+    for (let k = first; k <= last; k++) if ([...pairs.values()].some(e => sure(e, k))) G.push(k);
+    if (!G.length) return { ok: false, why: 'several feet may touch lines and none is certainly on: episode not determined', clearance };
+    const g0 = G[0], g1 = G[G.length - 1];
+    if (G.length !== g1 - g0 + 1) return { ok: false, why: 'line-contact episode may close between substeps ' + g0 + ' and ' + g1, clearance };
+    for (const e of pairs.values()) {
+      let hasSure = false;
+      for (let k = e.k1; k <= e.k2 && !hasSure; k++) if (k >= g0 && k <= g1 && sure(e, k)) hasSure = true;
+      if (!hasSure && (e.k1 < g0 || e.k2 > g1)) return { ok: false, why: 'foot ' + e.j + ' on ' + CIRCLES[e.c].id + ' may touch outside the certain episode [' + g0 + ', ' + g1 + ']', clearance };
+    }
   }
   const labels = [...pairs.values()].map(e => 'foot ' + e.j + ' / ' + CIRCLES[e.c].id + ' substeps ' + e.k1 + '..' + e.k2);
   return { ok: true, crossing: labels.join('; '), window: [first, last], clearance };
