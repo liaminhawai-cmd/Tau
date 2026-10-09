@@ -13,18 +13,15 @@
   "runs": 3,
   "seconds": 5.777,
   "width": {
-    "min": 0.0236,
-    "median": 0.0236,
-    "max": 0.0236
+    "min": 0.023600000000000065,
+    "median": 0.023600000000000065,
+    "max": 0.023600000000000065
   },
   "minMargin": 6.816387359537115,
   "minHubMove": 17.636291379074123,
   "modes": {
     "straddle": 1,
     "plain": 1
-  },
-  "splitReasons": {
-    "phase B substep 45: sqrt range not positive": 1
   },
   "fails": []
 }

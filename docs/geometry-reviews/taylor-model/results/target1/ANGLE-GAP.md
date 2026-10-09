@@ -20,9 +20,9 @@ No cell failed. Independent replay reproduced the two recorded margins exactly (
 ## Engine correspondence checks
 
 The cellwise checker reported:
-- 0 containment failures and 0 red-legality failures;
+- 0 containment failures and 0 red-legality failures under its (10^{-9}) point-in-enclosure tolerance;
 - 0 stopped cells;
-- 2,178 sampled containment comparisons across three sample points per cell, with 0 sample points outside the Taylor enclosure;
+- 2,178 sampled containment comparisons across three sample points per cell; the largest reported excess was (1.78\times10^{-14}), far below the checker tolerance;
 - crossing episode remains the same across both cells: foot 2 on ring r0 at substeps 23–39 overlaps foot 1 on ring r1 at substeps 38–82.
 
 The containment figures are **sampled engine/model correspondence evidence**, not a universal proof about every floating-point trajectory. The mathematical result comes from the accepted Taylor cells, assuming the Taylor-model interval/remainder operations and legality encoding are sound.
