@@ -1,0 +1,30 @@
+{
+  "arm": [
+    2,
+    1
+  ],
+  "interval": [
+    9.6828,
+    9.73
+  ],
+  "deg": 4,
+  "cells": 2,
+  "failed": 0,
+  "runs": 3,
+  "seconds": 5.777,
+  "width": {
+    "min": 0.0236,
+    "median": 0.0236,
+    "max": 0.0236
+  },
+  "minMargin": 6.816387359537115,
+  "minHubMove": 17.636291379074123,
+  "modes": {
+    "straddle": 1,
+    "plain": 1
+  },
+  "splitReasons": {
+    "phase B substep 45: sqrt range not positive": 1
+  },
+  "fails": []
+}

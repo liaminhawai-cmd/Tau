@@ -1,0 +1,28 @@
+{
+  "problem": "target1",
+  "arm": [
+    2,
+    1
+  ],
+  "range": [
+    9.6828,
+    9.73
+  ],
+  "cells": 2,
+  "containBad": 0,
+  "legalBad": 0,
+  "stopped": 0,
+  "containment": {
+    "samples": 3,
+    "degree": 4,
+    "checks": 2178,
+    "outside": 0,
+    "worstExcess": 1.7763568394002505e-14
+  },
+  "minMargin": 6.816387359537115,
+  "minHub": 17.636291379074123,
+  "crossingKinds": {
+    "foot 2 / r0 substeps 23..39; foot 1 / r1 substeps 38..82": 2
+  },
+  "firstBad": []
+}
