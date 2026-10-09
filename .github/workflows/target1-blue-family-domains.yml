@@ -1,0 +1,30 @@
+name: Target1 blue move-family domain scan
+on:
+  push:
+    branches:
+      - claude/target1-gap-cert
+    paths:
+      - 'docs/geometry-reviews/taylor-model/blue-family-domain-scan.js'
+      - 'docs/geometry-reviews/taylor-model/problems/target1.json'
+      - 'docs/geometry-reviews/taylor-model/problem.js'
+      - '.github/workflows/target1-blue-family-domains.yml'
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Trace legal move-family endpoints
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1
+        run: node blue-family-domain-scan.js 180 | tee target1-blue-family-domains.json
+      - name: Upload domain discovery
+        uses: actions/upload-artifact@v4
+        with:
+          name: target1-blue-move-family-domains
+          path: docs/geometry-reviews/taylor-model/target1-blue-family-domains.json
+          if-no-files-found: error
