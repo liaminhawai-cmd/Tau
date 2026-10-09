@@ -71,6 +71,8 @@ jobs:
           git add docs/geometry-reviews/taylor-model/target1-lower-audit-summary.json
           git add docs/geometry-reviews/taylor-model/target1-lower-closure.json
           git commit -m "proof(taylor-model): persist Target1 lower-interval certificate"
+          git fetch origin claude/target1-gap-cert
+          git rebase origin/claude/target1-gap-cert
           git push origin HEAD:claude/target1-gap-cert
       - name: Upload full certificate bundle
         if: always()
