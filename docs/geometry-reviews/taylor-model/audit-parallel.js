@@ -6,7 +6,8 @@ const fs = require('fs'), path = require('path'), { spawn } = require('child_pro
 const [bp, bd] = process.argv.slice(2, 4).map(Number);
 const parts = +(process.argv[4] || 4), deg = +(process.argv[5] || 4);
 const lo = process.argv[6] !== undefined ? +process.argv[6] : -Infinity, hi = process.argv[7] !== undefined ? +process.argv[7] : Infinity;
-const dir = path.join(__dirname, 'results', `arm_${bp}_${bd > 0 ? 'p' : 'm'}`);
+const { fromEnv, armResultsDir } = require('./problem.js');
+const dir = armResultsDir(fromEnv(), bp, bd);   // the PROBLEM's own corpus (Brief 6 keeps results/arm_*)
 const leaves = [];
 for (const f of fs.readdirSync(dir)) if (/^cover_.*_d\d+\.json$/.test(f)) leaves.push(...JSON.parse(fs.readFileSync(path.join(dir, f))).leaves.filter(l => l.a >= lo && l.b <= hi));
 leaves.sort((p, q) => p.a - q.a);
