@@ -1,0 +1,73 @@
+name: Target1 upper certificate audit bundle
+on:
+  push:
+    branches:
+      - claude/target1-gap-cert
+    paths:
+      - '.github/workflows/target1-upper-audit-bundle.yml'
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/target1-gap-cert
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Confirm complete contiguous upper cover
+        working-directory: docs/geometry-reviews/taylor-model
+        run: |
+          node - <<'NODE'
+          const c = require('./results/target1-red2plus/arm_2_p/cover_9.73_14.33_d4.json');
+          const leaves = c.leaves;
+          if (leaves.length !== 51 || c.fails.length !== 0) throw new Error('wrong cell count or failed leaves');
+          if (leaves[0].a !== 9.73 || leaves[leaves.length-1].b !== 14.33) throw new Error('wrong endpoints');
+          for (let i=1;i<leaves.length;i++) if (leaves[i-1].b !== leaves[i].a) throw new Error('gap or overlap between cells '+(i-1)+' and '+i);
+          if (leaves.some(x => !(x.m > 0))) throw new Error('non-positive recorded margin');
+          console.log(JSON.stringify({cells:leaves.length, first:leaves[0], last:leaves[leaves.length-1], minMargin:Math.min(...leaves.map(x=>x.m))},null,2));
+          NODE
+      - name: Replay all 51 upper cells independently
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1-red2plus
+          SYMREM: "1"
+          VTX: "1"
+        run: |
+          node audit2.js 2 1 9.73 14.33 4 | tee target1-alt-audit.json
+          node -e "const r=require('./target1-alt-audit.json'); if(r.cells!==51 || r.reproduced!==51 || r.mismatches!==0) { console.error(r); process.exit(1) }"
+      - name: Check cellwise containment and legality
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1-red2plus
+          SYMREM: "1"
+          VTX: "1"
+        run: |
+          node validate-cover2.js 2 1 9.73 14.33 3 4 | tee target1-alt-closure.json
+          node -e "const r=require('./target1-alt-closure.json'); if(r.cells!==51 || r.containBad!==0 || r.legalBad!==0 || r.stopped!==0) { console.error(r); process.exit(1) }"
+      - name: Persist per-cell audit and fresh closure record
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/geometry-reviews/taylor-model/results/target1-red2plus/arm_2_p/audit_9.73_14.33.json
+          git add docs/geometry-reviews/taylor-model/target1-red2plus
+          git add docs/geometry-reviews/taylor-model/target1-alt-audit.json
+          git add docs/geometry-reviews/taylor-model/target1-alt-closure.json
+          git commit -m "proof(taylor-model): persist Target1 upper replay audit"
+          git push origin HEAD:claude/target1-gap-cert
+      - name: Upload audit bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: target1-upper-audit-bundle
+          path: |
+            docs/geometry-reviews/taylor-model/results/target1-red2plus/arm_2_p/cover_9.73_14.33_d4.json
+            docs/geometry-reviews/taylor-model/results/target1-red2plus/arm_2_p/audit_9.73_14.33.json
+            docs/geometry-reviews/taylor-model/target1-alt-audit.json
+            docs/geometry-reviews/taylor-model/target1-alt-closure.json
+          if-no-files-found: error
