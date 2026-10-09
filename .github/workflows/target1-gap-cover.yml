@@ -1,0 +1,39 @@
+name: Target1 angle-gap certificate
+on:
+  push:
+    branches:
+      - claude/target1-gap-cert
+jobs:
+  gap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Cover gap [9.6828, 9.73] and audit accepted cells
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1
+          SYMREM: "1"
+          VTX: "1"
+          MAXPASSES: "8000"
+          MAXOPS: "3500000"
+        run: |
+          node cover2.js 2 1 9.6828 9.73 4 1e-5 | tee target1-gap-cover.json
+          node -e "const r=require('./target1-gap-cover.json'); if(r.cells===0 || r.failed!==0) { console.error(r); process.exit(1) }"
+          node audit2.js 2 1 9.6828 9.73 4 | tee target1-gap-audit.json
+          node -e "const r=require('./target1-gap-audit.json'); if(r.cells===0 || r.mismatches!==0 || r.reproduced!==r.cells) { console.error(r); process.exit(1) }"
+          node validate-cover2.js 2 1 9.6828 9.73 3 4 | tee target1-gap-closure.json
+          node -e "const r=require('./target1-gap-closure.json'); if(r.cells===0 || r.containBad!==0 || r.legalBad!==0 || r.stopped!==0) { console.error(r); process.exit(1) }"
+      - name: Upload gap certificate and validation results
+        uses: actions/upload-artifact@v4
+        with:
+          name: target1-angle-gap-certificate
+          path: |
+            docs/geometry-reviews/taylor-model/results/target1/arm_2_p/cover_9.6828_9.73_d4.json
+            docs/geometry-reviews/taylor-model/target1-gap-cover.json
+            docs/geometry-reviews/taylor-model/target1-gap-audit.json
+            docs/geometry-reviews/taylor-model/target1-gap-closure.json
+          if-no-files-found: error
