@@ -1,0 +1,70 @@
+name: Target1 upper response witness test
+on:
+  push:
+    branches:
+      - claude/target1-gap-cert
+    paths:
+      - 'docs/geometry-reviews/taylor-model/cover2.js'
+      - 'docs/geometry-reviews/taylor-model/audit2.js'
+      - 'docs/geometry-reviews/taylor-model/validate-cover2.js'
+      - 'docs/geometry-reviews/taylor-model/cert2.js'
+      - 'docs/geometry-reviews/taylor-model/contain2.js'
+      - 'docs/geometry-reviews/taylor-model/legal-red.js'
+      - 'docs/geometry-reviews/taylor-model/modes2.js'
+      - 'docs/geometry-reviews/taylor-model/tm.js'
+      - 'docs/geometry-reviews/taylor-model/iv.js'
+      - 'docs/geometry-reviews/taylor-model/push-tm.js'
+      - 'docs/geometry-reviews/taylor-model/problem.js'
+      - 'docs/geometry-reviews/taylor-model/problems/target1.json'
+      - .github/workflows/target1-upper-cover.yml
+jobs:
+  upper:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build candidate fixed-witness cover for [9.73, 14.33]
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1
+          SYMREM: "1"
+          VTX: "1"
+          MAXPASSES: "8000"
+          MAXOPS: "3500000"
+        run: node cover2.js 2 1 9.73 14.33 4 1e-5 | tee target1-upper-cover.json
+      - name: Audit accepted cells
+        if: always()
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1
+          SYMREM: "1"
+          VTX: "1"
+        run: node audit2.js 2 1 9.73 14.33 4 | tee target1-upper-audit.json
+      - name: Check cellwise containment and red legality
+        if: always()
+        continue-on-error: true
+        working-directory: docs/geometry-reviews/taylor-model
+        env:
+          PROBLEM: target1
+          SYMREM: "1"
+          VTX: "1"
+        run: node validate-cover2.js 2 1 9.73 14.33 3 4 | tee target1-upper-closure.json
+      - name: Upload diagnostic certificate bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: target1-upper-witness-diagnostic
+          path: |
+            docs/geometry-reviews/taylor-model/results/target1/arm_2_p/cover_9.73_14.33_d4.json
+            docs/geometry-reviews/taylor-model/target1-upper-cover.json
+            docs/geometry-reviews/taylor-model/target1-upper-audit.json
+            docs/geometry-reviews/taylor-model/target1-upper-closure.json
+          if-no-files-found: warn
+      - name: Gate formal cover and correspondence checks
+        if: always()
+        working-directory: docs/geometry-reviews/taylor-model
+        run: |
+          node -e "const fs=require('fs'); const names=['target1-upper-cover.json','target1-upper-audit.json','target1-upper-closure.json']; if(names.some(n=>!fs.existsSync(n))) { console.error('missing diagnostic output'); process.exit(1) } const c=require('./target1-upper-cover.json'),a=require('./target1-upper-audit.json'),v=require('./target1-upper-closure.json'); if(c.cells===0 || c.failed!==0 || a.cells!==c.cells || a.reproduced!==c.cells || a.mismatches!==0 || v.cells!==c.cells || v.containBad!==0 || v.legalBad!==0 || v.stopped!==0) { console.error({cover:c,audit:a,closure:v}); process.exit(1) }"

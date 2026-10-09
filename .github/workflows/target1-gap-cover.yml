@@ -3,6 +3,19 @@ on:
   push:
     branches:
       - claude/target1-gap-cert
+    paths:
+      - 'docs/geometry-reviews/taylor-model/cover2.js'
+      - 'docs/geometry-reviews/taylor-model/audit2.js'
+      - 'docs/geometry-reviews/taylor-model/validate-cover2.js'
+      - 'docs/geometry-reviews/taylor-model/cert2.js'
+      - 'docs/geometry-reviews/taylor-model/contain2.js'
+      - 'docs/geometry-reviews/taylor-model/legal-red.js'
+      - 'docs/geometry-reviews/taylor-model/modes2.js'
+      - 'docs/geometry-reviews/taylor-model/tm.js'
+      - 'docs/geometry-reviews/taylor-model/iv.js'
+      - 'docs/geometry-reviews/taylor-model/push-tm.js'
+      - 'docs/geometry-reviews/taylor-model/problem.js'
+      - 'docs/geometry-reviews/taylor-model/problems/target1.json'
 jobs:
   gap:
     runs-on: ubuntu-latest
