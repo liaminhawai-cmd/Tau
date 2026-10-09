@@ -1,0 +1,37 @@
+{
+  "name": "target1-b1p",
+  "seed": {
+    "blue": {
+      "x": 12.2195,
+      "y": 37.7663,
+      "rot": 11.0497
+    },
+    "red": {
+      "x": 2.8121,
+      "y": 28.9609,
+      "rot": -13.703
+    }
+  },
+  "firstMover": 0,
+  "reply": {
+    "pivot": 1,
+    "dir": 1,
+    "stopsDeg": [
+      2,
+      20.71908458837398
+    ]
+  },
+  "witness": {
+    "pivot": 2,
+    "dir": 1
+  },
+  "kRed": 107,
+  "ko": 0,
+  "source": {
+    "file": "docs/dead-regions/dead-points-mined.jsonl",
+    "line": 176,
+    "game": "retro-ratchet-20260804214008-pck-w14-j2-0-41",
+    "branch": "claude/board-game-video-adaptation-cf8a93",
+    "notes": "Blue arm (1,+) at the Target1 seed. Domain [2deg, B], B = 20.71908458837398 deg (largest target applyPlanSearch executes in full; one flip in a 0.0002/0.0025-deg monotonicity scan). Blue pushes red on this arm (up to 7.1u) but never off the board. Witness red (2,+) stopping at 107 substeps (40.125 deg): engine scan at 0.01-deg steps (1873 stops) found red limit >= 107 at every stop and blue thrown with margin >= 2.863u. Discovery only; the cover run is the certificate."
+  }
+}
