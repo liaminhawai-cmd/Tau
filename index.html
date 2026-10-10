@@ -726,7 +726,23 @@ setTimeout(window.tauBootDone, 15000);
      the online search is still running (the one-time toast used to vanish and read as "dropped out"). -->
 <div id="waitBanner"><span id="waitBannerDot">●</span><span id="waitBannerText"></span><button id="waitBannerStop">✕</button></div>
 <div id="tutorBar"></div>
-<div id="buildTag">build 293</div>
+<div id="buildTag">build ?</div>
+<script>
+// Which build is this? A hand-typed number went stale for weeks ("build 293" on every version), so
+// the tag now stamps itself. The native builds (Steam, the apps) have the CI run number written in
+// by native/scripts/sync-www.mjs and marked data-fixed; the website shows when the page it was served
+// was published, from the server's Last-Modified (document.lastModified) -- which changes on every
+// deploy and needs nobody to remember anything. A server that sends no date makes lastModified "now",
+// which says nothing, so that case keeps the placeholder.
+(function () {
+    const el = document.getElementById('buildTag');
+    if (!el || el.dataset.fixed) return;
+    const at = new Date(document.lastModified);
+    if (isNaN(at) || Math.abs(Date.now() - at) < 5000) return;
+    try { el.textContent = 'build ' + at.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+    catch (e) { el.textContent = 'build ' + at.toISOString().slice(0, 16).replace('T', ' '); }
+})();
+</script>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
 <!-- Director mode (open with #director): capture-prep helpers for an EXTERNAL screen recorder --
      logo watermark size, a 16:9/9:16 safe-area guide, one-tap hide-UI. Records nothing itself. -->

@@ -7,7 +7,7 @@
 // --premium additionally bundles the desktop presentation plus the six-board premium
 // showcase (steam.html + vendor/three) -- the Steam wrapper and the native Android/iOS
 // app both ship it; the plain web build does not.
-import { cpSync, mkdirSync, rmSync } from 'node:fs';
+import { cpSync, mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -50,5 +50,13 @@ if (premium) {
   // its own origin, which here is the bundle itself. Left out, that fetch 404s and the top of the
   // ladder quietly falls back to playing as L11, which is not what it says on the tile.
   cpSync(join(repoRoot, 'committee'), join(www, 'committee'), { recursive: true });
+}
+// Stamp the CI run number into the build tag, so the Steam/app build says exactly which Actions run
+// (and download) it is. Locally (no GITHUB_RUN_NUMBER) the page stamps itself from its file date.
+if (process.env.GITHUB_RUN_NUMBER) {
+  const html = join(www, 'index.html'), src = readFileSync(html, 'utf8');
+  const out = src.replace(/<div id="buildTag">[^<]*<\/div>/, `<div id="buildTag" data-fixed="1">build ${process.env.GITHUB_RUN_NUMBER}</div>`);
+  if (out === src) throw new Error('sync-www: could not find #buildTag in index.html to stamp');
+  writeFileSync(html, out);
 }
 console.log(`Synced ${FILES.length}${premium ? ' + steam.html + desktop/ + vendor/ + committee/' : ''} files into ${www}`);
