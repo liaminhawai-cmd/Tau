@@ -3067,11 +3067,12 @@ test('a titan lands on the Colossus plinth and rolls off it, instead of sinking 
 
 test('a deep ladder think is spread over frames instead of freezing one',async t=>{
   const g=await game();t.after(g.close);
-  // L11 on the ladder: the rung whose search runs for the better part of a second.
+  // Rung 10 (L9): the deepest hand-tuned search, which runs for the better part of a second. (Rung 11
+  // and up are nets, which first wait for their weights to download -- see awaitLadderNets.)
   g.read('tauDesktop.startMatch()');g.tick();
   // ...and not the corner opening, whose first two moves are a stored line and return at once:
   // this test is about the rung's own deep search.
-  g.read('ladderLevel=10; aiIdx=G.active; vsAI={mode:"ai",level:11}; G.cornerOpening=[false,false];');
+  g.read('ladderLevel=9; aiIdx=G.active; vsAI={mode:"ai",level:10}; G.cornerOpening=[false,false];');
   // The harness freezes performance.now between ticks; the driver reads it to size each slice, so
   // give it a clock that moves or it would swallow the whole search in one go.
   g.read('(()=>{ let t=0; performance.now=()=>(t+=1); })()');
@@ -3538,5 +3539,27 @@ test('"Show me how" on the first-launch offer opens the rules WITHOUT starting t
   assert.equal(g.read('window.__started'),0,'and the game it stands in front of has not started yet');
   g.read('stopHowToPlayAnim()'); g.tick();
   assert.equal(g.read('window.__started'),1,'closing it starts the game, once');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('a net rung waits for its weights instead of quietly playing a weaker brain',async t=>{
+  const g=await game('');t.after(g.close);
+  // Level 12 (rung index 11), the AI to move, and its net not downloaded: the turn must not start,
+  // and must not fall back to the hand-tuned L11 the way it used to after 20s.
+  g.read(`window.__fetches=[]; window.__release=null;
+    window.__p={}; ladderNetsEnsureLoaded=i=>{ if (window.__p[i]) return window.__p[i]; window.__fetches.push(i);
+      return (window.__p[i]=new Promise(ok=>{ if (!window.__release) window.__release=()=>{ AI_LADDER[i]._nets=[{}]; ok([]); }; })); };
+    window.__calls=[]; const o=ladderPlanForGen; ladderPlanForGen=function*(l,i){ window.__calls.push(l); return yield* o(l,i); };
+    startLadderLevel(11, 1); aiIdx=0; G.active=0; startAiTurn(); startAiTurn();`);
+  assert.equal(g.read('!!aiSearch'),false,'no search starts before the net is here');
+  assert.equal(g.read('JSON.stringify(window.__calls)'),'[]','and no hand-tuned stand-in moves instead');
+  assert.ok(g.read('window.__fetches.includes(RUNG_TO_AI_LADDER[11])'),'the net is being fetched');
+  assert.ok(!g.read('window.__fetches.includes(RUNG_TO_AI_LADDER[12])'),'the next rung’s waits its turn, not sharing the bandwidth');
+  assert.ok(g.read('!!ladderNetWait'),'the turn is waiting on the download, with a note on screen');
+  // The download lands: the next rung's starts, and the turn goes ahead on the net itself.
+  g.read('G.over=true; window.__release()');   // over, so the stub net is never actually asked to think
+  await new Promise(r => setTimeout(r, 20));
+  assert.ok(g.read('window.__fetches.includes(RUNG_TO_AI_LADDER[12])'),'then the next rung’s, for after a win');
+  assert.equal(g.read('ladderNetWait'),null,'no longer waiting');
   assert.deepEqual(g.errors,[]);
 });

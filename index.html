@@ -5074,7 +5074,13 @@ function* committeePlanGen(idx, def) {
 // as the Committee above, and a rung below it in both strength and cost -- one net reading one
 // leaf, where the Committee has three members reading it and a second ply behind a real reply.
 function* ladderNetPlanGen(idx, def) {
-    if (!(yield* ladderNetsWaitGen(AI_LADDER.indexOf(def), def))) return yield* ladderPlanForGen(10, idx);
+    if (!(yield* ladderNetsWaitGen(AI_LADDER.indexOf(def), def))) {
+        // Only reachable now where nothing waits for the download first (a live match always does,
+        // see awaitLadderNets). A game a hand-tuned brain played any of is not a game against the
+        // net, so it must never be sent to the trainer as one.
+        if (typeof G !== 'undefined' && G) G.netFallback = true;
+        return yield* ladderPlanForGen(10, idx);
+    }
     return yield* nnPlanForGameGen(idx, def.o.temperature || 0, def.o.depth, def.o.keepStops, def._nets[0], null);
 }
 // ===================== The Committee: three real players share one move by voting =====================
@@ -5114,11 +5120,37 @@ function committeeLoadNet(name) {
     if (committeeNetCache[name]) return committeeNetCache[name];
     return (committeeNetCache[name] = committeeFetchNet(name).catch(e => { committeeNetCache[name] = null; throw e; }));
 }
+// How far each net's download has got, 0..1, for the "downloading" note (see awaitLadderNets).
+const committeeNetProgress = {};
+// The .bin read as a stream so the progress can be shown: on a phone an 8MB net is half a minute
+// or more, and a turn that just sits there looks like a hung game. Chunks are collected rather than
+// written into a buffer sized from Content-Length, which is the COMPRESSED size if the server gzips.
+function committeeFetchBin(url, name) {
+    return fetch(url).then(r => {
+        if (!r.ok) throw new Error(url + ': ' + r.status);
+        const total = +r.headers.get('Content-Length') || 0;
+        if (!total || !r.body || !r.body.getReader) return r.arrayBuffer().then(b => { committeeNetProgress[name] = 1; return b; });
+        const reader = r.body.getReader(), chunks = [];
+        let got = 0;
+        const pump = () => reader.read().then(({ done, value }) => {
+            if (done) {
+                const out = new Uint8Array(got); let at = 0;
+                for (const c of chunks) { out.set(c, at); at += c.length; }
+                committeeNetProgress[name] = 1;
+                return out.buffer;
+            }
+            chunks.push(value); got += value.length; committeeNetProgress[name] = Math.min(0.99, got / total);
+            return pump();
+        });
+        return pump();
+    });
+}
 function committeeFetchNet(name) {
     const base = COMMITTEE_BASE + name;
+    committeeNetProgress[name] = 0;
     return Promise.all([
         fetch(base + '.meta.json').then(r => { if (!r.ok) throw new Error(base + '.meta.json: ' + r.status); return r.json(); }),
-        fetch(base + '.bin').then(r => { if (!r.ok) throw new Error(base + '.bin: ' + r.status); return r.arrayBuffer(); }),
+        committeeFetchBin(base + '.bin', name),
     ]).then(([meta, buf]) => {
         const flat = new Float32Array(buf), sizes = meta.sizes, fanIns = meta.fanIns, layers = sizes.length - 1;
         const W = [], b = [];
@@ -5987,6 +6019,15 @@ function startAiTurn() {
     if (G.over || G.active!==aiIdx) return;
     if (aiSearch) { stepAiSearch(); return; }   // already thinking about this position: carry on with it
     if (labMode) labApplyBrainFor(aiIdx);   // each side keeps its own brain in a lab game
+    // A net rung does not move until its net is here. It used to wait inside the search, 20s at
+    // most, and then quietly play the hand-tuned L11 instead -- and the search's frame guard (8s)
+    // drained that wait in one synchronous loop, which blocked the very download it was waiting on.
+    // On a phone, levels 11-14 were in practice L11. Now the turn simply does not start until the
+    // weights are in, with a note saying what is happening.
+    if (ladderLevel!=null && !(aiDifficulty === 'nn' && nnModel)) {
+        const li = RUNG_TO_AI_LADDER[ladderLevel], def = AI_LADDER[li];
+        if (def && def.nets && !def._nets) { awaitLadderNets(li, def); return; }
+    }
     // Ladder games route through the tuned per-level brain, an #nn game routes through the loaded
     // checkpoint, everything else uses the classic difficulty planner. All return the same
     // { pivotIdx, dir, targetRad } the animation plays.
@@ -6006,6 +6047,33 @@ function startAiTurn() {
     clearTimeout(aiSearchGuard);
     aiSearchGuard = setTimeout(finishAiSearchNow, aiSearch.guardMs);
     stepAiSearch();
+}
+// Waits for a net rung's weights, then hands the turn back to startAiTurn. A failed download is
+// retried (with a growing pause) for as long as this game is the one on the board; a note shows how
+// far it has got so a long wait never looks like a frozen game.
+let ladderNetWait = null;
+function ladderNetsPercent(def) {
+    const ps = def.nets.map(n => committeeNetProgress[n] || 0);
+    return Math.round(100 * ps.reduce((a, b) => a + b, 0) / ps.length);
+}
+function awaitLadderNets(li, def) {
+    if (ladderNetWait && ladderNetWait.game === G) return;   // already waiting for this game
+    const w = ladderNetWait = { game: G, failed: false };
+    const note = () => showPassToast(w.failed && !navigator.onLine
+        ? t('No connection -- this level needs a one-time download of its brain.')
+        : tf('Downloading your opponent’s brain… {p}%', { p: ladderNetsPercent(def) }));
+    const tick = setInterval(() => { if (ladderNetWait !== w) { clearInterval(tick); return; } note(); }, 1000);
+    note();
+    let pause = 2000;
+    const attempt = () => ladderNetsEnsureLoaded(li).then(() => {
+        if (ladderNetWait === w) ladderNetWait = null;
+        clearInterval(tick);
+        if (G === w.game && !G.over && G.active === aiIdx) startAiTurn();
+    }, () => {
+        if (ladderNetWait !== w || G !== w.game || G.over) { clearInterval(tick); return; }
+        w.failed = true; setTimeout(attempt, pause); pause = Math.min(pause * 2, 20000);
+    });
+    attempt();
 }
 function aiPlayPlan(sp) {
     if (G.over || G.active!==aiIdx) return;
@@ -6696,9 +6764,13 @@ function startLadderLevel(levelIdx, humanColorIdx) {
     // Kicked off here rather than waited on: a top rung's weights start downloading the moment the
     // rung is chosen, not the moment the AI first needs to move (which, if the player is Red, is
     // the very first ply -- there would be no head start left to give it).
+    // Then the next rung's, AFTER this one is in: a win sends the player straight up to it, but a net
+    // is 8MB, and fetched side by side the two would halve the speed of the one being waited on.
     {
-        const ai = RUNG_TO_AI_LADDER[levelIdx];
-        if (AI_LADDER[ai] && AI_LADDER[ai].nets) ladderNetsEnsureLoaded(ai).catch(() => {});
+        const netRung = r => { const ai = RUNG_TO_AI_LADDER[r]; return ai != null && AI_LADDER[ai] && AI_LADDER[ai].nets ? ai : null; };
+        const here = netRung(levelIdx), next = netRung(levelIdx + 1);
+        const fetchNext = () => { if (next != null) ladderNetsEnsureLoaded(next).catch(() => {}); };
+        if (here != null) ladderNetsEnsureLoaded(here).then(fetchNext, () => {}); else fetchNext();
     }
     startGame(true, humanColorIdx===undefined ? 0 : humanColorIdx, 'ladder');
 }
@@ -7199,7 +7271,7 @@ function saveLadderWinQueue(q){ try { localStorage.setItem(LADDER_WIN_QUEUE_KEY,
 function submitLadderWin(levelIdx, color){
     const def = AI_LADDER[RUNG_TO_AI_LADDER[levelIdx]];
     // Lab games start from any position and allow take-backs: not a clean record of a won game.
-    if (!def || def.kind !== 'net' || labMode || G.adjudicated || ladderTurns.length < 2) return;
+    if (!def || def.kind !== 'net' || labMode || G.adjudicated || G.netFallback || ladderTurns.length < 2) return;
     const client = window.tauSteam ? 'steam' : window.tauDesktop ? 'desktop'
                  : /Android|iPhone|iPad/i.test(navigator.userAgent) ? 'mobile' : 'web';
     const q = ladderWinQueue();
