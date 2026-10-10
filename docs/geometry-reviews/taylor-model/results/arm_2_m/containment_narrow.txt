@@ -1,0 +1,3 @@
+arm (2,-1) cell [2.09375, 2.095703125] plain+sym (narrowest): margin >= 3.88330; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (2,-1) cell [14.741213836669921, 14.741213912963866] plain+sym (narrowest): margin >= 2.72136; 2604 comparisons at 7 angles, 0 outside; worst excess 3.33e-16
+TOTAL: 2 cells, 5208 comparisons, 0 outside, 0 stopped
