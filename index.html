@@ -4381,6 +4381,9 @@ const AI_LADDER = [
     // it beats nothing at this height as both colours. resume-619 D3 beat resume-607 D2 2-0.
     // ~9s of thinking a move in Chrome at depth 3, so it takes most of each frame and a long guard.
     { kind:'net', label:'resume-619 D3', nets:['resume-619'], noCorner:true, o:{ depth:3, keepStops:4, temperature:0, sliceMs:13, guardMs:90000 } },
+    // L22 -> the Brawler (see ladderBrawlPlan): the biggest swing it can take that is not a retreat.
+    // Appended, like every other addition, so no existing index moves.
+    { kind:'brawl', label:'Brawler', noCorner:true },
 ];
 let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
 // The player-visible ladder's rung NUMBER and the AI it plays are deliberately two different axes.
@@ -4390,7 +4393,12 @@ let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder
 // into AI_LADDER's own numbering -- every existing board keeps the exact opponent it always had,
 // however its position in the menu moves. New rung 1 (Yellow) reuses L1's pushover outright: it is
 // a new SLOT in the menu, not a new difficulty tier nobody asked for or tuned.
-const RUNG_TO_AI_LADDER = [0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 17, 18, 19, 20];
+// Rung 3 (Corvin) is the Brawler (AI_LADDER[21]) -- rungs 1 and 2 used to be the same pushover, and
+// L2 now has rung 2 to itself. By Elo it belongs lower (120-game arena runs: it beats the pushover
+// 40-0, loses to L2 40-80, takes L3 77-43 and loses to L4 32-88 -- it cycles by style), but people
+// find a thing that swings as hard as it can every turn much harder than the machines do, so it sits
+// after L2 and before L3, where a human is meeting real resistance for the first time.
+const RUNG_TO_AI_LADDER = [0, 1, 21, 2, 3, 4, 5, 6, 7, 8, 17, 18, 19, 20];
 // One-time migration for a save written under the old 11-rung numbering (Walnut at rung 1 ...
 // Colossus at rung 11), now that Yellow has taken rung 1 and everything else shifted up by one.
 // Left un-migrated, a player's own saved clears would be read back under the WRONG rung the moment
@@ -4981,6 +4989,28 @@ function ladderL1Plan(idx){
         target=Math.min(target, p.radAtCross*0.8);
     return {pivotIdx:pv, dir, targetRad:target};
 }
+// The Brawler: no plan, no safety, just the biggest swing the rules let it take. Every turn it tries
+// each pivot foot both ways, swings to the natural limit (a line crossed, or contact), and drops any
+// swing that would leave its piece farther from the opponent than it started -- it never retreats.
+// Of what is left it takes the longest (within a few percent, so it is not a metronome), and a swing
+// that puts the opponent off the board beats everything. It does not look at what the answer to it
+// will be, which is the whole joke: a thing that hits as hard as it can, every time.
+function ladderBrawlPlan(idx){
+    const snap0=takeSnap(), me0=G.pieces[idx], opp=G.pieces[1-idx];
+    const d0=Math.hypot(me0.x-opp.x, me0.y-opp.y);
+    let best=null, bestScore=-1;
+    for (let pv=0; pv<3; pv++) for (const dir of [1,-1]) {
+        const net=Math.abs(simMoveToLimit(pv, dir));
+        const me=G.pieces[idx], thrown=G.pieces[1-idx].anyFootOff();
+        const d1=Math.hypot(me.x-opp.x, me.y-opp.y);
+        ladderRestore(snap0);
+        if (net<HARD_MIN_MOVE_RAD) continue;
+        if (!thrown && d1>d0+1e-6) continue;   // backwards: it ends farther from them than it began
+        const score = thrown ? 1e6-net : net*(0.97+Math.random()*0.06);
+        if (score>bestScore) { bestScore=score; best={pivotIdx:pv, dir, targetRad:net}; }
+    }
+    return best || ladderRandomPlan(idx);   // boxed in so every swing retreats: any legal move
+}
 // a random legal plan (the noise dial's move)
 function ladderRandomPlan(idx){
     for(let t=0;t<8;t++){ const pv=Math.floor(Math.random()*3), dir=Math.random()<0.5?1:-1;
@@ -5008,6 +5038,7 @@ function ladderPlanRung(def, idx){ return drainPlan(ladderPlanRungGen(def, idx))
 function* ladderPlanRungGen(def, idx){
     if (def.noise && Math.random()<def.noise) return ladderRandomPlan(idx);
     if (def.kind==='l1') return ladderL1Plan(idx);
+    if (def.kind==='brawl') return ladderBrawlPlan(idx);
     if (def.kind==='builtin') return def.brain==='master' ? yield* aiChoosePlanMasterGen(idx, def.mw) : ladderDumbPlan(idx);
     if (def.kind==='p3') return yield* ladderPlan3Gen(idx, def.w, def.o);
     if (def.kind==='opp') return yield* ladderPlanOppModelGen(idx, def.w, def.o);

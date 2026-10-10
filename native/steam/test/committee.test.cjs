@@ -20,10 +20,14 @@ test('the ladder is fourteen rungs, and the top four are the league ladder',asyn
   assert.deepEqual(g.errors,[],'loads clean with the new AI_LADDER entries and rung mapping');
   assert.equal(g.read('LADDER_N'),14);
   // RUNG_TO_AI_LADDER is the one seam between "menu position" and "which AI plays there". Rungs
-  // 1-10 still point at exactly the AI_LADDER indices they always did; rungs 11-14 are the league
-  // ladder, appended to AI_LADDER rather than inserted, so no older index moved.
-  assert.equal(g.read('JSON.stringify(RUNG_TO_AI_LADDER)'),'[0,0,1,2,3,4,5,6,7,8,17,18,19,20]');
-  assert.equal(g.read('AI_LADDER.length'),21);
+  // 1-10 point at the older hand-tuned brains (rung 3 is the Brawler, appended as AI_LADDER[21]);
+  // rungs 11-14 are the league ladder. Everything is appended to AI_LADDER rather than inserted, so
+  // no older index moved.
+  assert.equal(g.read('JSON.stringify(RUNG_TO_AI_LADDER)'),'[0,1,21,2,3,4,5,6,7,8,17,18,19,20]');
+  assert.equal(g.read('AI_LADDER.length'),22);
+  assert.equal(g.read('AI_LADDER[21].kind'),'brawl','the Brawler, rung 3');
+  // No two rungs may share a brain: rungs 1 and 2 used to both be the pushover.
+  assert.equal(g.read('new Set(RUNG_TO_AI_LADDER).size'),14,'fourteen rungs, fourteen different brains');
   assert.equal(g.read('AI_LADDER[14].kind'),'committee','the Committee keeps its index for the lab and the arena');
   const rung = r => `AI_LADDER[RUNG_TO_AI_LADDER[${r - 1}]]`;
   // Each league rung is a league face exactly as it was rated: one net, a fixed depth, temperature
@@ -265,7 +269,7 @@ test('the desktop premium ladder puts its faces in the chosen order, easiest to 
   assert.equal(D.boardRung('colossus'),14,'Titan\'s arena is the top rung');
   assert.equal(D.boardRung('dark'),5,'and Dark, the board held in reserve, comes in early at rung 5');
   // The faces moved; the brains did not. Rung n is still the nth difficulty, whoever wears it.
-  assert.equal(g.read('JSON.stringify(RUNG_TO_AI_LADDER)'), JSON.stringify([0,0,1,2,3,4,5,6,7,8,17,18,19,20]));
+  assert.equal(g.read('JSON.stringify(RUNG_TO_AI_LADDER)'), JSON.stringify([0,1,21,2,3,4,5,6,7,8,17,18,19,20]));
   assert.deepEqual(g.errors,[]);
 });
 
@@ -351,4 +355,34 @@ test('winning a slide mid-swing does not stop the piece dead in the corner', asy
   g.read(`htpTrySwing(htpState('double'), 'double', 0.25)`);
   assert.equal(g.read("htpState('double').p.rot"), g.read('window.__r1'), 'a new swing is not');
   assert.deepEqual(g.errors, []);
+});
+
+test('the Brawler never retreats, and takes the longest swing that is not one',async t=>{
+  const g=await game('');t.after(g.close);
+  // From a spread of positions: its plan is legal, ends no farther from the opponent than it began,
+  // and no non-retreating swing of any pivot/direction is longer than the one it picked.
+  const bad = g.read(`(() => {
+    const out = [];
+    for (let k = 0; k < 40; k++) {
+      const me = G.pieces[0], opp = G.pieces[1];
+      me.x = -30 + Math.random()*20; me.y = -20 + Math.random()*40; me.rot = Math.random()*6.28;
+      opp.x = 5 + Math.random()*25; opp.y = -20 + Math.random()*40; opp.rot = Math.random()*6.28;
+      G.active = 0;
+      const snap = takeSnap(), d0 = Math.hypot(me.x-opp.x, me.y-opp.y);
+      const plan = ladderBrawlPlan(0);
+      if (!plan || ![0,1,2].includes(plan.pivotIdx) || !(plan.targetRad > 0)) { out.push('illegal ' + JSON.stringify(plan)); continue; }
+      let best = 0, planD = null;
+      for (let pv = 0; pv < 3; pv++) for (const dir of [1,-1]) {
+        const net = Math.abs(simMoveToLimit(pv, dir)), d1 = Math.hypot(G.pieces[0].x-opp.x, G.pieces[0].y-opp.y), thrown = G.pieces[1].anyFootOff();
+        ladderRestore(snap);
+        if (pv === plan.pivotIdx && dir === plan.dir) planD = d1;
+        if (!thrown && d1 <= d0 + 1e-6 && net > best) best = net;
+      }
+      if (planD !== null && planD > d0 + 1e-6 && !G.pieces[1].anyFootOff()) out.push('retreated ' + planD + ' > ' + d0);
+      if (plan.targetRad < best*0.96) out.push('short ' + plan.targetRad + ' < ' + best);
+    }
+    return JSON.stringify(out);
+  })()`);
+  assert.equal(bad,'[]');
+  assert.deepEqual(g.errors,[]);
 });
