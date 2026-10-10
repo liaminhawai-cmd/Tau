@@ -7185,9 +7185,11 @@ async function flushLadderWins(){
         while (q.length) {
             const w = q[0];
             const { error } = await sb.rpc('submit_ladder_win', { p_level: w.level, p_colour: w.colour, p_turns: w.turns, p_client: w.client });
-            // Not signed in (not even a guest) or the network dropped: keep it for next time. Anything
-            // else -- rejected by the server's checks, or the daily cap -- would fail again, so drop it.
-            if (error && (!sbUser || /fetch|network/i.test(error.message || ''))) break;
+            // Not signed in (not even a guest), the network dropped, or the server has not had
+            // ladder_wins_migration.sql yet (PGRST202, no such function): keep it for next time.
+            // Anything else -- rejected by the server's checks, or the daily cap -- would fail
+            // again, so drop it.
+            if (error && (!sbUser || error.code === 'PGRST202' || /fetch|network/i.test(error.message || ''))) break;
             q = ladderWinQueue().slice(1); saveLadderWinQueue(q);
         }
     } catch(e) {}
