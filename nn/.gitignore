@@ -50,3 +50,5 @@ zpd-pool.json
 data-arch-frozen/
 
 marketing/*.zip
+.supabase-service-key
+.web-games-state.json

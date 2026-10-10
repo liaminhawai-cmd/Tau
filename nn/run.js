@@ -80,6 +80,9 @@ const gamesPerBatch = Math.max(1, +arg('gamesPerBatch', 1000));
 const checkEveryMin = Math.max(0.5, +arg('checkEveryMin', 5));
 const tournamentEveryMin = Math.max(1, +arg('tournamentEveryMin', 180));
 const benchEveryMin = Math.max(1, +arg('benchEveryMin', 60));
+// Human wins over the nets from the web/Steam/mobile game, pulled from Supabase into nn/data (see
+// pull-web-games.js). Does nothing on a machine without the service key. 0 disables it.
+const webPullEveryMin = Math.max(0, +arg('webPullEveryMin', 60));
 // Resume-train from best.json on its own clock, then promote. See the "WHAT CHANGED" note at the
 // top for why this exists and why it is bounded by the round robin rather than removed.
 // --trainEveryMin 0 disables it (pure retrain-from-scratch, decided only by round robins).
@@ -1613,7 +1616,7 @@ function startSelfplayBatch() {
 // Both run on their own wall-clock schedule, independent of self-play, which keeps generating
 // games in the background the whole time these run (sharing cores, not losing them).
 let lastTournamentAt = Date.now(), lastBenchAt = Date.now(), lastTrainAt = Date.now(),
-    lastPoolAt = Date.now();
+    lastPoolAt = Date.now(), lastWebPullAt = 0;   // 0: the first tick pulls
 
 // Resume-train from best.json, but no longer promote it directly. It used to: an unconditional
 // atomicCopy(fresh, best) every trainEveryMin, with nothing between one tick and the next checking
@@ -2641,6 +2644,15 @@ async function schedulerLoop() {
     // Pull first, every tick, before anything reads nn/data or decides what to train on -- see
     // pullWorkers's own header for why this can no longer be left to a lucky push collision.
     pullWorkers();
+    // Human wins from the web game: onto disk before anything reads nn/data, and pushed right away
+    // so every machine trains on them -- they are few, and the most informative rows there are.
+    if (webPullEveryMin > 0 && now - lastWebPullAt >= webPullEveryMin*60000) {
+      lastWebPullAt = now;
+      try {
+        const r = await require('./pull-web-games.js').pullWebGames(log);
+        if (r.file) writeStatus(statusState.stage, [r.file]);
+      } catch (e) { log(`WARNING: web games pull failed (${(e && e.message) || e}) — continuing`); }
+    }
     // Push whatever the CURRENTLY-GROWING batch file has on it so far. Batches now take hours, not
     // minutes, to complete -- without this, git only ever sees a finished batch, which would mean
     // going many hours between updates instead of every checkEveryMin, exactly the opposite of
