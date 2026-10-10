@@ -2576,6 +2576,7 @@ function reset() {
     if (typeof tripods !== 'undefined' && tripods && !(typeof htp3DActive !== 'undefined' && htp3DActive))
         tripods.forEach(tp => { if (tp) tp.visible = true; });
     replayFrames.length = 0; replayTimes.length = 0; replayActive = false; replayNames = null;   // every fresh board starts a fresh recording
+    if (typeof ladderTurns !== 'undefined') ladderTurns.length = 0;
     render();
 }
 // snapshot / restore both pieces so an aborted turn (released before minMoveDeg of net
@@ -4156,6 +4157,11 @@ function finishTurn() {
     // "take that move back" needs to restore.
     if (labMode && G.snap) labHist.push({ pose: [G.snap[0].x, G.snap[0].y, G.snap[0].rot,
                                                  G.snap[1].x, G.snap[1].y, G.snap[1].rot], active: G.active });
+    // Every ladder turn, logged the way nn/human-league.js logs a league game: the pose the turn
+    // started from and who moved. A win over a net rung uploads this (see submitLadderWin).
+    if (ladderLevel != null && !labActive && !labMode && G.snap)
+        ladderTurns.push({ pose: [G.snap[0].x, G.snap[0].y, G.snap[0].rot, G.snap[1].x, G.snap[1].y, G.snap[1].rot].map(v => +v.toFixed(4)),
+                           m: G.active });
     commitTurn();
     progressCentering();   // each completed move creeps the camera a quarter back toward centre
     if (labMode) labBenchRender();   // the bench's take-back state changes with every committed move
@@ -6487,6 +6493,7 @@ function showGameOverModal() {
     if (!labActive && !onlineMatch && ladderLevel != null && G.winner === humanIdx) {
         markLadderCleared(ladderLevel + 1, humanIdx);
         recordLevelClear(ladderLevel + 1, humanIdx);
+        submitLadderWin(ladderLevel, humanIdx);
     }
     if (window.tauDesktop && window.tauDesktop.recordResult)
         window.tauDesktop.recordResult({ humanWon, vsAI, online: !!onlineMatch, lab: labActive, level: ladderLevel });
@@ -7147,6 +7154,48 @@ function recordLevelClear(n, color){
     if (typeof sb === 'undefined' || !sb) return;
     try { sb.rpc('record_level_clear', { p_level: n, p_colour: color }).then(()=>{}, ()=>{}); } catch(e) {}
 }
+// ---- Wins over the trained nets become training data ----
+// A human beating a net rung has found a position the net misjudges -- the one thing self-play
+// cannot hand the trainer. Every such win (web, Steam, mobile: they all run this page) is posted to
+// submit_ladder_win, and nn/pull-web-games.js turns it into nn/data rows the trainer reads. Only
+// wins: the trainer already has millions of games the net won. A win made offline (Steam on a
+// plane) waits in localStorage and goes up on a later load.
+// var, not const: reset() clears it and reset() runs during early boot, before this line has.
+var ladderTurns = [];
+const LADDER_WIN_QUEUE_KEY = 'tauLadderWinQueue', LADDER_WIN_QUEUE_MAX = 20;
+function ladderWinQueue(){ try { return JSON.parse(localStorage.getItem(LADDER_WIN_QUEUE_KEY)) || []; } catch(e){ return []; } }
+function saveLadderWinQueue(q){ try { localStorage.setItem(LADDER_WIN_QUEUE_KEY, JSON.stringify(q.slice(-LADDER_WIN_QUEUE_MAX))); } catch(e){} }
+function submitLadderWin(levelIdx, color){
+    const def = AI_LADDER[RUNG_TO_AI_LADDER[levelIdx]];
+    // Lab games start from any position and allow take-backs: not a clean record of a won game.
+    if (!def || def.kind !== 'net' || labMode || G.adjudicated || ladderTurns.length < 2) return;
+    const client = window.tauSteam ? 'steam' : window.tauDesktop ? 'desktop'
+                 : /Android|iPhone|iPad/i.test(navigator.userAgent) ? 'mobile' : 'web';
+    const q = ladderWinQueue();
+    q.push({ level: levelIdx + 1, colour: color, turns: ladderTurns.slice(), client });
+    saveLadderWinQueue(q);
+    flushLadderWins();
+}
+let ladderWinsFlushing = false;
+async function flushLadderWins(){
+    if (ladderWinsFlushing || typeof sb === 'undefined' || !sb || !navigator.onLine) return;
+    ladderWinsFlushing = true;
+    try {
+        let q = ladderWinQueue();
+        while (q.length) {
+            const w = q[0];
+            const { error } = await sb.rpc('submit_ladder_win', { p_level: w.level, p_colour: w.colour, p_turns: w.turns, p_client: w.client });
+            // Not signed in (not even a guest), the network dropped, or the server has not had
+            // ladder_wins_migration.sql yet (PGRST202, no such function): keep it for next time.
+            // Anything else -- rejected by the server's checks, or the daily cap -- would fail
+            // again, so drop it.
+            if (error && (!sbUser || error.code === 'PGRST202' || /fetch|network/i.test(error.message || ''))) break;
+            q = ladderWinQueue().slice(1); saveLadderWinQueue(q);
+        }
+    } catch(e) {}
+    ladderWinsFlushing = false;
+}
+setTimeout(flushLadderWins, 8000);   // anything left over from an offline session
 function levelTipEl(){ let el=document.getElementById('levelTip');
     if (!el){ el=document.createElement('div'); el.id='levelTip'; document.body.appendChild(el); } return el; }
 function showLevelTip(target, n, color){
@@ -12963,6 +13012,7 @@ async function setSession(session) {
         localStorage.removeItem(AUTH_PERSIST_FLAG);
         signedOut.style.display = 'flex'; signedIn.style.display = 'none'; updateAcctStatus(); return;
     }
+    if (typeof flushLadderWins === 'function') flushLadderWins();   // a win made before sign-in (or as a brand-new guest) goes up now
     // The profiles row is created by a server-side trigger on auth.users, which can very
     // occasionally not yet be visible to this immediately-following SELECT (e.g. right after
     // signInAnonymously() resolves) -- without retrying, that shows up as the guest's name
