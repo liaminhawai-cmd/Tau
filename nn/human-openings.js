@@ -22,7 +22,7 @@ function readLines(file) {
   try { return fs.readFileSync(file, 'utf8').split('\n'); } catch (e) { return []; }
 }
 
-function loadHumanOpenings(dir, plies = 3) {
+function loadHumanOpenings(dir, plies = 1) {
   const wins = new Map();
   for (const l of readLines(path.join(dir, 'human-results.jsonl'))) {
     if (!l.trim()) continue;
@@ -52,7 +52,7 @@ function loadHumanOpenings(dir, plies = 3) {
 module.exports = { loadHumanOpenings };
 
 if (require.main === module) {
-  const plies = +(process.argv[process.argv.indexOf('--plies') + 1] || 3) || 3;
+  const plies = +(process.argv[process.argv.indexOf('--plies') + 1] || 1) || 1;
   const list = loadHumanOpenings(__dirname, plies);
   console.log(`${list.length} opening position(s) after ${plies} move(s) of your league wins`);
   for (const o of list) console.log(`  ${o.game}  vs ${o.face}  (${o.human}), ${o.m === 0 ? 'Blue' : 'Red'} to move`);

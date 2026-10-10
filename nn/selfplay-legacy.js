@@ -338,8 +338,11 @@ function main() {
   // --humanOpeningPlies moves of a game you won in the league (human-openings.js has the argument),
   // with the normal brains playing on from there. Nothing happens until you have won one. Rows carry
   // src:'human-opening', and like every non-standard start these games never feed the Elo inbox.
+  // One move, not three: the copied opening is Blue's first move and nothing else, the same as every
+  // other forced opening in the trainer. Red always answers with its own search -- three plies also
+  // copied Red's reply out of the human game, so the net playing Red never chose its own defence.
   const humanOpeningFrac = Math.max(0, Math.min(1, +arg('humanOpeningFrac', 0.2)));
-  const humanOpeningPlies = Math.max(0, Math.floor(+arg('humanOpeningPlies', 3)));
+  const humanOpeningPlies = Math.max(0, Math.floor(+arg('humanOpeningPlies', 1)));
   const humanOpeningsFile = arg('humanOpenings', null);
   // Real lookahead (nnai.js's `depth`) measurably strengthens play (a same-net depth-2 vs depth-1
   // A/B went 19-5) but costs roughly keepForDepth x per extra ply (measured ~5.6x for depth 2, ~20x
