@@ -1971,7 +1971,13 @@ const CFG = {
     // crossing point. Valid range measured at 0.70-0.93 (below 0.70 the centre-spin dies, at 1.00
     // the opening slips through again); 0.81 sits mid-window and is the physical value.
     cornerEps: 0.81,
-    substepDeg: 0.4,
+    // The swing's fixed step, measured from where the turn started. A swing is played ONLY on this
+    // grid -- see applySwing -- so where it stops is a function of the angle reached, never of how
+    // the motion was chopped up on the way. 0.375 = 3/8: the 3-degree chunks every AI, the league
+    // and training have always swung in were already split into exactly these eight substeps, so
+    // their play is unchanged; only drags and animations, which used to substep at whatever size
+    // the frame or the mouse produced, now get the same answer they do.
+    substepDeg: 0.375,
     minMoveDeg: 2,                 // NET rotation for a move to count (else the turn is undone)
     lockDeg: 2,                    // net rotation before the one-direction-per-turn lock engages
     // Leg tube radius, for BOTH collision and render. 1.44u = 2.88mm = the 5.77mm tube measured
@@ -2621,6 +2627,44 @@ function pinFoot(idx) {
     // head". This is the one point every real move -- human or AI's actual chosen swing -- starts
     // from, so wiping it here keeps only what the swing that's really about to play touches.
     G.justCrossed = [];
+    G.gridSnap = null;
+}
+// Everything a substep of the swing changes: both pieces and the turn's crossing bookkeeping
+// (crossingSubstep's per-foot contact episodes). Deep-copied: those are arrays of arrays/objects
+// the rule rebuilds or extends as it goes.
+const SWING_STATE_KEYS = ['netRad', 'crossings', 'atLimit', 'limitReason', 'pushContact', 'contact', 'earned', 'startSide',
+                          'entrySide', 'pendingMerge', 'turnStartContact', 'episodeCharged', 'justCrossed'];
+function swingStateSnap(){
+    const s = { pieces: G.pieces.map(p => ({ x:p.x, y:p.y, rot:p.rot })) };
+    for (const k of SWING_STATE_KEYS) s[k] = G[k] && typeof G[k] === 'object' ? JSON.parse(JSON.stringify(G[k])) : G[k];
+    return s;
+}
+function swingStateRestore(s){
+    G.pieces.forEach((p, i) => { p.x = s.pieces[i].x; p.y = s.pieces[i].y; p.rot = s.pieces[i].rot; });
+    for (const k of SWING_STATE_KEYS) G[k] = s[k] && typeof s[k] === 'object' ? JSON.parse(JSON.stringify(s[k])) : s[k];
+}
+// One substep of the swing, exactly as the rules play it: rotate, roll back and stop at the rim or
+// at the crossing limit, otherwise resolve the push. Returns false when it was refused.
+function swingSubstep(step){
+    const active=G.pieces[G.active], opp=G.pieces[1-G.active];
+    const before=active.feet();
+    active.rotateAround(G.pivot.x, G.pivot.y, step);
+    // You can't swing yourself off: if this substep would carry one of the ACTIVE piece's own
+    // feet past the rim, roll it back and stop the swing right at the edge. Checked BEFORE the
+    // crossing rule so a rolled-back step never records a phantom crossing. (Pushing the OPPONENT
+    // off is untouched -- that happens in resolvePush and is still how you win.)
+    if (active.anyFootOff()){
+        active.rotateAround(G.pivot.x, G.pivot.y, -step); G.atLimit=true; G.limitReason='selfoff'; return false; }
+    if (crossingSubstep(before, active.feet(), G)){          // hit the one-crossing limit: roll this step back
+        active.rotateAround(G.pivot.x, G.pivot.y, -step); G.atLimit=true; G.limitReason='cross'; return false; }
+    G.netRad+=step;
+    // Contact is only RECORDED here. The click that goes with it is played by updateAudioMovement,
+    // frame by frame, not from inside this loop: the AI's planner runs this exact function in
+    // tight loops over the live state while it thinks (snapshot, sweep, restore, hundreds of
+    // times), and a click fired from here played every one of those simulated shoves -- a
+    // crackle of knocks through the whole think with nothing on screen to explain it.
+    G.pushContact = resolvePush(active, opp);
+    return true;
 }
 function applySwing(dA) {
     if (dA===0 || !G.pivot) return;   // no pivot: a stale animation tick raced a reset — ignore it
@@ -2628,28 +2672,50 @@ function applySwing(dA) {
     // (|net| >= lockDeg). Locking on the very first pointer sample let touch jitter pick
     // the direction, and then every drag the player actually intended was rejected.
     if (G.turnDir!==0 && Math.sign(dA)!==G.turnDir) return;
-    const active=G.pieces[G.active], opp=G.pieces[1-G.active];
-    const stepMax=CFG.substepDeg*Math.PI/180;
-    const steps=Math.max(1, Math.ceil(Math.abs(dA)/stepMax));
-    const step=dA/steps;
-    for (let s=0;s<steps;s++){
-        const before=active.feet();
-        active.rotateAround(G.pivot.x, G.pivot.y, step);
-        // You can't swing yourself off: if this substep would carry one of the ACTIVE piece's own
-        // feet past the rim, roll it back and stop the swing right at the edge. Checked BEFORE the
-        // crossing rule so a rolled-back step never records a phantom crossing. (Pushing the OPPONENT
-        // off is untouched -- that happens in resolvePush and is still how you win.)
-        if (active.anyFootOff()){
-            active.rotateAround(G.pivot.x, G.pivot.y, -step); G.atLimit=true; G.limitReason='selfoff'; break; }
-        if (crossingSubstep(before, active.feet(), G)){          // hit the one-crossing limit: roll this step back
-            active.rotateAround(G.pivot.x, G.pivot.y, -step); G.atLimit=true; G.limitReason='cross'; break; }
-        G.netRad+=step;
-        // Contact is only RECORDED here. The click that goes with it is played by updateAudioMovement,
-        // frame by frame, not from inside this loop: the AI's planner runs this exact function in
-        // tight loops over the live state while it thinks (snapshot, sweep, restore, hundreds of
-        // times), and a click fired from here played every one of those simulated shoves -- a
-        // crackle of knocks through the whole think with nothing on screen to explain it.
-        G.pushContact = resolvePush(active, opp);
+    // The swing is played on a FIXED grid of substeps counted from the pinned pose, and only grid
+    // steps are ever committed. The crossing rule keeps state from substep to substep (which lines
+    // each foot is on), so the old "split this call into equal pieces" made the answer depend on how
+    // the motion arrived: a corner a 3-degree AI chunk rounded as one crossing, a mouse moving in
+    // finer steps met as two and stopped at -- and a wiggle, arriving in yet another size, got
+    // through. Measured: about a quarter of the corner two-for-ones the planner finds were refused
+    // to a drag, and a bot's planned corner could stop dead when the browser animated it. Now the
+    // pose at an angle is one thing however it is reached: the grid steps up to it, then the
+    // remainder shown as a plain rotation from the last grid point (if, and only if, the next whole
+    // grid step is allowed -- otherwise the swing stops on the grid point, as a whole step would).
+    const S = CFG.substepDeg*Math.PI/180;
+    // The target is measured from where the swing is SHOWN, then the state goes back onto the grid
+    // if the last call left it between two grid points (the remainder is replayed below).
+    let target = G.netRad + dA;
+    if (G.gridSnap && G.gridSnap.pivot === G.pivot && G.gridSnap.shownNet === G.netRad) swingStateRestore(G.gridSnap.state);
+    G.gridSnap = null;
+    const sgn = Math.sign(target) || Math.sign(dA);
+    // Coming back toward (or through) the pinned pose -- only possible before the direction lock:
+    // replay from the pin, so the pose is still a function of the angle alone.
+    if (Math.abs(target) < Math.abs(G.netRad) - 1e-12 || (G.netRad !== 0 && Math.sign(G.netRad) !== sgn)) {
+        if (!G.snap) return;
+        const lock = G.turnDir, pinned = G.pinned;
+        G.pieces.forEach((p, i) => { p.x = G.snap[i].x; p.y = G.snap[i].y; p.rot = G.snap[i].rot; });
+        pinFoot(pinned); G.turnDir = lock;
+    }
+    if (!G.atLimit) {
+        // whole grid steps first; k counts them from the pin, so floating drift cannot move the grid
+        const kNow = Math.round(Math.abs(G.netRad)/S), kTo = Math.floor(Math.abs(target)/S + 1e-9);
+        for (let k = kNow; k < kTo; k++) if (!swingSubstep(sgn*S)) break;
+        // then the part of a step beyond the last grid point: shown, never committed
+        const rest = Math.abs(target) - kTo*S;
+        if (!G.atLimit && rest > 1e-9) {
+            const onGrid = swingStateSnap();
+            const nextOk = swingSubstep(sgn*S), why = G.limitReason;
+            swingStateRestore(onGrid);
+            if (!nextOk) { G.atLimit = true; G.limitReason = why; }
+            else {
+                const active=G.pieces[G.active], opp=G.pieces[1-G.active];
+                active.rotateAround(G.pivot.x, G.pivot.y, sgn*rest);
+                G.netRad += sgn*rest;
+                G.pushContact = resolvePush(active, opp);
+                G.gridSnap = { pivot: G.pivot, shownNet: G.netRad, state: onGrid };
+            }
+        }
     }
     if (G.turnDir===0 && Math.abs(G.netRad) >= CFG.lockDeg*Math.PI/180)
         G.turnDir = Math.sign(G.netRad);
