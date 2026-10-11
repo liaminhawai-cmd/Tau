@@ -1,5 +1,14 @@
 # Target 1 — proof status
 
+## Arithmetic correction — 11 October 2026
+
+A review found that the previous square-root Taylor-remainder bound could be too small when its lower input bound exceeded 1. The formula has been corrected in [commit 344e35c](https://github.com/liaminhawai-cmd/Tau/commit/344e35c05d554af0930c62245dca613ed6cb922c), and an analytic regression was added in [commit d8b9d13](https://github.com/liaminhawai-cmd/Tau/commit/d8b9d13f2a32026667fde2f52c54dd376ddd7871). The regression and a small randomized arithmetic run pass.
+
+**The previously saved Target1 cover corpus below was generated before this correction. Treat those results as historical until regenerated and re-audited with the corrected code.** The global two-ply claim is not presently established by the saved cover corpus.
+
+A single post-fix cell at [12°, 12.0001°] has been accepted and replayed twice with identical bounds; Red-legality checking passes. The separate engine-containment replay has not been run. See the [cell](probes/arm_1_p/cover_12_12.0001_d4.json) and [validation record](probes/arm_1_p/validation_12_12.0001.json).
+
+
 Target 1 is the mined seed from `docs/dead-regions/dead-points-mined.jsonl` line 176
 (`problems/target1.json`), blue to move. The claim being certified: **for every blue move, red has a
 legal reply that throws blue off the board** (the position is lost for blue in two plies), in the same
