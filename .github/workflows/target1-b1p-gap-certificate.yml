@@ -30,12 +30,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - from: 12.02
-            to: 13.5
-          - from: 13.5
-            to: 15
-          - from: 15
-            to: 16.5
+          - from: 12.14
+            to: 12.16
+          - from: 12.16
+            to: 12.18
+          - from: 12.18
+            to: 12.20
+          - from: 12.20
+            to: 12.22
+          - from: 12.22
+            to: 12.24
+          - from: 12.24
+            to: 12.26
+          - from: 12.26
+            to: 12.28
+          - from: 12.28
+            to: 12.30
+          - from: 12.30
+            to: 12.32
+          - from: 12.32
+            to: 12.34
     defaults:
       run:
         working-directory: docs/geometry-reviews/taylor-model
