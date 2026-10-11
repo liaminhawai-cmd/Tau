@@ -39,3 +39,8 @@ node validate-cover2.js 1 1 12 12.02 3 4
 ```
 
 On a POSIX shell, the first command writes its cell JSON under `results/target1-b1p/arm_1_p/`. The audit and validation commands should be run only after that leaf file has been regenerated. Promote this slice only if the replay reproduces every saved margin and validation reports zero containment failures, zero legality failures and zero stopped cells.
+
+
+## Reproducible follow-up run
+
+This file is touched in the draft PR only to trigger `.github/workflows/target1-b1p-gap-smoke.yml` on GitHub Actions. The workflow regenerates the six-cell slice and gates exact tiling, independent margin replay, and cellwise engine-containment plus Red-legality checks. The earlier in-memory cover-only numbers above are not proof; only the workflow artifact and its successful checks can promote this interval to validated coverage.
