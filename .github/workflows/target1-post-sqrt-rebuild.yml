@@ -110,6 +110,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Clear historical cells for this fixture and arm
+        run: |
+          set -euo pipefail
+          dir="results/${{ matrix.problem }}/arm_${{ matrix.pivot }}_${{ matrix.sign }}"
+          mkdir -p "$dir"
+          rm -f "$dir"/cover_*_d*.json
       - name: Rebuild the cover using corrected arithmetic
         env:
           PROBLEM: ${{ matrix.problem }}
