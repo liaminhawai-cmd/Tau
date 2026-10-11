@@ -38,6 +38,11 @@ cell endpoints internally. The upper 222-cell chunk was added after the earlier 
 entry; **it does not close the 4.5° gap from 12° to 16.5°**. The combined 644 cells are not a continuous
 cover of the full arm.
 
+A first adaptive cover-only probe immediately beyond the lower edge accepted [12°, 12.02°] in six
+cells (minimum recorded margin 2.9747806959u, zero failed leaves). The leaf JSON was not persisted in
+that run, and replay, cellwise containment and Red-legality validation remain outstanding; this is
+provisional exploration, not promoted coverage. See [GAP-PROBE-12.00-12.02.md](GAP-PROBE-12.00-12.02.md).
+
 The witnesses were found by an engine scan of every red arm and stop length at 0.01° steps over each
 blue arm (`scratchpad` discovery, recorded in each fixture's `notes`); the cells are the certificate.
 
