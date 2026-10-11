@@ -43,6 +43,8 @@ cells (minimum recorded margin 2.9747806959u, zero failed leaves). The leaf JSON
 that run, and replay, cellwise containment and Red-legality validation remain outstanding; this is
 provisional exploration, not promoted coverage. See [GAP-PROBE-12.00-12.02.md](GAP-PROBE-12.00-12.02.md).
 
+A dedicated [gap-certificate workflow](../../../../.github/workflows/target1-b1p-gap-certificate.yml) now targets the actual [12°, 16.5°] hole in three 1.5° bands. Its gates require positive-margin cells, exact tiling, per-cell replay, and cellwise engine-containment plus Red-legality checks. Until those jobs pass, the probe above does not count toward proved coverage.
+
 The witnesses were found by an engine scan of every red arm and stop length at 0.01° steps over each
 blue arm (`scratchpad` discovery, recorded in each fixture's `notes`); the cells are the certificate.
 
