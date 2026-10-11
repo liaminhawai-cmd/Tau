@@ -4482,6 +4482,8 @@ const AI_LADDER = [
     // L22 -> the Brawler (see ladderBrawlPlan): the biggest swing it can take that is not a retreat.
     // Appended, like every other addition, so no existing index moves.
     { kind:'brawl', label:'Brawler', noCorner:true },
+    { kind:'net', label:'resume-656 D3', nets:['resume-656'], noCorner:true, o:{ depth:3, keepStops:4, temperature:0, sliceMs:13, guardMs:90000 } },
+    { kind:'net', label:'mutant-129 D3', nets:['mutant-129'], noCorner:true, o:{ depth:3, keepStops:4, temperature:0, sliceMs:13, guardMs:90000 } },
 ];
 let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
 // The player-visible ladder's rung NUMBER and the AI it plays are deliberately two different axes.
