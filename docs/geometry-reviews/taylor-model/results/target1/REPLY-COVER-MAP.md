@@ -1,3 +1,5 @@
+> **Historical result — arithmetic correction pending rebuild (11 October 2026).** Every cell and check count in this map predates the corrected square-root Taylor-remainder bound. Keep these numbers as provenance only; they are not current proof evidence until regenerated and audited with the corrected `tm.js`. See the [Target1 proof status](PROOF-STATUS.md) and [post-fix rebuild workflow](https://github.com/liaminhawai-cmd/Tau/blob/claude/serene-pasteur-psjoi2/.github/workflows/target1-post-sqrt-rebuild.yml).
+
 # Target 1 — response-cover map for blue arm (2,+)
 
 **Seed:** the fixed Target 1 seed in `problems/target1.json`.  
