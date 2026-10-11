@@ -5,6 +5,7 @@ on:
       - "claude/serene-pasteur-psjoi2"
     paths:
       - ".github/workflows/target1-b1p-gap-certificate.yml"
+      - "docs/geometry-reviews/taylor-model/test-tm.js"
       - "docs/geometry-reviews/taylor-model/cover2.js"
       - "docs/geometry-reviews/taylor-model/audit2.js"
       - "docs/geometry-reviews/taylor-model/validate-cover2.js"
@@ -43,6 +44,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Test Taylor arithmetic, including sqrt remainder regression
+        run: node docs/geometry-reviews/taylor-model/test-tm.js 300 200 4
       - name: Build degree-4 Taylor cover
         env:
           PROBLEM: target1-b1p
