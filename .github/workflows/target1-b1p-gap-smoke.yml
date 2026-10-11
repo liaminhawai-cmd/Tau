@@ -1,0 +1,85 @@
+name: Target1 (1,+) gap slice smoke certificate
+on:
+  pull_request:
+    branches:
+      - "claude/serene-pasteur-psjoi2"
+    paths:
+      - "docs/geometry-reviews/taylor-model/results/target1/GAP-PROBE-12.00-12.02.md"
+      - ".github/workflows/target1-b1p-gap-smoke.yml"
+      - "docs/geometry-reviews/taylor-model/cover2.js"
+      - "docs/geometry-reviews/taylor-model/audit2.js"
+      - "docs/geometry-reviews/taylor-model/validate-cover2.js"
+      - "docs/geometry-reviews/taylor-model/tiling.js"
+      - "docs/geometry-reviews/taylor-model/cert2.js"
+      - "docs/geometry-reviews/taylor-model/contain2.js"
+      - "docs/geometry-reviews/taylor-model/legal-red.js"
+      - "docs/geometry-reviews/taylor-model/modes2.js"
+      - "docs/geometry-reviews/taylor-model/tm.js"
+      - "docs/geometry-reviews/taylor-model/iv.js"
+      - "docs/geometry-reviews/taylor-model/push-tm.js"
+      - "docs/geometry-reviews/taylor-model/problem.js"
+      - "docs/geometry-reviews/taylor-model/problems/target1-b1p.json"
+      - "nn/engine.js"
+      - "index.html"
+jobs:
+  slice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: docs/geometry-reviews/taylor-model
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Rebuild adaptive degree-4 cover for 12°–12.02°
+        env:
+          PROBLEM: target1-b1p
+          SYMREM: "1"
+          VTX: "1"
+          MAXPASSES: "8000"
+          MAXOPS: "3500000"
+          MERGE_MAXW: "0.0005"
+          MAXOPS_MERGE: "1500000"
+        run: |
+          set -euo pipefail
+          node cover2.js 1 1 12 12.02 4 1e-5 | tee gap-slice-cover.json
+          node -e "const r=require('./gap-slice-cover.json'); if(r.cells===0 || r.failed!==0 || !(r.minMargin>0)) { console.error(r); process.exit(1) }"
+      - name: Verify exact cell tiling
+        env:
+          PROBLEM: target1-b1p
+        run: |
+          set -euo pipefail
+          node tiling.js 1 1 12 12.02 | tee gap-slice-tiling.json
+          node -e "const r=require('./gap-slice-tiling.json'); if(!r.tiled || r.cells===0 || !(r.minMargin>0)) { console.error(r); process.exit(1) }"
+      - name: Independently replay saved cell margins
+        env:
+          PROBLEM: target1-b1p
+          SYMREM: "1"
+          VTX: "1"
+        run: |
+          set -euo pipefail
+          node audit2.js 1 1 12 12.02 4 | tee gap-slice-audit.json
+          node -e "const r=require('./gap-slice-audit.json'); if(r.cells===0 || r.reproduced!==r.cells || r.mismatches!==0) { console.error(r); process.exit(1) }"
+      - name: Validate engine containment and Red legality
+        env:
+          PROBLEM: target1-b1p
+          SYMREM: "1"
+          VTX: "1"
+        run: |
+          set -euo pipefail
+          node validate-cover2.js 1 1 12 12.02 3 4 | tee gap-slice-validation.json
+          node -e "const r=require('./gap-slice-validation.json'); if(r.cells===0 || r.containBad!==0 || r.legalBad!==0 || r.stopped!==0) { console.error(r); process.exit(1) }"
+      - name: Upload cover and all diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: target1-b1p-gap-slice-12-12.02
+          path: |
+            docs/geometry-reviews/taylor-model/results/target1-b1p/arm_1_p/cover_12_12.02_d4.json
+            docs/geometry-reviews/taylor-model/gap-slice-cover.json
+            docs/geometry-reviews/taylor-model/gap-slice-tiling.json
+            docs/geometry-reviews/taylor-model/gap-slice-audit.json
+            docs/geometry-reviews/taylor-model/gap-slice-validation.json
+          if-no-files-found: warn
