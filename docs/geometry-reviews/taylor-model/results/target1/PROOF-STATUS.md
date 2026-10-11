@@ -18,16 +18,22 @@ red, by up to 15.1u, and the cells model that push.
 Every red reply pins red's foot 2 and swings +; only the stop length differs. "Checks" means: every
 cell re-run by `audit2.js` with 0 mismatches; `validate-cover2.js` 0 containment failures (engine
 samples inside the cell enclosures), 0 legality failures, 0 stopped cells; and `tiling.js` shows the
-cells tile the range with equal binary64 endpoints.
+cells tile the stated interval with equal binary64 endpoints.
 
 | Blue arm | Range [2°, B] | Red reply (substeps of 0.375°) | Status | Cells | Min margin |
 | --- | --- | --- | --- | ---: | ---: |
 | (2,+) | [2, 14.334609564414993] | (0,−) 120 on [2, 9.73]; (2,+) 36 on [9.73, B] | **covered, all checks** | 481 | 0.0977u |
 | (1,−) | [2, 27.6426619806354] | 96 on [2, 21.2]; 90 on [21.2, B] | **covered, all checks** | 784 | 2.0836u |
-| (1,+) | [2, 20.71908458837398] | 107 | [2, 12] covered, all checks; [12, B] running | 422 so far | 2.9172u so far |
+| (1,+) | [2, 20.71908458837398] | 107 | [2, 12] and [16.5, B] covered; **[12, 16.5] remains uncovered** | 644 across two disjoint intervals | 2.8653u |
 | (2,−) | [2, 29.758008056522694] | 107 on [2, 15.25]; 128 on [15.25, B] | running | | |
 | (0,−) | [2, 31.014385516493906] | 104 (red's limit) | queued | | |
 | (0,+) | [2, 38.74919310376795] | 106 | queued | | |
+
+For arm (1,+), the saved degree-4 covers tile [2°, 7°] (174 cells), [7°, 12°] (248 cells), and
+[16.5°, 20.71908458837398°] (222 cells). Each saved cover has zero failed leaves and contiguous
+cell endpoints internally. The upper 222-cell chunk was added after the earlier 422-cell status
+entry; **it does not close the 4.5° gap from 12° to 16.5°**. The combined 644 cells are not a continuous
+cover of the full arm.
 
 The witnesses were found by an engine scan of every red arm and stop length at 0.01° steps over each
 blue arm (`scratchpad` discovery, recorded in each fixture's `notes`); the cells are the certificate.
@@ -48,7 +54,7 @@ blue arm (`scratchpad` discovery, recorded in each fixture's `notes`); the cells
 
 ## What is still not established
 
-- Arms (1,+) above 12°, (2,−), (0,−) and (0,+): covers in progress.
+- Arm (1,+) still has the gap [12°, 16.5°]; arm (2,−) is in progress; arms (0,−) and (0,+) are queued.
 - The scope limits of Brief 6 apply unchanged: blue's moves are the plan application's (a human drag
   with another substep sequence is not covered); blue's own legality up to B is imported from the
   float engine; red's fixed stop is modelled as exact 0.375° substeps; the certificate is for the
