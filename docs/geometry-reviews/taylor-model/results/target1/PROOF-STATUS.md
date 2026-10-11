@@ -74,9 +74,11 @@ current proof coverage requires regenerated cells and fresh audits with the corr
 
 ## What is still not established
 
-- Arm (1,+) still has the gap [12°, 16.5°]; arm (2,−) is in progress; arms (0,−) and (0,+) are queued.
+- The full Target1 cover corpus needs regenerated with the corrected square-root remainder bound.
+- Arm (1,+) still has the gap [12°, 16.5°]; only [12°, 12.0001°] has a post-fix cell with replay and Red-legality results.
+- Arms (2,−), (0,−) and (0,+) have no established post-fix cover.
 - The scope limits of Brief 6 apply unchanged: blue's moves are the plan application's (a human drag
   with another substep sequence is not covered); blue's own legality up to B is imported from the
   float engine; red's fixed stop is modelled as exact 0.375° substeps; the certificate is for the
-  real-arithmetic model, not a bound on floating-point execution; and the Taylor-model arithmetic is
-  trusted as in Brief 6.
+  real-arithmetic model, not a bound on floating-point execution; and the Taylor-model arithmetic requires independent review; the square-root remainder correction does
+  not by itself establish the soundness of the entire interval library.
