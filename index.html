@@ -728,19 +728,24 @@ setTimeout(window.tauBootDone, 15000);
 <div id="tutorBar"></div>
 <div id="buildTag">build ?</div>
 <script>
-// Which build is this? A hand-typed number went stale for weeks ("build 293" on every version), so
-// the tag now stamps itself. The native builds (Steam, the apps) have the CI run number written in
-// by native/scripts/sync-www.mjs and marked data-fixed; the website shows when the page it was served
-// was published, from the server's Last-Modified (document.lastModified) -- which changes on every
-// deploy and needs nobody to remember anything. A server that sends no date makes lastModified "now",
-// which says nothing, so that case keeps the placeholder.
+// Which build is this? One number per build, the same on every platform: the native-builds run
+// number. The Steam and app builds have it written in by native/scripts/sync-www.mjs (data-fixed);
+// the website reads it from build.json, which that same run commits to main (Pages has no build
+// step to stamp a number into the page itself). Offline, or before the first build.json exists,
+// it falls back to when the served page was published (document.lastModified).
 (function () {
     const el = document.getElementById('buildTag');
     if (!el || el.dataset.fixed) return;
-    const at = new Date(document.lastModified);
-    if (isNaN(at) || Math.abs(Date.now() - at) < 5000) return;
-    try { el.textContent = 'build ' + at.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
-    catch (e) { el.textContent = 'build ' + at.toISOString().slice(0, 16).replace('T', ' '); }
+    const byDate = () => {
+        const at = new Date(document.lastModified);
+        if (isNaN(at) || Math.abs(Date.now() - at) < 5000) return;
+        try { el.textContent = 'build ' + at.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+        catch (e) { el.textContent = 'build ' + at.toISOString().slice(0, 16).replace('T', ' '); }
+    };
+    try {
+        fetch('build.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
+            .then(j => { if (j && Number.isFinite(+j.build)) el.textContent = 'build ' + j.build; else byDate(); }, byDate);
+    } catch (e) { byDate(); }
 })();
 </script>
 <div id="dbgHud" style="display:none;position:fixed;top:calc(4px + env(safe-area-inset-top));left:6px;z-index:70;font:10px/1.35 monospace;white-space:pre;color:#7fe3a0;background:rgba(0,0,0,0.6);padding:4px 6px;border-radius:4px;pointer-events:none;max-width:60vw;"></div>
