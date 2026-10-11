@@ -1,0 +1,122 @@
+{
+  "problem": "target1-b1p",
+  "blueArm": [
+    1,
+    1
+  ],
+  "degree": 4,
+  "interval": [
+    12.02,
+    12.1
+  ],
+  "cover": {
+    "cells": 3,
+    "failedLeaves": 0,
+    "attempts": 5,
+    "minMargin": 2.9045549029310673,
+    "minHubMove": 18.036123665803853,
+    "modes": {
+      "plain": 2,
+      "straddle": 1
+    },
+    "elapsedSeconds": 156.97
+  },
+  "savedCells": [
+    {
+      "a": 12.02,
+      "b": 12.04,
+      "m": 2.9045549029310673,
+      "hub": 18.036123665803853,
+      "ms": 15410,
+      "branches": 1,
+      "mode": "plain",
+      "sym": 1,
+      "vtx": 1,
+      "audit": {
+        "reproduced": true,
+        "delta": 0
+      },
+      "legality": {
+        "ok": true,
+        "branches": 1,
+        "clearance": 4.637142424733724,
+        "borderline": null,
+        "crossings": [
+          "foot 1 / r1 substeps 35..44"
+        ]
+      }
+    },
+    {
+      "a": 12.04,
+      "b": 12.059999999999999,
+      "m": 2.9425976800955875,
+      "hub": 18.046314845864377,
+      "ms": 115225,
+      "branches": 7,
+      "mode": "straddle",
+      "sym": 1,
+      "vtx": 1,
+      "audit": {
+        "reproduced": true,
+        "delta": 0
+      },
+      "legality": {
+        "ok": true,
+        "branches": 2,
+        "clearance": 4.644145180445512,
+        "borderline": null,
+        "crossings": [
+          "foot 1 / r1 substeps 35..44"
+        ]
+      }
+    },
+    {
+      "a": 12.059999999999999,
+      "b": 12.1,
+      "m": 2.9535356937483352,
+      "hub": 18.053857012789816,
+      "ms": 15581,
+      "branches": 1,
+      "mode": "plain",
+      "sym": 1,
+      "vtx": 1,
+      "audit": {
+        "reproduced": true,
+        "delta": 0
+      },
+      "legality": {
+        "ok": true,
+        "branches": 1,
+        "clearance": 4.649777094542677,
+        "borderline": null,
+        "crossings": [
+          "foot 1 / r1 substeps 35..44"
+        ]
+      }
+    }
+  ],
+  "tiling": {
+    "expected": [
+      12.02,
+      12.1
+    ],
+    "firstStart": 12.02,
+    "lastEnd": 12.1,
+    "internalEndpointsEqual": true,
+    "noOverlaps": true,
+    "noHoles": true,
+    "positiveMargins": true
+  },
+  "limitations": [
+    "Cell replay reproduces the Taylor-model margin bit-for-bit for all 3 cells.",
+    "Red line-contact legality check passes for all 3 cells; no pivot borderline was flagged.",
+    "The shipped-engine containment checker was not run in this runtime; full CI validation remains outstanding, so this slice is exploratory and is not promoted to whole-arm proof coverage."
+  ],
+  "environment": {
+    "branch": "claude/serene-pasteur-psjoi2",
+    "problemFixture": "docs/geometry-reviews/taylor-model/problems/target1-b1p.json",
+    "degree": 4,
+    "symRem": true,
+    "vertexDedup": true
+  }
+}
