@@ -1,3 +1,5 @@
+> **Historical only — superseded after the arithmetic review on 11 October 2026.** This six-cell adaptive result was generated with the old square-root remainder expression and must not be used as current proof evidence. The post-fix narrow cell is recorded separately: [corrected cell JSON](probes/arm_1_p/cover_12_12.0001_d4.json) and [replay/Red-legality record](probes/arm_1_p/validation_12_12.0001.json). The corrected cell does not certify the whole [12°, 12.02°] interval.
+
 # Target1 arm (1,+): provisional gap probe [12°, 12.02°]
 
 Date: 11 October 2026  
