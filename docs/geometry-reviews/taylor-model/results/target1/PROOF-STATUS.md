@@ -6,6 +6,8 @@ A review found that the previous square-root Taylor-remainder bound could be too
 
 **The previously saved Target1 cover corpus below was generated before this correction. Treat those results as historical until regenerated and re-audited with the corrected code.** The global two-ply claim is not presently established by the saved cover corpus.
 
+A [post-fix rebuild workflow](https://github.com/liaminhawai-cmd/Tau/blob/claude/serene-pasteur-psjoi2/.github/workflows/target1-post-sqrt-rebuild.yml) now regenerates the formerly reported Target1 ranges for (2,+), (1,−), and the disconnected covered portions of (1,+). It gates each range on exact tiling, replay of each margin, and cellwise containment plus Red-legality checks; its arithmetic-regression job must pass first. The separate [gap workflow](https://github.com/liaminhawai-cmd/Tau/blob/claude/serene-pasteur-psjoi2/.github/workflows/target1-b1p-gap-certificate.yml) covers the still-open (1,+) interval [12°, 16.5°]. I have not verified successful completion of these remote jobs yet.
+
 A single post-fix cell at [12°, 12.0001°] has been accepted and replayed twice with identical bounds; Red-legality checking passes. The separate engine-containment replay has not been run. See the [cell](probes/arm_1_p/cover_12_12.0001_d4.json) and [validation record](probes/arm_1_p/validation_12_12.0001.json).
 
 
