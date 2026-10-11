@@ -50,48 +50,56 @@ jobs:
             problem: target1
             pivot: 2
             direction: 1
+            sign: p
             from: 2
             to: 9.73
           - label: b2plus-upper
             problem: target1-red2plus
             pivot: 2
             direction: 1
+            sign: p
             from: 9.73
             to: 14.33
           - label: b2plus-final-sliver
             problem: target1-red2plus
             pivot: 2
             direction: 1
+            sign: p
             from: 14.33
             to: 14.334609564414993
           - label: b1minus-lower
             problem: target1-b1m-lo
             pivot: 1
             direction: -1
+            sign: m
             from: 2
             to: 21.2
           - label: b1minus-upper
             problem: target1-b1m-hi
             pivot: 1
             direction: -1
+            sign: m
             from: 21.2
             to: 27.6426619806354
           - label: b1plus-lower-a
             problem: target1-b1p
             pivot: 1
             direction: 1
+            sign: p
             from: 2
             to: 7
           - label: b1plus-lower-b
             problem: target1-b1p
             pivot: 1
             direction: 1
+            sign: p
             from: 7
             to: 12
           - label: b1plus-upper
             problem: target1-b1p
             pivot: 1
             direction: 1
+            sign: p
             from: 16.5
             to: 20.71908458837398
     defaults:
@@ -146,7 +154,7 @@ jobs:
         with:
           name: target1-post-sqrt-${{ matrix.label }}
           path: |
-            docs/geometry-reviews/taylor-model/results/${{ matrix.problem }}/arm_${{ matrix.pivot }}_${{ matrix.direction == 1 && 'p' || 'm' }}/cover_${{ matrix.from }}_${{ matrix.to }}_d4.json
+            docs/geometry-reviews/taylor-model/results/${{ matrix.problem }}/arm_${{ matrix.pivot }}_${{ matrix.sign }}/cover_${{ matrix.from }}_${{ matrix.to }}_d4.json
             docs/geometry-reviews/taylor-model/rebuild-cover.json
             docs/geometry-reviews/taylor-model/rebuild-tiling.json
             docs/geometry-reviews/taylor-model/rebuild-audit.json
