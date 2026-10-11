@@ -617,9 +617,17 @@ def main():
     default_data = os.path.join(nn_dir, 'data', '*.jsonl')
     packed = (args.packed != 'off' and not args.poseInput
               and os.path.normcase(os.path.abspath(args.data)) == os.path.normcase(default_data))
+    if packed:
+        try:
+            import numpy  # noqa: F401 -- the packed store is numpy arrays
+        except ImportError:
+            print('packed data: numpy is not installed (pip install numpy); reading the JSONL as before')
+            packed = False
     if args.dataFrac and not packed:
-        print('--dataFrac needs the packed loader (default --data, no --poseInput)', file=sys.stderr)
-        sys.exit(1)
+        # Never fail a birth over this: train on the usual budget and leave it out of the trial.
+        print('--dataFrac needs the packed loader (numpy, default --data, no --poseInput); '
+              'using the usual data budget and leaving this run out of the data trial')
+        args.dataFrac, args.dataTrialArm = 0.0, ''
     if packed:
         ps, prow, pcols, game_movers = load_packed(args, nn_dir)
         by_game = None
