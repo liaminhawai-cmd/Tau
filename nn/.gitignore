@@ -50,5 +50,11 @@ zpd-pool.json
 data-arch-frozen/
 
 marketing/*.zip
-.supabase-service-key
+# the Supabase service-role key, under any name it was saved as (Notepad adds .txt)
+.supabase-service-key*
+supabase-service-key*
 .web-games-state.json
+# The packed training corpus (packed_data.py): a few GB rebuilt from data/ on demand.
+.packed/
+# Which arm each kind of birth takes next in the data-amount trial (train-value.js); per machine.
+.data-trial-state.json

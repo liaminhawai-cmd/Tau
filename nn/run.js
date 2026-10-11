@@ -1295,6 +1295,11 @@ function writeStatus(stage, extraPaths) {
     try {
       withGitLock(repoRoot, 'status push', () => {
         git(['add', `nn/${statusFile}`]);
+        // The data-amount trial's log (train-value.js / data-trial-report.js) rides along, so the
+        // trial can be read from the branch without the machine.
+        if (fs.existsSync(path.join(dir, 'data-trial.jsonl'))) {
+          try { git(['add', 'nn/data-trial.jsonl']); } catch (e) { /* soft, like the extras below */ }
+        }
         // Each extra path is added separately and softly: a missing file must never take down the
         // status push, which is the one thing that has to keep working for a many-hour run to stay
         // observable.

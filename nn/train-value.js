@@ -64,6 +64,25 @@ function validateValueNet(file) {
     throw new Error('trainer produced an invalid value-net JSON');
 }
 
+// The data-amount trial (Oct 2026). Training reads the corpus through the packed store
+// (packed_data.py), so RAM no longer caps it at the newest ~16%. Whether MORE data -- older games,
+// from weaker nets -- makes better nets is the open question, so births alternate, kind by kind
+// (resume, mutant, scratch, each variant lineage), between all of the corpus and its newest 25%.
+// Each run is logged to nn/data-trial.jsonl and nn/data-trial-report.js reads it against the
+// league's Elo. An explicit data choice from the caller, --poseInput, or TAU_DATA_TRIAL=off skips it.
+function dataTrialArm(out) {
+  if (process.env.TAU_DATA_TRIAL === 'off' || original.includes('--poseInput')) return null;
+  if (['data', 'dataBudgetMB', 'dataSinceDays', 'dataRecentRows', 'dataFrac'].some(k => arg(k) != null)) return null;
+  const kind = path.basename(out).replace(/\.json$/i, '').replace(/-\d+$/, '');
+  const file = path.join(HERE, '.data-trial-state.json');
+  let st = {};
+  try { st = JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch (_) {}
+  const n = +st[kind] || 0;
+  st[kind] = n + 1;
+  try { fs.writeFileSync(file, JSON.stringify(st, null, 1)); } catch (_) {}
+  return n % 2 === 0 ? { arm: 'all', frac: '1' } : { arm: 'newest25', frac: '0.25' };
+}
+
 async function main() {
   const out = path.resolve(ROOT, arg('out', path.join('nn', 'models', 'value.json')));
   const partial = out.replace(/\.json$/i, '') + '.partial.json';
@@ -75,6 +94,9 @@ async function main() {
   const structured = topologyOf(resume);
   if (cudaAvailable()) {
     const hidden = arg('hidden') || hiddenOf(resume) || '96,96';
+    const trial = dataTrialArm(out);
+    if (trial) console.log(`[value-train] data trial: this ${path.basename(out, '.json')} trains on ` +
+                           (trial.arm === 'all' ? 'ALL of the corpus' : 'the NEWEST 25% of the corpus'));
     const torchArgs = [
       path.join('nn', 'torch-train.py'),
       '--epochs', arg('epochs', '8'),
@@ -100,6 +122,8 @@ async function main() {
       '--eloWeight', arg('eloWeight', 'logistic'),
       ...(arg('eloWeightFloor') ? ['--eloWeightFloor', arg('eloWeightFloor')] : []),
       ...(arg('dataBudgetMB') ? ['--dataBudgetMB', arg('dataBudgetMB')] : []),
+      ...(arg('dataFrac') ? ['--dataFrac', arg('dataFrac')] : []),
+      ...(trial ? ['--dataFrac', trial.frac, '--dataTrialArm', trial.arm] : []),
       ...(arg('dataSinceDays') ? ['--dataSinceDays', arg('dataSinceDays')] : []),
       ...(arg('dataRecentRows') ? ['--dataRecentRows', arg('dataRecentRows')] : []),
       ...(arg('eloWeightTemp') ? ['--eloWeightTemp', arg('eloWeightTemp')] : []),

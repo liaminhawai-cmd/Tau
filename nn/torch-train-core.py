@@ -41,7 +41,7 @@ WHAT train.js DOES THAT THIS REPLICATES (dropping any of these makes an unfair c
     JS-trained model. Adam moments reset, just as train.js resets them on every 10-epoch process.
 NOT replicated: --eloWeight (off by default in train.js and Wild Mint).
 """
-import argparse, glob, json, math, os, random, sys
+import argparse, glob, json, math, os, random, sys, time
 import tau_paths
 import importlib.util
 _topo_spec = importlib.util.spec_from_file_location("value_topology", os.path.join(os.path.dirname(__file__), "value-topology.py"))
@@ -95,7 +95,7 @@ def file_stamp(pth):
         return 0.0
 
 
-def cap_files(paths, budget_mb, since_days=0.0, recent_rows=0):
+def cap_files(paths, budget_mb, since_days=0.0, recent_rows=0, frac=0.0):
     """Same corpus cap as train.js, same reasons, same shape of answer. There was no cap on
     either trainer, and the committed corpus quietly outgrew every machine that pulls it (~1.9 GB
     of JSONL by the time it froze two laptops); parsed into per-row Python lists that is several
@@ -104,7 +104,10 @@ def cap_files(paths, budget_mb, since_days=0.0, recent_rows=0):
     the name tiebreak does the work there), budget ~1/20 of RAM as raw text, floored at 256 MB
     and capped at 2 GB; an explicit --dataBudgetMB is honoured as given. The newest file is always
     kept, even alone over budget: a cap that can select zero data fails worse than the memory
-    problem it solves."""
+    problem it solves.
+
+    frac (--dataFrac): instead of a size, the newest share of the corpus by bytes -- 1 is all of it.
+    Only the packed loader asks for more than RAM would hold as JSONL; see packed_data.py."""
     budget = float(budget_mb) if budget_mb and budget_mb > 0 else \
         min(2048.0, max(256.0, total_ram_bytes() / (1 << 20) / 20.0))
     budget_bytes = int(budget * (1 << 20))
@@ -141,6 +144,15 @@ def cap_files(paths, budget_mb, since_days=0.0, recent_rows=0):
         print('recent-only: newest %d of %d files hold %d rows (asked for %d); %d older file(s) left out'
               % (len(fresh), len(stamped), rows, int(recent_rows), dropped))
         paths = fresh
+    if frac and frac > 0:
+        total = 0
+        for pth in paths:
+            try:
+                total += os.path.getsize(pth)
+            except OSError:
+                pass
+        budget = min(1.0, float(frac)) * total / (1 << 20)
+        budget_bytes = total if frac >= 1 else int(budget * (1 << 20))
     listed = []
     for pth in paths:
         try:
@@ -156,10 +168,16 @@ def cap_files(paths, budget_mb, since_days=0.0, recent_rows=0):
         else:
             dropped_bytes += size
     if len(keep) < len(listed):
-        print('data cap: training on %d of %d files (%.1f MB kept, %.1f MB of oldest data left out; '
-              'budget %.1f MB from %.1f GB RAM -- --dataBudgetMB overrides)'
-              % (len(keep), len(listed), kept_bytes / (1 << 20), dropped_bytes / (1 << 20),
-                 budget, total_ram_bytes() / (1 << 30)))
+        if frac and frac > 0:
+            print('data cap: newest %g%% of the corpus -- %d of %d files (%.1f MB kept, %.1f MB of oldest data left out)'
+                  % (min(1.0, float(frac)) * 100, len(keep), len(listed), kept_bytes / (1 << 20), dropped_bytes / (1 << 20)))
+        else:
+            print('data cap: training on %d of %d files (%.1f MB kept, %.1f MB of oldest data left out; '
+                  'budget %.1f MB from %.1f GB RAM -- --dataBudgetMB overrides)'
+                  % (len(keep), len(listed), kept_bytes / (1 << 20), dropped_bytes / (1 << 20),
+                     budget, total_ram_bytes() / (1 << 30)))
+    elif frac and frac > 0:
+        print('data cap: all %d files (%.1f MB)' % (len(keep), kept_bytes / (1 << 20)))
     return sorted(keep)
 
 
@@ -401,6 +419,113 @@ def split_and_weight(by_game, seed, gw_mode, fw_mode, draw_w, game_w=None):
     return [(f, t, w, z) for f, t, w, _, _, z in train], [(f, t, w, z) for f, t, w, _, _, z in val]
 
 
+def load_packed(args, nn_dir):
+    """The packed-store twin of load_rows: same file selection (cap_files), same row rules, the rows
+    in the same order. Returns the store, the selected row ids, per-row arrays, and game_movers keyed
+    the way split_and_weight_packed keys games (games-table ids)."""
+    import numpy as np
+    import packed_data
+    paths = glob.glob(args.data)
+    idx = packed_data.update(nn_dir, paths, log=lambda m: print(m, flush=True))
+    selected = cap_files(paths, args.dataBudgetMB, args.dataSinceDays, args.dataRecentRows, args.dataFrac)
+    ps = packed_data.Packed(nn_dir, idx, selected)
+    if ps.missing:
+        print('packed data: %d selected file(s) not packed yet (another run held the lock); '
+              'training without them' % len(ps.missing))
+    if ps.stale:
+        total = sum(ps.stale.values())
+        print(f"ERROR: {total} rows use a different feature set (expected {N_FEATURES}/position):",
+              file=sys.stderr)
+        for k, v in ps.stale.items():
+            print(f"   {k}: {v} rows", file=sys.stderr)
+        sys.exit(1)
+    if ps.nof:
+        print(f"skipped {ps.nof} row(s) with no feature vector (not training data)")
+    if ps.policy:
+        print(f"skipped {ps.policy} policy-target row(s)")
+    rows = ps.rows
+    cols = {c: np.asarray(ps.cols[c][rows]) for c in ('z', 'sv', 'svd', 'm', 'game', 'mover')}
+    target = cols['z'].copy()
+    if args.svBlend > 0:
+        use = ~np.isnan(cols['sv']) & (cols['svd'] >= args.svMinDepth)
+        target[use] = args.svBlend * np.clip(cols['sv'][use], -1.0, 1.0) + (1.0 - args.svBlend) * cols['z'][use]
+        print(f"svBlend {args.svBlend:g}: {int(use.sum())}/{len(rows)} positions train toward {args.svBlend:g}*search + "
+              f"{1 - args.svBlend:g}*result (search depth >= {args.svMinDepth}); the rest keep the result")
+    cols['target'] = target
+    game_movers = defaultdict(set)
+    have = cols['mover'] >= 0
+    if have.any():
+        pairs = np.unique(cols['game'][have].astype(np.int64) * (len(ps.movers) + 1) + cols['mover'][have])
+        for v in pairs.tolist():
+            g, mv = divmod(v, len(ps.movers) + 1)
+            game_movers[g].add(ps.movers[mv])
+    print('packed data: %d positions from %d file(s)' % (len(rows), len(selected) - len(ps.missing)))
+    return ps, rows, cols, game_movers
+
+
+def split_and_weight_packed(ps, rows, cols, seed, gw_mode, fw_mode, draw_w, game_w=None):
+    """split_and_weight on arrays: the same game split (same shuffle of the same first-appearance
+    order), the same weights, the same row order. Returns store row ids, targets, weights and outcomes
+    for train and val. game_w is keyed by games-table id."""
+    import numpy as np, re
+    g = cols['game']
+    n_tab = len(ps.games)
+    uniq, first = np.unique(g, return_index=True)
+    order = uniq[np.argsort(first, kind='stable')]             # by_game's insertion order
+    pos = list(range(len(order)))
+    _js_shuffle(pos, seed)
+    shuffled = order[np.asarray(pos, dtype=np.int64)] if len(order) else order
+    n_val = max(1, int(len(order) * 0.1))
+    val_g, train_g = shuffled[:n_val], shuffled[n_val:]
+    counts = np.bincount(g, minlength=n_tab).astype(np.float64)
+    if gw_mode == 'sqrt':
+        base_g = 1.0 / np.sqrt(np.maximum(counts, 1))
+    elif gw_mode == 'game':
+        base_g = 1.0 / np.maximum(counts, 1)
+    else:
+        base_g = np.ones(n_tab)
+    if game_w:
+        mult = np.ones(n_tab)
+        for k, v in game_w.items():
+            mult[k] = v
+        base_g = base_g * mult
+    z = cols['z']
+    w_all = base_g[g] * np.where(z == 0.0, draw_w, 1.0)
+    first_of = np.full(n_tab, -1, dtype=np.int64)
+    first_of[uniq] = first
+
+    def ordered(games_sel):
+        rank = np.full(n_tab, -1, dtype=np.int64)
+        rank[games_sel] = np.arange(len(games_sel))
+        r = rank[g]
+        keep = np.nonzero(r >= 0)[0]
+        return keep[np.lexsort((keep, r[keep]))]               # game by game, rows in file order
+
+    tr, va = ordered(train_g), ordered(val_g)
+    w_tr = w_all[tr].copy()
+    if fw_mode != 'off':
+        group_of, sizes = {}, defaultdict(int)
+        for gid in train_g.tolist():
+            i = first_of[gid]
+            zf, mv = float(z[i]), int(cols['m'][i])
+            mover = None if mv == -1 else ('other' if mv == -2 else mv)
+            outcome = 'draw' if zf == 0.0 else (mover if zf > 0 else (1 - mover if mover in (0, 1) else 'unknown'))
+            family = re.sub(r'-[0-9]+$', '', str(json.loads(ps.games[gid])))
+            group_of[gid] = (family, outcome)
+            sizes[(family, outcome)] += 1
+        div = np.ones(n_tab)
+        for gid, key in group_of.items():
+            div[gid] = math.sqrt(sizes[key])
+        w_tr = w_tr / div[g[tr]]
+    if len(w_tr):
+        mean_w = float(np.cumsum(w_tr)[-1]) / len(w_tr)        # summed in order, as Python's sum did
+        if mean_w > 0:
+            w_tr = w_tr / mean_w
+    return ((rows[tr], cols['target'][tr], w_tr, z[tr]),
+            (rows[va], cols['target'][va], w_all[va], z[va]),
+            len(order))
+
+
 def export_for_netjs(layers, probe_inputs=None, probe_fn=None, topology=None):
     """torch Linear layers -> net.js {sizes, W, b}. W is flat OUTPUT-MAJOR, matching net.js's
     W[j*nIn + i]; torch's weight is already [out, in] so .flatten() is correct with no transpose."""
@@ -446,6 +571,13 @@ def main():
                     help='train only on the newest files holding this many rows (0 = all)')
     ap.add_argument('--dataBudgetMB', type=float, default=0.0,
                     help='cap on raw JSONL read into memory; 0 = scale to this machine\'s RAM')
+    ap.add_argument('--dataFrac', type=float, default=0.0,
+                    help='train on the newest share of the corpus by bytes (1 = all of it); packed loader only')
+    ap.add_argument('--packed', default='auto', choices=['auto', 'off'],
+                    help='auto: read the corpus through the packed store (nn/.packed); off: parse the JSONL '
+                         'every run as before. --poseInput and a custom --data always use the JSONL')
+    ap.add_argument('--dataTrialArm', default='',
+                    help='label of the data-amount trial arm this run belongs to; logged to nn/data-trial.jsonl')
     ap.add_argument('--eloWeightFloor', type=float, default=0.15)
     ap.add_argument('--eloWeightTemp', type=float, default=150.0)
     ap.add_argument('--eloSummary', default=tau_paths.elo_summary_path(os.path.dirname(__file__)))
@@ -481,9 +613,23 @@ def main():
           (f" ({torch.cuda.get_device_name(0)})" if device.type == 'cuda' else ''))
 
     torch.manual_seed(args.seed)
-    by_game, game_movers = load_rows(args.data, args.dataBudgetMB, args.dataSinceDays, args.dataRecentRows,
-                                     args.svBlend, args.svMinDepth)
-    if not by_game:
+    nn_dir = os.path.dirname(os.path.abspath(__file__))
+    default_data = os.path.join(nn_dir, 'data', '*.jsonl')
+    packed = (args.packed != 'off' and not args.poseInput
+              and os.path.normcase(os.path.abspath(args.data)) == os.path.normcase(default_data))
+    if args.dataFrac and not packed:
+        print('--dataFrac needs the packed loader (default --data, no --poseInput)', file=sys.stderr)
+        sys.exit(1)
+    if packed:
+        ps, prow, pcols, game_movers = load_packed(args, nn_dir)
+        by_game = None
+        if not len(prow):
+            print(f"no training rows matched {args.data}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        by_game, game_movers = load_rows(args.data, args.dataBudgetMB, args.dataSinceDays, args.dataRecentRows,
+                                         args.svBlend, args.svMinDepth)
+    if not packed and not by_game:
         print(f"no training rows matched {args.data}", file=sys.stderr)
         sys.exit(1)
     pose_norm = None
@@ -522,13 +668,20 @@ def main():
             print('eloWeight: no game had a rateable player in the summary; weighting off this run')
             game_w = None
         else:
-            print(f"eloWeight: {rated}/{len(by_game)} games carry an Elo weight "
+            print(f"eloWeight: {rated}/{len(game_movers) if packed else len(by_game)} games carry an Elo weight "
                   f"({len(live)} live model(s) + {recovered} recovered from retired faces; "
                   f"median ref {ref:.0f}, floor {args.eloWeightFloor}, temp {args.eloWeightTemp:.0f})")
-    train, val = split_and_weight(by_game, args.seed, args.gameWeight, args.familyWeight,
-                                  args.drawWeight, game_w)
-    print(f"data: {len(train)} train / {len(val)} val positions "
-          f"({len(by_game) - max(1, len(by_game)//10)} / {max(1, len(by_game)//10)} games, "
+    if packed:
+        import numpy as np
+        (tr_rows, ytr_np, wtr_np, _ztr), (va_rows, yva_np, _wva, zva_np), n_games = split_and_weight_packed(
+            ps, prow, pcols, args.seed, args.gameWeight, args.familyWeight, args.drawWeight, game_w)
+        n_train, n_val = len(tr_rows), len(va_rows)
+    else:
+        train, val = split_and_weight(by_game, args.seed, args.gameWeight, args.familyWeight,
+                                      args.drawWeight, game_w)
+        n_games, n_train, n_val = len(by_game), len(train), len(val)
+    print(f"data: {n_train} train / {n_val} val positions "
+          f"({n_games - max(1, n_games//10)} / {max(1, n_games//10)} games, "
           f"game-level split)")
 
     def tens(rows):
@@ -537,11 +690,19 @@ def main():
         w = torch.tensor([[r[2]] for r in rows], dtype=torch.float32, device=device)
         return x, y, w
 
-    xtr, ytr, wtr = tens(train)
-    xva, yva, _ = tens(val)
-    # Under --svBlend the selection target (yva) is the blend this run optimises; the result alone
-    # is reported beside it so blended and plain runs can be read on one yardstick.
-    zva = torch.tensor([[r[3]] for r in val], dtype=torch.float32, device=device) if args.svBlend > 0 else None
+    if packed:
+        # Training features stay in the memory-mapped store and are gathered a batch at a time;
+        # targets, weights and the (10%) validation set are small enough to sit on the device.
+        col = lambda a: torch.tensor(np.asarray(a, dtype=np.float32).reshape(-1, 1), device=device)
+        xtr, ytr, wtr = None, col(ytr_np), col(wtr_np)
+        xva, yva = torch.tensor(np.asarray(ps.feats[va_rows], dtype=np.float32), device=device), col(yva_np)
+        zva = col(zva_np) if args.svBlend > 0 else None
+    else:
+        xtr, ytr, wtr = tens(train)
+        xva, yva, _ = tens(val)
+        # Under --svBlend the selection target (yva) is the blend this run optimises; the result alone
+        # is reported beside it so blended and plain runs can be read on one yardstick.
+        zva = torch.tensor([[r[3]] for r in val], dtype=torch.float32, device=device) if args.svBlend > 0 else None
 
     checkpoint = None
     if args.resume:
@@ -557,7 +718,7 @@ def main():
             base_trained_epochs = None
 
     hidden = [int(h) for h in args.hidden.split(',') if h.strip()]
-    in_dim = len(next(iter(by_game.values()))[0][0])   # N_FEATURES, +6 under --poseInput
+    in_dim = N_FEATURES if packed else len(next(iter(by_game.values()))[0][0])   # +6 under --poseInput
     sizes = [in_dim] + hidden + [1]
     checkpoint_topology = (checkpoint or {}).get('topology') or None
     topology_kind = args.topology
@@ -608,7 +769,11 @@ def main():
     model = value_topology.build_model(torch, nn, linears, topology, device)
 
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
-    n = xtr.shape[0]
+    n = n_train
+
+    def predict(x):          # in slices: a whole-corpus validation set at once can exhaust the GPU
+        return torch.cat([model(x[i:i + 65536]) for i in range(0, x.shape[0], 65536)])
+
     best_val, best_state, best_epoch = float('inf'), None, 0
     for ep in range(1, args.epochs + 1):
         t = (ep - 1) / (args.epochs - 1) if args.epochs > 1 else 0.0
@@ -616,11 +781,18 @@ def main():
         for group in opt.param_groups:
             group['lr'] = lr_ep
         model.train()
-        perm = torch.randperm(n, device=device)
+        perm = torch.randperm(n) if packed else torch.randperm(n, device=device)
         tot = 0.0
         for i in range(0, n, args.batch):
             idx = perm[i:i + args.batch]
-            xb, yb, wb = xtr[idx], ytr[idx], wtr[idx]
+            if packed:
+                b = idx.numpy()
+                b = b[np.argsort(tr_rows[b], kind='stable')]        # ascending store rows: sequential-ish reads
+                xb = torch.from_numpy(np.asarray(ps.feats[tr_rows[b]])).to(device)
+                idx = torch.from_numpy(b).to(device)
+                yb, wb = ytr[idx], wtr[idx]
+            else:
+                xb, yb, wb = xtr[idx], ytr[idx], wtr[idx]
             opt.zero_grad()
             pred = model(xb)
             loss = (wb * (pred - yb) ** 2).mean()     # weighted MSE, same objective as net.js
@@ -629,7 +801,7 @@ def main():
             tot += float(loss) * len(idx)
         model.eval()
         with torch.no_grad():
-            vpred = model(xva)
+            vpred = predict(xva)
             vmse = float(((vpred - yva) ** 2).mean())
             ref = zva if zva is not None else yva      # sign accuracy is always against the result
             decided = (ref != 0)
@@ -668,6 +840,18 @@ def main():
     os.replace(tmp_out, args.out)
     topo_label = f", topology {topology['kind']} k={topology['memoryWidth']}" if topology else ''
     print(f"\nsaved {args.out} (sizes {doc['sizes']}{topo_label}, best val mse {best_val:.5f})")
+    if args.dataTrialArm:
+        # One line per trained model, so the trial can be read against the league's Elo later
+        # (nn/data-trial-report.js). The run's own .partial name is the model's final name.
+        model_name = os.path.basename(args.out).replace('.partial.json', '.json')
+        if model_name.endswith('.json'):
+            model_name = model_name[:-5]
+        with open(os.path.join(nn_dir, 'data-trial.jsonl'), 'a', encoding='utf-8') as fh:
+            fh.write(json.dumps({'model': model_name, 'arm': args.dataTrialArm, 'frac': args.dataFrac,
+                                 'positions': n_train + n_val, 'games': n_games,
+                                 'bestValMse': round(best_val, 6), 'sizes': doc['sizes'],
+                                 'resume': os.path.basename(args.resume) if args.resume else None,
+                                 'at': time.strftime('%Y-%m-%dT%H:%M:%S')}) + '\n')
     print(f"NOW VERIFY:  node nn/verify-torch-export.js {args.out}")
 
 
