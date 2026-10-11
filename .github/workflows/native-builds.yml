@@ -29,6 +29,32 @@ on:
       - 'boot-throw.webm'
 
 jobs:
+  # The website's build number. Pages serves index.html straight from main, with no build step to
+  # stamp a number into, so this run's number (the same one sync-www.mjs writes into the Steam and
+  # app builds) is committed as build.json and the page reads it: one number per build, the same on
+  # every platform, nobody to remember to bump it. A push made with GITHUB_TOKEN starts no workflow,
+  # so this cannot loop; Pages still redeploys from it. Only on main -- a branch run stamps nothing.
+  web-build-number:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    name: Website build number
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Commit build.json
+        run: |
+          printf '{ "build": %s, "sha": "%s" }\n' "$GITHUB_RUN_NUMBER" "${GITHUB_SHA::7}" > build.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add build.json
+          git diff --cached --quiet && exit 0
+          git commit -m "build $GITHUB_RUN_NUMBER"
+          for i in 1 2 3 4; do git push origin HEAD:main && exit 0; sleep $((i*3)); git pull --rebase origin main; done
+          exit 1
+
   android:
     if: ${{ !startsWith(github.ref, 'refs/heads/feature/steam-') }}
     name: Android (APK + AAB)
