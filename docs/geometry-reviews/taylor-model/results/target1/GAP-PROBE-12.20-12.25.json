@@ -1,0 +1,114 @@
+{
+  "problem": "target1-b1p",
+  "blueArm": [
+    1,
+    1
+  ],
+  "degree": 4,
+  "interval": [
+    12.2,
+    12.25
+  ],
+  "cover": {
+    "cells": 3,
+    "failedLeaves": 0,
+    "runs": 4,
+    "elapsedSeconds": 130.9,
+    "minMargin": 2.9257567302761625,
+    "minHubMove": 18.04903226152173,
+    "modes": {
+      "plain": 2,
+      "straddle": 1
+    },
+    "note": "The full 12.2–12.3 attempt timed out without a result; retrying two narrower subintervals produced these cells."
+  },
+  "savedCells": [
+    {
+      "a": 12.2,
+      "b": 12.225,
+      "m": 2.9257567302761625,
+      "hub": 18.04903226152173,
+      "mode": "plain",
+      "sym": 1,
+      "vtx": 1,
+      "audit": {
+        "reproduced": true,
+        "delta": 0
+      },
+      "legality": {
+        "ok": true,
+        "clearance": 4.699755331213324,
+        "borderline": null,
+        "crossings": [
+          "foot 1 / r1 substeps 35..44"
+        ]
+      }
+    },
+    {
+      "a": 12.225,
+      "b": 12.2375,
+      "m": 2.92627237647477,
+      "hub": 18.049791176079065,
+      "mode": "straddle",
+      "sym": 1,
+      "vtx": 1,
+      "audit": {
+        "reproduced": true,
+        "delta": 0
+      },
+      "legality": {
+        "ok": true,
+        "clearance": 4.709367663541022,
+        "borderline": null,
+        "crossings": [
+          "foot 1 / r1 substeps 35..44"
+        ]
+      }
+    },
+    {
+      "a": 12.2375,
+      "b": 12.25,
+      "m": 2.9270984367581145,
+      "hub": 18.05145842878509,
+      "mode": "plain",
+      "sym": 1,
+      "vtx": 1,
+      "audit": {
+        "reproduced": true,
+        "delta": 0
+      },
+      "legality": {
+        "ok": true,
+        "clearance": 4.713731556342629,
+        "borderline": null,
+        "crossings": [
+          "foot 1 / r1 substeps 36..44"
+        ]
+      }
+    }
+  ],
+  "tiling": {
+    "expected": [
+      12.2,
+      12.25
+    ],
+    "firstStart": 12.2,
+    "lastEnd": 12.25,
+    "internalEndpointsEqual": true,
+    "noOverlaps": true,
+    "noHoles": true,
+    "positiveMargins": true
+  },
+  "limitations": [
+    "All 3 stored cell margins reproduce exactly.",
+    "Red-legality checker passes all 3 cells and flags no pivot-borderline cases.",
+    "Engine containment was not run; these cells are not promoted into the formal cover.",
+    "The cover attempt over [12.2,12.3] timed out; the narrower slice results do not say anything about [12.25,12.3]."
+  ],
+  "environment": {
+    "branch": "claude/serene-pasteur-psjoi2",
+    "fixture": "problems/target1-b1p.json",
+    "symRem": true,
+    "vertexDedup": true
+  }
+}
