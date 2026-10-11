@@ -2683,7 +2683,10 @@ function pinFoot(idx) {
 // (crossingSubstep's per-foot contact episodes). Deep-copied: those are arrays of arrays/objects
 // the rule rebuilds or extends as it goes.
 const SWING_STATE_KEYS = ['netRad', 'crossings', 'atLimit', 'limitReason', 'pushContact', 'contact', 'earned', 'startSide',
-                          'entrySide', 'pendingMerge', 'turnStartContact', 'episodeCharged', 'justCrossed'];
+                          'entrySide', 'pendingMerge', 'turnStartContact', 'episodeCharged'];
+// justCrossed is NOT swing state: it is the queue of "a foot just touched this line" events render()
+// turns into the yellow flash. Rewinding it with the rest re-queued lines already touched, so every
+// mouse move between two grid points flashed a finished crossing again.
 function swingStateSnap(){
     const s = { pieces: G.pieces.map(p => ({ x:p.x, y:p.y, rot:p.rot })) };
     for (const k of SWING_STATE_KEYS) s[k] = G[k] && typeof G[k] === 'object' ? JSON.parse(JSON.stringify(G[k])) : G[k];
@@ -2778,9 +2781,10 @@ function applySwing(dA) {
         // then the part of a step beyond the last grid point: shown, never committed
         const rest = Math.abs(target) - kTo*S;
         if (!G.atLimit && rest > 1e-9) {
-            const onGrid = swingStateSnap();
+            const onGrid = swingStateSnap(), events = (G.justCrossed || []).slice();
             const nextOk = swingSubstep(sgn*S);
             swingStateRestore(onGrid);
+            G.justCrossed = events;   // the trial step's touches did not happen
             if (!nextOk) {
                 // the next grid point is out of reach: go as far as the rules allow toward the
                 // target in fine pieces, and replay from the grid point next time
@@ -10079,7 +10083,15 @@ function render() {
     // turn them into fading flashes; drained here so a rollback never gets flashed twice.
     if (G.justCrossed && G.justCrossed.length) {
         const now = performance.now(), mine = crossingIsMine();
-        for (const id of G.justCrossed) crossFlashes.push({ id, t: now, mine });
+        // Once per line per swing: a drag that ends between grid points is replayed from the last
+        // one on the next move, and the replay touches the same line again -- one flash, not one
+        // per mouse move. Keyed on the pin (pinFoot makes a new pivot every swing).
+        if (G.pivot && G.flashedPivot !== G.pivot) { G.flashedPivot = G.pivot; G.flashedIds = new Set(); }
+        for (const id of G.justCrossed) {
+            if (G.pivot && G.flashedIds.has(id)) continue;
+            if (G.pivot) G.flashedIds.add(id);
+            crossFlashes.push({ id, t: now, mine });
+        }
         G.justCrossed = [];
     }
     syncCanvas();
