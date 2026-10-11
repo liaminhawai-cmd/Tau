@@ -1,2 +1,3 @@
 {"model": "resume-665", "arm": "all", "frac": 1.0, "positions": 6668635, "games": 344297, "bestValMse": 0.320281, "sizes": [94, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 1], "resume": "best.json", "at": "2026-10-12T04:21:36"}
 {"model": "ultra-m21-741", "arm": "all", "frac": 1.0, "positions": 6669998, "games": 344380, "bestValMse": 0.330498, "sizes": [94, 208, 164, 128, 92, 64, 1], "resume": "ultra-m21-686.json", "at": "2026-10-12T04:37:17"}
+{"model": "resume-666", "arm": "newest25", "frac": 0.25, "positions": 1666913, "games": 87544, "bestValMse": 0.253067, "sizes": [94, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 1], "resume": "best.json", "at": "2026-10-12T06:01:33"}
