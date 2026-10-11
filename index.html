@@ -2210,6 +2210,46 @@ CFG.sideArcs.forEach((a,k) => LINE_GEOM['a'+k] = { cx:a.cx, cy:a.cy, r:a.r, a0:a
 //     refused; the far re-cross of your own start line that used to ride the grace = refused.
 // st is G for live play (pinFoot/clearTurn/restoreSnap null st.contact; it re-derives lazily from
 // the first substep's BEFORE feet, i.e. the turn-start pose, so AI lookahead resets stay correct).
+// ---- Corner rule under test: a toggle while the rule is being decided by playing it ----
+//   'k'  keep current -- a second line joins a foot's open crossing free only when the foot is
+//        within cornerEps of the printed corner at the moment it first touches the second line;
+//   'cc' continuous contact -- the rule as the designer states it: as long as the magnet pad is
+//        on a line the whole time (never off and back on), it is one crossing, wherever the
+//        second line is taken;
+//   'g'  generous corner -- still only at the printed corner, but the merge counts if the foot
+//        passes within cornerEps of the corner at ANY point while it touches both lines, not
+//        just at the first touch (what wiggling the mouse used to find by luck).
+// Typed in the app (cc / g / k) or cycled by triple-tapping the build tag; remembered on this
+// device. Online matches always play 'k' so both players are under the same rule, and games
+// played under a test rule are not uploaded as training data.
+// Plain 'k' here: nn/engine.js extracts this into the trainer's engine, which may not touch storage.
+// The device's saved choice is read in by cornerRuleToggle (browser side) at boot.
+let cornerRule = 'k';
+function cornerRuleMode() {
+    try { if (typeof onlineMatch !== 'undefined' && onlineMatch) return 'k'; } catch (e) {}
+    return cornerRule;
+}
+// 'g': does this foot, carried on along its swing, pass within cornerEps of a point where lines h
+// and id meet while its magnet touches both? The swing is a rigid rotation about the pivot, so the
+// foot's path is a circle -- walked forward from where this substep started, in 0.05-degree steps,
+// for as long as it stays on h (and, once it has reached id, on both).
+function cornerPassAhead(st, b, a, h, id) {
+    const pv = st.pivot; if (!pv) return false;
+    const pts = LINE_INTERSECTIONS.filter(P => P.lines.includes(h) && P.lines.includes(id));
+    if (!pts.length) return false;
+    const dir = Math.sign((b.x-pv.x)*(a.y-pv.y) - (b.y-pv.y)*(a.x-pv.x)); if (!dir) return false;
+    const r = Math.hypot(b.x-pv.x, b.y-pv.y), th0 = Math.atan2(b.y-pv.y, b.x-pv.x), step = 0.05*Math.PI/180;
+    let seenBoth = false;
+    for (let k = 0; k <= 900; k++) {
+        const th = th0 + dir*k*step, p = { x: pv.x + r*Math.cos(th), y: pv.y + r*Math.sin(th) };
+        const near = nearLineIds(p, CFG.touchEps), onH = near.includes(h), onId = near.includes(id);
+        if (onH && onId) {
+            seenBoth = true;
+            if (pts.some(P => Math.hypot(p.x-P.x, p.y-P.y) <= CFG.cornerEps)) return true;
+        } else if (seenBoth || !onH) return false;
+    }
+    return false;
+}
 function crossingSubstep(before, after, st) {
     if (!st.contact) {
         st.contact = before.map(f => nearLineIds(f, CFG.touchEps));
@@ -2316,9 +2356,12 @@ function crossingSubstep(before, after, st) {
                 // a0 at all, though this turn had spent nothing yet.
                 const freshKept = kept.filter(h => !st.turnStartContact[i].includes(h));
                 if (freshKept.length > 0) {
-                    const roundingCorner = freshKept.some(h => LINE_INTERSECTIONS.some(P =>
+                    const mode = cornerRuleMode();
+                    let roundingCorner = mode === 'cc' || freshKept.some(h => LINE_INTERSECTIONS.some(P =>
                         P.lines.includes(id) && P.lines.includes(h) &&
                         Math.hypot(after[i].x-P.x, after[i].y-P.y) <= CFG.cornerEps));
+                    if (!roundingCorner && mode === 'g')
+                        roundingCorner = freshKept.some(h => cornerPassAhead(st, before[i], after[i], h, id));
                     if (!roundingCorner) { blockedSecond = true; break; }
                 }
                 kept.push(id);
@@ -7387,6 +7430,7 @@ function submitLadderWin(levelIdx, color){
     const def = AI_LADDER[RUNG_TO_AI_LADDER[levelIdx]];
     // Lab games start from any position and allow take-backs: not a clean record of a won game.
     if (!def || def.kind !== 'net' || labMode || G.adjudicated || G.netFallback || ladderTurns.length < 2) return;
+    if (cornerRule !== 'k') return;   // played under a corner rule still being tried out
     const client = window.tauSteam ? 'steam' : window.tauDesktop ? 'desktop'
                  : /Android|iPhone|iPad/i.test(navigator.userAgent) ? 'mobile' : 'web';
     const q = ladderWinQueue();
@@ -12788,6 +12832,55 @@ else if (/^#nn\b/i.test(location.hash)) { labSetSide(0, 'human'); labSetSide(1, 
 // arrives if something downstream claims the key; collected only while the menu is up, so it can
 // never go off in the middle of a game; and dropped the moment the caret is in a field, because
 // somebody typing "collaborate" into a text box is not asking for this.
+// The corner-rule toggle (see cornerRule): type cc, g or k anywhere outside a text field, or
+// triple-tap the build tag on a phone to cycle k -> cc -> g. Shown in the build tag while not 'k'.
+(function cornerRuleToggle() {
+    const NAMES = { k: 'Corner rule: keep current', cc: 'Corner rule: continuous contact', g: 'Corner rule: generous corner' };
+    try { const v = localStorage.getItem('tauCornerRule'); if (v === 'cc' || v === 'g') cornerRule = v; } catch (e) {}
+    const tag = () => document.getElementById('buildTag');
+    function paintTag() {
+        const el = tag(); if (!el) return;
+        const base = el.textContent.replace(/ · (CC|G)$/, '');
+        const want = cornerRule === 'k' ? base : base + ' · ' + cornerRule.toUpperCase();
+        if (el.textContent !== want) el.textContent = want;
+    }
+    function setRule(v) {
+        cornerRule = v;
+        try { localStorage.setItem('tauCornerRule', v); } catch (e) {}
+        paintTag();
+        if (typeof showPassToast === 'function')
+            showPassToast(NAMES[v] + (typeof onlineMatch !== 'undefined' && onlineMatch ? ' (online games always use keep current)' : ''));
+    }
+    let typed = '', lastT = 0;
+    addEventListener('keydown', e => {
+        if (e.ctrlKey || e.metaKey || e.altKey || !e.key || e.key.length !== 1) { typed = ''; return; }
+        const el = e.target;
+        if (el && el.closest && el.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) { typed = ''; return; }
+        const now = performance.now();
+        if (now - lastT > 1000) typed = '';
+        lastT = now;
+        typed = (typed + e.key.toLowerCase()).slice(-2);
+        if (typed === 'cc') { typed = ''; setRule('cc'); }
+        else if (typed.endsWith('g')) { typed = ''; setRule('g'); }
+        else if (typed.endsWith('k')) { typed = ''; setRule('k'); }
+    }, true);
+    const el = tag();
+    if (el) {
+        // The tag sits under the page (pointer-events:none, and the main layer covers it), so taps are
+        // read off the document by position instead -- they still reach whatever is underneath.
+        let taps = [];
+        document.addEventListener('pointerdown', e => {
+            const r = el.getBoundingClientRect(), pad = 8;
+            if (e.clientX < r.left - pad || e.clientX > r.right + pad || e.clientY < r.top - pad || e.clientY > r.bottom + pad) return;
+            const now = performance.now();
+            taps = taps.filter(t => now - t < 1200); taps.push(now);
+            if (taps.length >= 3) { taps = []; setRule(cornerRule === 'k' ? 'cc' : cornerRule === 'cc' ? 'g' : 'k'); }
+        }, true);
+        // the tag's text is filled in later (build.json); keep the mode suffix on it
+        new MutationObserver(paintTag).observe(el, { childList: true, characterData: true, subtree: true });
+        paintTag();
+    }
+})();
 (function labKnock() {
     const WORD = 'lab';
     let typed = '';
