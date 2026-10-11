@@ -1971,10 +1971,9 @@ const CFG = {
     // both used to live here and are both gone -- the first was non-physical, the second redundant
     // against the whole-piece crossing episode. See crossingSubstep.
     lineStick: 0,
-    // Rounding a PRINTED corner -- where two lines actually meet -- is one crossing, not two.
-    // Same magnet-surface band as crossEps/holdEps/touchEps: the magnet must actually reach the
-    // crossing point. Valid range measured at 0.70-0.93 (below 0.70 the centre-spin dies, at 1.00
-    // the opening slips through again); 0.81 sits mid-window and is the physical value.
+    // The corner-merge allowance of the old rule (a second line joined a foot's crossing free only
+    // within this of the printed corner). The crossing rule no longer reads it -- continuous contact
+    // replaced the corner check, see crossingSubstep -- but tools that model the old rule still do.
     cornerEps: 0.81,
     // The swing's fixed step, measured from where the turn started. A swing is played ONLY on this
     // grid -- see applySwing -- so where it stops is a function of the angle reached, never of how
@@ -2198,10 +2197,9 @@ CFG.sideArcs.forEach((a,k) => LINE_GEOM['a'+k] = { cx:a.cx, cy:a.cy, r:a.r, a0:a
 // of touching). The episodes already open at turn start — feet that begin on lines — were never
 // "entered", so they are inherently free: that IS the "a foot that starts on a line leaves it
 // for free" rule, with no separate grace bookkeeping. The rulebook cases fall out naturally:
-//   · jumping the crossing: a second line joins an open episode free only AT the printed corner
-//     (within cornerEps of its actual intersection with a line the foot is on). Cross both lines
-//     over the corner point = one crossing; cross them 1.5u to the side of it = two = refused —
-//     same call a physical opponent would make. Symmetric in swing direction;
+//   · continuous contact: a foot whose magnet is still on a line may take another line as part of
+//     the same crossing, wherever it meets it -- rounding a corner, or two lines running close.
+//     Only on-off-on spends a second crossing: the pad leaving every line and touching one again;
 //   · the centre-spin (pin a foot at the board middle: the other two ride EXACTLY on the inner
 //     ring, footR·√3 = 40.0) sweeps through corner after corner for free — the ring passes dead
 //     through each corner point, so every arc joins at distance ~0;
@@ -2210,48 +2208,6 @@ CFG.sideArcs.forEach((a,k) => LINE_GEOM['a'+k] = { cx:a.cx, cy:a.cy, r:a.r, a0:a
 //     refused; the far re-cross of your own start line that used to ride the grace = refused.
 // st is G for live play (pinFoot/clearTurn/restoreSnap null st.contact; it re-derives lazily from
 // the first substep's BEFORE feet, i.e. the turn-start pose, so AI lookahead resets stay correct).
-// ---- Corner rule under test: a toggle while the rule is being decided by playing it ----
-//   'k'  keep current -- a second line joins a foot's open crossing free only when the foot is
-//        within cornerEps of the printed corner at the moment it first touches the second line;
-//   'cc' continuous contact -- the rule as the designer states it: as long as the magnet pad is
-//        on a line the whole time (never off and back on), it is one crossing, wherever the
-//        second line is taken;
-//   'g'  generous corner -- still only at the printed corner, but the merge counts if the foot
-//        passes within cornerEps of the corner at ANY point while it touches both lines, not
-//        just at the first touch (what wiggling the mouse used to find by luck).
-// Typed in the app (cc / g / k) or cycled by triple-tapping the build tag; remembered on this
-// device. The app plays 'cc' unless the device has chosen otherwise (the designer's rule; 'k'
-// turned the corners the old variable-size drag got through by luck into dead stops). Online
-// matches always play 'k' so players on older builds are under the same rule, and games played
-// under anything but 'k' -- the rule the trainer still uses -- are not uploaded as training data.
-// Plain 'k' here: nn/engine.js extracts this into the trainer's engine, which may not touch storage.
-// The device's saved choice is read in by cornerRuleToggle (browser side) at boot.
-let cornerRule = 'k';
-function cornerRuleMode() {
-    try { if (typeof onlineMatch !== 'undefined' && onlineMatch) return 'k'; } catch (e) {}
-    return cornerRule;
-}
-// 'g': does this foot, carried on along its swing, pass within cornerEps of a point where lines h
-// and id meet while its magnet touches both? The swing is a rigid rotation about the pivot, so the
-// foot's path is a circle -- walked forward from where this substep started, in 0.05-degree steps,
-// for as long as it stays on h (and, once it has reached id, on both).
-function cornerPassAhead(st, b, a, h, id) {
-    const pv = st.pivot; if (!pv) return false;
-    const pts = LINE_INTERSECTIONS.filter(P => P.lines.includes(h) && P.lines.includes(id));
-    if (!pts.length) return false;
-    const dir = Math.sign((b.x-pv.x)*(a.y-pv.y) - (b.y-pv.y)*(a.x-pv.x)); if (!dir) return false;
-    const r = Math.hypot(b.x-pv.x, b.y-pv.y), th0 = Math.atan2(b.y-pv.y, b.x-pv.x), step = 0.05*Math.PI/180;
-    let seenBoth = false;
-    for (let k = 0; k <= 900; k++) {
-        const th = th0 + dir*k*step, p = { x: pv.x + r*Math.cos(th), y: pv.y + r*Math.sin(th) };
-        const near = nearLineIds(p, CFG.touchEps), onH = near.includes(h), onId = near.includes(id);
-        if (onH && onId) {
-            seenBoth = true;
-            if (pts.some(P => Math.hypot(p.x-P.x, p.y-P.y) <= CFG.cornerEps)) return true;
-        } else if (seenBoth || !onH) return false;
-    }
-    return false;
-}
 function crossingSubstep(before, after, st) {
     if (!st.contact) {
         st.contact = before.map(f => nearLineIds(f, CFG.touchEps));
@@ -2325,54 +2281,32 @@ function crossingSubstep(before, after, st) {
                 resolvedPending[i].push(id);
             }
         }
-        let entered = false, blockedSecond = false;
+        let entered = false;
         for (const id of nearLineIds(after[i], CFG.touchEps))
             if (!kept.includes(id)) {
-                // ONE LINE PER FOOT PER TURN. A foot already touching a line must STOP SHORT of a
-                // different one -- it is not carried across by an overlap where two lines happen to
-                // run close together. The budget is still a whole-piece episode (two DIFFERENT feet
-                // taking two lines in one motion is one crossing, unchanged); this bounds what a
-                // SINGLE foot may do inside that episode.
+                // CONTINUOUS CONTACT. A foot taking a new line while its magnet is still on another
+                // is the same crossing, wherever the lines meet -- the rule as the designer states it:
+                // "as long as the magnet pad is on a line the whole time, not on-off-on, it's legal."
+                // What spends a second crossing is the whole tripod going clear of every line and a
+                // foot touching one again (the budget check below), so a slip PAST a line and back
+                // onto another is still refused.
                 //
-                // The exception is a genuine printed corner, where the two lines actually meet:
-                // rounding that is one continuous crossing, and it is what keeps the unbounded
-                // centre-spin legal (feet riding dead on the inner ring meet each arc AT its
-                // intersection). cornerEps is the same magnet-surface band as everything else --
-                // the magnet has to actually reach the crossing point.
-                //
-                // Reported from real play: a max-CW-then-max-anti-CW opening took a corner the
-                // board refuses. Measured, foot1 crossed r0 and then a0 in one turn, bridged by a
-                // 1.2deg window (12.4-13.2deg) where it touched both at once, 1.9mm to the SIDE of
-                // their printed corner -- beside it, not on it. Now billed as the second crossing
-                // it is, so move 2 stops at 12.0deg instead of running to 74.4deg. Genuine corner
-                // rounds (measured at 1.48mm, inside the band) still merge free.
-                //
-                // Only a line FRESHLY entered THIS turn spends the budget -- a line the foot was
-                // already resting on at turn start (a park position paid for last turn) does not.
-                // Without this, a piece parked with a foot on one line could never move that foot
-                // again in the direction of any nearby second line, even on a brand new turn with a
-                // fresh budget: reported from real play as "forever blocked" continuing a swing from
-                // a parked position, reproduced as pivot1 CCW, pivot2 CW, pivot2 CW again -- the
-                // third move died at 0.0deg because move 2 legitimately parks foot1 on r0, and move
-                // 3's first substep found that foot already "on a line" and refused to let it touch
-                // a0 at all, though this turn had spent nothing yet.
-                const freshKept = kept.filter(h => !st.turnStartContact[i].includes(h));
-                if (freshKept.length > 0) {
-                    const mode = cornerRuleMode();
-                    let roundingCorner = mode === 'cc' || freshKept.some(h => LINE_INTERSECTIONS.some(P =>
-                        P.lines.includes(id) && P.lines.includes(h) &&
-                        Math.hypot(after[i].x-P.x, after[i].y-P.y) <= CFG.cornerEps));
-                    if (!roundingCorner && mode === 'g')
-                        roundingCorner = freshKept.some(h => cornerPassAhead(st, before[i], after[i], h, id));
-                    if (!roundingCorner) { blockedSecond = true; break; }
-                }
+                // This replaced "one line per foot, except within cornerEps of the printed corner at
+                // the moment the second line is first touched". That check was made at a single
+                // sample, so whether a corner went through depended on where the drag's steps happened
+                // to land: sticky corners a wiggle of the mouse could get past, and once the swing ran
+                // on a fixed grid (so drags and the AI agree), dead stops where the old steady drag
+                // had gone through (51.7 instead of 111 degrees on one measured arm) and "crossings
+                // 0/1, that would cross a 2nd line" stops. Measured over 1776 arms, continuous contact
+                // never stops short of the old steady drag. The one thing it allows that the corner
+                // check refused on purpose: the max-CW-then-max-CCW opening, where foot1 rides r0
+                // onto a0 1.9mm beside their corner, now runs to ~74 degrees instead of stopping at 12.
                 kept.push(id);
                 if (!earned.includes(id)) earned.push(id);   // fresh billed entry: genuine contact
                 newSides[i][id] = lineSideOf(after[i], id);  // approach side, for the centreline-flip check
                 justCrossed.push(id);
                 entered = true;
             }
-        if (blockedSecond) return true;   // roll back: this foot must stop short of the second line
         if (entered) opened++;   // this foot opened a fresh crossing
         next.push(kept);
         nextEarned.push(earned.filter(id => kept.includes(id)));
@@ -7436,7 +7370,6 @@ function submitLadderWin(levelIdx, color){
     const def = AI_LADDER[RUNG_TO_AI_LADDER[levelIdx]];
     // Lab games start from any position and allow take-backs: not a clean record of a won game.
     if (!def || def.kind !== 'net' || labMode || G.adjudicated || G.netFallback || ladderTurns.length < 2) return;
-    if (cornerRule !== 'k') return;   // played under a corner rule still being tried out
     const client = window.tauSteam ? 'steam' : window.tauDesktop ? 'desktop'
                  : /Android|iPhone|iPad/i.test(navigator.userAgent) ? 'mobile' : 'web';
     const q = ladderWinQueue();
@@ -12846,80 +12779,6 @@ else if (/^#nn\b/i.test(location.hash)) { labSetSide(0, 'human'); labSetSide(1, 
 // arrives if something downstream claims the key; collected only while the menu is up, so it can
 // never go off in the middle of a game; and dropped the moment the caret is in a field, because
 // somebody typing "collaborate" into a text box is not asking for this.
-// The corner-rule toggle (see cornerRule): type cc, g or k anywhere outside a text field, or
-// triple-tap the build tag on a phone to cycle cc -> g -> k. Always shown in the build tag.
-(function cornerRuleToggle() {
-    const NAMES = {
-        cc: ['Corner rule: CONTINUOUS CONTACT', 'One crossing as long as the pad stays on a line the whole time'],
-        g:  ['Corner rule: GENEROUS CORNER', 'A second line is free if the foot passes over the printed corner'],
-        k:  ['Corner rule: STRICT CORNER (old)', 'A second line is free only right at the corner, at first touch'],
-    };
-    cornerRule = 'cc';   // the app's default; a device that chose otherwise keeps its choice
-    try { const v = localStorage.getItem('tauCornerRule'); if (v === 'cc' || v === 'g' || v === 'k') cornerRule = v; } catch (e) {}
-    // A banner of its own, above everything (the shared toast sits under parts of the menu, so a
-    // switch made from there showed nothing at all).
-    let bannerTimer = null;
-    function banner(v) {
-        let b = document.getElementById('ruleBanner');
-        if (!b) {
-            b = document.createElement('div'); b.id = 'ruleBanner';
-            b.style.cssText = 'position:fixed;left:50%;top:18%;transform:translateX(-50%);z-index:2147483646;' +
-                'background:rgba(16,20,26,.96);color:#f2f4f7;border:1px solid #ffd23f;border-radius:10px;padding:12px 18px;' +
-                'font:600 16px/1.35 system-ui,sans-serif;text-align:center;pointer-events:none;max-width:90vw;' +
-                'box-shadow:0 8px 28px rgba(0,0,0,.55);transition:opacity .25s;opacity:0;';
-            document.body.appendChild(b);
-        }
-        const online = typeof onlineMatch !== 'undefined' && onlineMatch;
-        b.innerHTML = '';
-        const t = document.createElement('div'); t.textContent = NAMES[v][0]; t.style.color = '#ffd23f';
-        const d = document.createElement('div'); d.textContent = NAMES[v][1] + (online ? ' (online games always use strict)' : '');
-        d.style.cssText = 'font-weight:400;font-size:13px;margin-top:4px;';
-        b.append(t, d); b.style.opacity = '1';
-        clearTimeout(bannerTimer); bannerTimer = setTimeout(() => { b.style.opacity = '0'; }, 2600);
-    }
-    const tag = () => document.getElementById('buildTag');
-    function paintTag() {
-        const el = tag(); if (!el) return;
-        const base = el.textContent.replace(/ · (CC|G|K)$/, '');
-        const want = base + ' · ' + cornerRule.toUpperCase();
-        if (el.textContent !== want) el.textContent = want;
-    }
-    function setRule(v) {
-        cornerRule = v;
-        try { localStorage.setItem('tauCornerRule', v); } catch (e) {}
-        paintTag();
-        banner(v);
-    }
-    let typed = '', lastT = 0;
-    addEventListener('keydown', e => {
-        if (e.ctrlKey || e.metaKey || e.altKey || !e.key || e.key.length !== 1) { typed = ''; return; }
-        const el = e.target;
-        if (el && el.closest && el.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) { typed = ''; return; }
-        const now = performance.now();
-        if (now - lastT > 1000) typed = '';
-        lastT = now;
-        typed = (typed + e.key.toLowerCase()).slice(-2);
-        if (typed === 'cc') { typed = ''; setRule('cc'); }
-        else if (typed.endsWith('g')) { typed = ''; setRule('g'); }
-        else if (typed.endsWith('k')) { typed = ''; setRule('k'); }
-    }, true);
-    const el = tag();
-    if (el) {
-        // The tag sits under the page (pointer-events:none, and the main layer covers it), so taps are
-        // read off the document by position instead -- they still reach whatever is underneath.
-        let taps = [];
-        document.addEventListener('pointerdown', e => {
-            const r = el.getBoundingClientRect(), pad = 8;
-            if (e.clientX < r.left - pad || e.clientX > r.right + pad || e.clientY < r.top - pad || e.clientY > r.bottom + pad) return;
-            const now = performance.now();
-            taps = taps.filter(t => now - t < 1200); taps.push(now);
-            if (taps.length >= 3) { taps = []; setRule(cornerRule === 'cc' ? 'g' : cornerRule === 'g' ? 'k' : 'cc'); }
-        }, true);
-        // the tag's text is filled in later (build.json); keep the mode suffix on it
-        new MutationObserver(paintTag).observe(el, { childList: true, characterData: true, subtree: true });
-        paintTag();
-    }
-})();
 (function labKnock() {
     const WORD = 'lab';
     let typed = '';
