@@ -5,7 +5,7 @@
 // bounds are valid for every input, which is why the cover's own checks (audit, containment) sit on top.
 //   node test-tm.js [cases=300] [samples=200] [degree=4]
 'use strict';
-const { TM, setDegree, newSym, getN } = require('./tm.js');
+const { TM, setDegree, newSym, getN, sqrtRemainderBound } = require('./tm.js');
 const cases = +(process.argv[2] || 300), samples = +(process.argv[3] || 200), deg = +(process.argv[4] || 4);
 setDegree(deg);
 let seed = 12345;
@@ -50,6 +50,28 @@ const ops = {
 };
 
 let failed = 0;
+
+// Regression for the sqrt Lagrange remainder: test the bound itself against the analytic
+// |binom(1/2,n+1)| * h^(n+1) * xmin^(-n-1/2) formula. The old expression was too small
+// by a factor xmin for xmin > 1, even though wide interval arithmetic can hide this in sample tests.
+{
+  const order = getN() + 2;
+  let cases = 0, bad = 0;
+  for (const [xmin, h] of [[10, 1], [100, 20], [1000, 100], [2, 0.25]]) {
+    let coeff = 1;
+    for (let k = 0; k <= order; k++) coeff *= Math.abs(0.5 - k) / (k + 1);
+    const expected = coeff * Math.pow(h, order + 1) * Math.pow(xmin, -(order + 0.5));
+    const got = sqrtRemainderBound(xmin, h, order);
+    const ok = Number.isFinite(got) && got >= expected * (1 - 1e-12);
+    cases++;
+    if (!ok) {
+      bad++;
+      console.log(`FAIL sqrtLag xMin=${xmin} h=${h} expected≈${expected} got=${got}`);
+    }
+  }
+  console.log(`${bad ? 'FAIL' : 'ok  '} sqrtLag   ${cases} analytic upper-bound cases`);
+  if (bad) failed++;
+}
 for (const [name, op] of Object.entries(ops)) {
   let worst = 0, run = 0, skipped = 0;
   for (let c = 0; c < cases; c++) {
