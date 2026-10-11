@@ -2683,10 +2683,11 @@ function applySwing(dA) {
     // remainder shown as a plain rotation from the last grid point (if, and only if, the next whole
     // grid step is allowed -- otherwise the swing stops on the grid point, as a whole step would).
     const S = CFG.substepDeg*Math.PI/180;
-    // Back onto the grid if the last call left the swing between two grid points.
+    // The target is measured from where the swing is SHOWN, then the state goes back onto the grid
+    // if the last call left it between two grid points (the remainder is replayed below).
+    let target = G.netRad + dA;
     if (G.gridSnap && G.gridSnap.pivot === G.pivot && G.gridSnap.shownNet === G.netRad) swingStateRestore(G.gridSnap.state);
     G.gridSnap = null;
-    let target = G.netRad + dA;
     const sgn = Math.sign(target) || Math.sign(dA);
     // Coming back toward (or through) the pinned pose -- only possible before the direction lock:
     // replay from the pin, so the pose is still a function of the angle alone.
