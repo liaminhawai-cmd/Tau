@@ -30,7 +30,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - from: 12
+          - from: 12.02
             to: 13.5
           - from: 13.5
             to: 15
