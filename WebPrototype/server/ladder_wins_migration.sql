@@ -19,6 +19,15 @@
 -- Idempotent. Apply in the Supabase SQL editor.
 -- ============================================================================
 
+-- 0) accounts kept out of the clear record and the "beaten by" stats -- the developer's own, so a
+--    level only reads as beaten once somebody else has beaten it. Defined here too (see
+--    level_clears_exclude.sql) so re-running this file never drops the check below.
+create table if not exists public.level_clears_excluded (
+  user_id uuid primary key references auth.users (id) on delete cascade
+);
+alter table public.level_clears_excluded enable row level security;
+revoke all on public.level_clears_excluded from anon, authenticated;
+
 -- 1) levels 1..30 everywhere a level is checked
 alter table public.level_clears
   drop constraint if exists level_clears_level_check;
@@ -37,6 +46,7 @@ begin
   if me is null then return; end if;
   if p_level is null or p_level < 1 or p_level > 30 then return; end if;
   if p_colour is null or p_colour not in (0, 1) then return; end if;
+  if exists (select 1 from public.level_clears_excluded where user_id = me) then return; end if;
 
   select elo into my_elo from public.profiles where id = me;
   if my_elo is null then return; end if;
