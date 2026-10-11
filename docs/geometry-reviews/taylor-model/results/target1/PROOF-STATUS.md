@@ -47,9 +47,13 @@ The previously recorded degree-4 covers tile [2°, 7°] (174 cells), [7°, 12°]
 [16.5°, 20.71908458837398°] (222 cells), for 644 cells across two disjoint ranges. They predate the
 square-root expression refactor and remain pending current-source reproduction/replay; the review has
 not shown that they are mathematically invalid. The new six-cell cover tiles [12°, 12.02°] and passed
-replay, sampled containment and Red-legality. Until the adjoining [2°, 12°] range is freshly replayed or
-re-certified, this new slice is isolated as current-source evidence. The residual central gap is
-[12.02°, 16.5°] (4.48°).
+replay, sampled containment and Red-legality. Two additional current-source probe cells now cover
+[12.02°, 12.06°]: the [12.02°–12.04° cell](GAP-CELL-12.02-12.04.json) has margin 2.9045549029u, and
+the [12.04°–12.06° cell](GAP-CELL-12.04-12.06.json) has margin 2.9425976801u. Each margin replays
+exactly (1/1), and the model-based Red-legality check passes (1/1). Their shipped-engine containment
+check remains outstanding, so these probes do not yet reduce the formal coverage gap. The pre-refactor
+[2°, 12°] range also still needs fresh replay or re-certification. The formal residual central gap
+therefore remains [12.02°, 16.5°] (4.48°) until the new cells pass the full validation layer.
 
 The original in-memory six-cell probe over [12°, 12.02°] was generated before the source refactor and is not proof evidence. It has been superseded by the current-source [six-cell CI certificate](GAP-PROBE-12.00-12.02.md), which passed replay, sampled containment, and Red-legality. The dedicated [gap-certificate workflow](https://github.com/liaminhawai-cmd/Tau/blob/claude/serene-pasteur-psjoi2/.github/workflows/target1-b1p-gap-certificate.yml) now targets [12.02°, 16.5°] in three bands, with the first band starting at 12.02° so it abuts but does not overlap the validated slice.
 
