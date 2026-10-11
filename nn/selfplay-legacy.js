@@ -420,7 +420,7 @@ function main() {
         fs.mkdirSync(path.dirname(out), { recursive: true });
         fs.writeFileSync(humanFile, JSON.stringify(openings));
         console.log(`human openings: ~${Math.round(humanOpeningFrac*100)}% of games start after move ${humanOpeningPlies} of ` +
-                    `${openings.length} league game(s) you won`);
+                    `${openings.length} game(s) you won (league + web)`);
       }
     }
     if (seedFrom > 0) {
@@ -597,7 +597,7 @@ function main() {
     else {
       humanPool = require('./human-openings.js').loadHumanOpenings(__dirname, humanOpeningPlies);
       if (humanPool.length && !TAG) console.log(`human openings: ~${Math.round(humanOpeningFrac*100)}% of games start after move ` +
-                                                `${humanOpeningPlies} of ${humanPool.length} league game(s) you won`);
+                                                `${humanOpeningPlies} of ${humanPool.length} game(s) you won (league + web)`);
     }
   }
   // A direct single-process run draws its own novel starts; a forked task already has its slice.
