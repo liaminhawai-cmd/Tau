@@ -32,14 +32,14 @@ witness at 9.73°. "Checks" means: every cell re-run by `audit2.js` with 0 misma
 with matching binary64 endpoints. These are recorded program checks, not independent validation of the
 Taylor-model implementation or a universal proof of binary64 engine correspondence.
 
-| Blue arm | Range [2°, B] | Red reply (substeps of 0.375°) | Status | Cells | Min margin |
+| Blue arm | Range [2°, B] | Red reply (substeps of 0.375°) | Prior status (historical; rebuild required) | Cells then | Min margin then |
 | --- | --- | --- | --- | ---: | ---: |
-| (2,+) | [2, 14.334609564414993] | (0,−) 120 on [2, 9.73]; (2,+) 36 on [9.73, B] | **covered, all checks** | 481 | 0.0977u |
-| (1,−) | [2, 27.6426619806354] | 96 on [2, 21.2]; 90 on [21.2, B] | **covered, all checks** | 784 | 2.0836u |
-| (1,+) | [2, 20.71908458837398] | 107 | [2, 12] and [16.5, B] covered; **[12, 16.5] remains uncovered** | 644 across two disjoint intervals | 2.8653u |
-| (2,−) | [2, 29.758008056522694] | 107 on [2, 15.25]; 128 on [15.25, B] | running | | |
-| (0,−) | [2, 31.014385516493906] | 104 (red's limit) | queued | | |
-| (0,+) | [2, 38.74919310376795] | 106 | queued | | |
+| (2,+) | [2, 14.334609564414993] | (0,−) 120 on [2, 9.73]; (2,+) 36 on [9.73, B] | covered before arithmetic fix; rebuild | 481 | 0.0977u |
+| (1,−) | [2, 27.6426619806354] | 96 on [2, 21.2]; 90 on [21.2, B] | covered before arithmetic fix; rebuild | 784 | 2.0836u |
+| (1,+) | [2, 20.71908458837398] | 107 | prior ranges historical; [12, 16.5] remains open | 644 across two disjoint intervals | 2.8653u |
+| (2,−) | [2, 29.758008056522694] | 107 on [2, 15.25]; 128 on [15.25, B] | not established post-fix | | |
+| (0,−) | [2, 31.014385516493906] | 104 (red's limit) | not established post-fix | | |
+| (0,+) | [2, 38.74919310376795] | 106 | not established post-fix | | |
 
 For arm (1,+), the saved degree-4 covers tile [2°, 7°] (174 cells), [7°, 12°] (248 cells), and
 [16.5°, 20.71908458837398°] (222 cells). Each saved cover has zero failed leaves and contiguous
