@@ -29,6 +29,18 @@ self.addEventListener('fetch', e => {
   // badly in Safari. The loading-screen loop just goes to the network (the browser's HTTP cache has it).
   if (/\.(mp4|webm)$/.test(url.pathname)) return;
 
+  // build.json is the build number the page shows. It changes on every build under the same URL, so
+  // cache-first froze it at whatever a device fetched first ("build 340" for good). Newest when
+  // online; the last one seen when offline.
+  if (url.pathname.endsWith('/build.json')) {
+    e.respondWith(
+      fetch(req, { cache: 'no-store' }).then(r => {
+        if (r.ok) { const cp = r.clone(); caches.open(CACHE).then(c => c.put(req, cp)); }
+        return r;
+      }).catch(() => caches.match(req).then(r => r || Response.error()))
+    );
+    return;
+  }
   if (req.mode === 'navigate') {   // pages: newest when online, cached when offline
     e.respondWith(
       fetch(req).then(r => {
