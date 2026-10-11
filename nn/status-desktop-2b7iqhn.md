@@ -1,14 +1,14 @@
 # Tau NN training status
-_Last updated: 2026-10-11T11:11:55.544Z_
+_Last updated: 2026-10-11T12:18:16.046Z_
 
-**Self-play batch:** 902
-**Stage:** rating pool placement (started 2026-10-11T11:11:55.544Z)
+**Self-play batch:** 903
+**Stage:** self-play batch 903 running (started 2026-10-11T12:13:09.019Z)
 **mix:** (see selfplay log: fixed-rung training reference)
 
-**Dual pool:** 4 active (minimum 4) (dual-pop-063-e60, dual-pop-115-e20, dual-pop-118-e20, dual-pop-120-e60)
+**Dual pool:** (not initialized yet)
 
-**Last gate result:** pool cycle 738 — promoted resume-638@D2: 41-7-0 vs ckpt-731@D2, +188 [+51, +347] Elo (lower bound clears +0)
+**Last gate result:** (none yet)
 
-**Last checkpoint:** ckpt-739.json at 2026-10-11T11:11:42.313Z
+**Last checkpoint:** (none yet)
 
 **Last ladder sweep:** (none yet)
