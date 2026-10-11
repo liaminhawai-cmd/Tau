@@ -430,6 +430,12 @@ def load_packed(args, nn_dir):
     selected = cap_files(paths, args.dataBudgetMB, args.dataSinceDays, args.dataRecentRows, args.dataFrac)
     ps = packed_data.Packed(nn_dir, idx, selected)
     if ps.missing:
+        if len(ps.missing) * 20 > len(selected):
+            # Another packer held the lock all along and most of what this run wants is not in the
+            # store yet: read the JSONL instead of training on a sliver (or on nothing).
+            print('packed data: %d of %d selected file(s) not packed yet (another run held the lock); '
+                  'reading the JSONL instead' % (len(ps.missing), len(selected)))
+            return None
         print('packed data: %d selected file(s) not packed yet (another run held the lock); '
               'training without them' % len(ps.missing))
     if ps.stale:
@@ -629,7 +635,14 @@ def main():
               'using the usual data budget and leaving this run out of the data trial')
         args.dataFrac, args.dataTrialArm = 0.0, ''
     if packed:
-        ps, prow, pcols, game_movers = load_packed(args, nn_dir)
+        got = load_packed(args, nn_dir)
+        if got is None:
+            packed = False
+            if args.dataFrac or args.dataTrialArm:
+                print('using the usual data budget and leaving this run out of the data trial')
+            args.dataFrac, args.dataTrialArm = 0.0, ''
+    if packed:
+        ps, prow, pcols, game_movers = got
         by_game = None
         if not len(prow):
             print(f"no training rows matched {args.data}", file=sys.stderr)

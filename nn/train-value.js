@@ -67,13 +67,15 @@ function validateValueNet(file) {
 // The data-amount trial (Oct 2026). Training reads the corpus through the packed store
 // (packed_data.py), so RAM no longer caps it at the newest ~16%. Whether MORE data -- older games,
 // from weaker nets -- makes better nets is the open question, so births alternate, kind by kind
-// (resume, mutant, scratch, each variant lineage), between all of the corpus and its newest 25%.
+// (resume, mutant, scratch, ultra, ...), between all of the corpus and its newest 25%. Variant
+// lineages count as one kind (ultra-m21-741 and ultra-m22-742 are both "ultra"): each lineage
+// births rarely, so per-lineage counters would put nearly every variant in the "all" arm.
 // Each run is logged to nn/data-trial.jsonl and nn/data-trial-report.js reads it against the
 // league's Elo. An explicit data choice from the caller, --poseInput, or TAU_DATA_TRIAL=off skips it.
 function dataTrialArm(out) {
   if (process.env.TAU_DATA_TRIAL === 'off' || original.includes('--poseInput')) return null;
   if (['data', 'dataBudgetMB', 'dataSinceDays', 'dataRecentRows', 'dataFrac'].some(k => arg(k) != null)) return null;
-  const kind = path.basename(out).replace(/\.json$/i, '').replace(/-\d+$/, '');
+  const kind = path.basename(out).replace(/\.json$/i, '').replace(/-\d+$/, '').replace(/-m\d+$/, '');
   const file = path.join(HERE, '.data-trial-state.json');
   let st = {};
   try { st = JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch (_) {}

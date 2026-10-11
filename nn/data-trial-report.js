@@ -46,7 +46,7 @@ try {
 } catch (e) {}
 if (!runs.length) { console.log('No trial runs yet (nn/data-trial.jsonl is empty). Each new net adds one.'); process.exit(0); }
 
-const kindOf = m => m.replace(/-\d+$/, '');
+const kindOf = m => m.replace(/-\d+$/, '').replace(/-m\d+$/, '');
 const rows = runs.map(r => ({ ...r, kind: kindOf(r.model), rating: live[r.model] || retired[r.model] || null }));
 const mean = a => a.reduce((s, x) => s + x, 0) / a.length;
 const fmt = (a) => a.length ? `${mean(a).toFixed(0).padStart(5)} mean Elo over ${a.length} rated` : '    - no rated nets yet';

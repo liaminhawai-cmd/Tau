@@ -78,9 +78,14 @@ def _write_index(sd, idx):
 
 
 class _Lock:
-    """One packer at a time. A lock older than two hours is a crashed packer's and is taken over."""
+    """One packer at a time. The holder touches the lock as it works (beat), so a lock that has not
+    been touched for STALE seconds belongs to a packer that died -- a trainer killed mid-pack -- and
+    is taken over instead of making every later run wait it out."""
+    STALE = 600
+    BEAT = 20
+
     def __init__(self, sd, wait_s):
-        self.path, self.wait_s, self.held = os.path.join(sd, 'lock'), wait_s, False
+        self.path, self.wait_s, self.held, self.last = os.path.join(sd, 'lock'), wait_s, False, 0.0
 
     def __enter__(self):
         t0 = time.time()
@@ -89,11 +94,11 @@ class _Lock:
                 fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 os.write(fd, ('%d %f' % (os.getpid(), time.time())).encode())
                 os.close(fd)
-                self.held = True
+                self.held, self.last = True, time.time()
                 return self
             except FileExistsError:
                 try:
-                    if time.time() - os.path.getmtime(self.path) > 7200:
+                    if time.time() - os.path.getmtime(self.path) > self.STALE:
                         os.remove(self.path)
                         continue
                 except OSError:
@@ -101,6 +106,14 @@ class _Lock:
                 if time.time() - t0 > self.wait_s:
                     return self          # not held: the caller reads what is committed
                 time.sleep(2)
+
+    def beat(self):
+        if self.held and time.time() - self.last > self.BEAT:
+            self.last = time.time()
+            try:
+                os.utime(self.path, None)
+            except OSError:
+                pass
 
     def __exit__(self, *a):
         if self.held:
@@ -151,8 +164,8 @@ class _Sink:
     never holds more than a slice of it in memory."""
     FLUSH = 100000
 
-    def __init__(self, sd, gen, rows0):
-        self.sd, self.gen, self.rows0, self.written = sd, gen, rows0, 0
+    def __init__(self, sd, gen, rows0, beat=None):
+        self.sd, self.gen, self.rows0, self.written, self.beat = sd, gen, rows0, 0, beat
         self.buf = {c: [] for c, _, _ in COLS}
 
     def count(self):
@@ -177,6 +190,8 @@ class _Sink:
                        arr.tobytes())
             self.buf[col] = []
         self.written += n
+        if self.beat:
+            self.beat()
 
 
 def _lines(path, start, block=1 << 24):
@@ -286,9 +301,10 @@ def update(nn_dir, paths, log=print, wait_s=1800):
             if name not in present:
                 idx['garbage'] += sum(c for _, c in files.pop(name)['chunks'])
         rows0 = idx['rows']
-        sink = _Sink(sd, gen, rows0)
+        sink = _Sink(sd, gen, rows0, lock.beat)
         new_files, touched, t0, last_note = 0, 0, time.time(), time.time()
         for name in sorted(present):
+            lock.beat()
             p, size = present[name]
             ent = files.get(name)
             if ent is not None:
@@ -332,13 +348,13 @@ def update(nn_dir, paths, log=print, wait_s=1800):
             log('packed data: +%d rows from %d file(s) (%d new or rewritten) in %.0fs (store %d rows)'
                 % (added, touched, new_files, time.time() - t0, idx['rows']))
         if idx['garbage'] > 100000 and idx['garbage'] * 4 > idx['rows']:
-            idx = _compact(sd, idx, log)
+            idx = _compact(sd, idx, log, lock.beat)
         _write_index(sd, idx)
         _sweep_old_gens(sd, idx['gen'])
         return idx
 
 
-def _compact(sd, idx, log):
+def _compact(sd, idx, log, beat=lambda: None):
     """Rewrite the live rows as generation gen+1, file by file, so each file's rows are one chunk."""
     gen, new_gen, t0 = idx['gen'], idx['gen'] + 1, time.time()
     old = {col: np.memmap(_col_path(sd, col, gen), dtype=dt, mode='r', shape=(idx['rows'],) + shape)
@@ -347,6 +363,7 @@ def _compact(sd, idx, log):
     pos = 0
     try:
         for name in sorted(idx['files']):
+            beat()
             ent = idx['files'][name]
             n = sum(c for _, c in ent['chunks'])
             if n:
