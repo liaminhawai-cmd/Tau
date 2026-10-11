@@ -2220,8 +2220,10 @@ CFG.sideArcs.forEach((a,k) => LINE_GEOM['a'+k] = { cx:a.cx, cy:a.cy, r:a.r, a0:a
 //        passes within cornerEps of the corner at ANY point while it touches both lines, not
 //        just at the first touch (what wiggling the mouse used to find by luck).
 // Typed in the app (cc / g / k) or cycled by triple-tapping the build tag; remembered on this
-// device. Online matches always play 'k' so both players are under the same rule, and games
-// played under a test rule are not uploaded as training data.
+// device. The app plays 'cc' unless the device has chosen otherwise (the designer's rule; 'k'
+// turned the corners the old variable-size drag got through by luck into dead stops). Online
+// matches always play 'k' so players on older builds are under the same rule, and games played
+// under anything but 'k' -- the rule the trainer still uses -- are not uploaded as training data.
 // Plain 'k' here: nn/engine.js extracts this into the trainer's engine, which may not touch storage.
 // The device's saved choice is read in by cornerRuleToggle (browser side) at boot.
 let cornerRule = 'k';
@@ -12833,23 +12835,48 @@ else if (/^#nn\b/i.test(location.hash)) { labSetSide(0, 'human'); labSetSide(1, 
 // never go off in the middle of a game; and dropped the moment the caret is in a field, because
 // somebody typing "collaborate" into a text box is not asking for this.
 // The corner-rule toggle (see cornerRule): type cc, g or k anywhere outside a text field, or
-// triple-tap the build tag on a phone to cycle k -> cc -> g. Shown in the build tag while not 'k'.
+// triple-tap the build tag on a phone to cycle cc -> g -> k. Always shown in the build tag.
 (function cornerRuleToggle() {
-    const NAMES = { k: 'Corner rule: keep current', cc: 'Corner rule: continuous contact', g: 'Corner rule: generous corner' };
-    try { const v = localStorage.getItem('tauCornerRule'); if (v === 'cc' || v === 'g') cornerRule = v; } catch (e) {}
+    const NAMES = {
+        cc: ['Corner rule: CONTINUOUS CONTACT', 'One crossing as long as the pad stays on a line the whole time'],
+        g:  ['Corner rule: GENEROUS CORNER', 'A second line is free if the foot passes over the printed corner'],
+        k:  ['Corner rule: STRICT CORNER (old)', 'A second line is free only right at the corner, at first touch'],
+    };
+    cornerRule = 'cc';   // the app's default; a device that chose otherwise keeps its choice
+    try { const v = localStorage.getItem('tauCornerRule'); if (v === 'cc' || v === 'g' || v === 'k') cornerRule = v; } catch (e) {}
+    // A banner of its own, above everything (the shared toast sits under parts of the menu, so a
+    // switch made from there showed nothing at all).
+    let bannerTimer = null;
+    function banner(v) {
+        let b = document.getElementById('ruleBanner');
+        if (!b) {
+            b = document.createElement('div'); b.id = 'ruleBanner';
+            b.style.cssText = 'position:fixed;left:50%;top:18%;transform:translateX(-50%);z-index:2147483646;' +
+                'background:rgba(16,20,26,.96);color:#f2f4f7;border:1px solid #ffd23f;border-radius:10px;padding:12px 18px;' +
+                'font:600 16px/1.35 system-ui,sans-serif;text-align:center;pointer-events:none;max-width:90vw;' +
+                'box-shadow:0 8px 28px rgba(0,0,0,.55);transition:opacity .25s;opacity:0;';
+            document.body.appendChild(b);
+        }
+        const online = typeof onlineMatch !== 'undefined' && onlineMatch;
+        b.innerHTML = '';
+        const t = document.createElement('div'); t.textContent = NAMES[v][0]; t.style.color = '#ffd23f';
+        const d = document.createElement('div'); d.textContent = NAMES[v][1] + (online ? ' (online games always use strict)' : '');
+        d.style.cssText = 'font-weight:400;font-size:13px;margin-top:4px;';
+        b.append(t, d); b.style.opacity = '1';
+        clearTimeout(bannerTimer); bannerTimer = setTimeout(() => { b.style.opacity = '0'; }, 2600);
+    }
     const tag = () => document.getElementById('buildTag');
     function paintTag() {
         const el = tag(); if (!el) return;
-        const base = el.textContent.replace(/ · (CC|G)$/, '');
-        const want = cornerRule === 'k' ? base : base + ' · ' + cornerRule.toUpperCase();
+        const base = el.textContent.replace(/ · (CC|G|K)$/, '');
+        const want = base + ' · ' + cornerRule.toUpperCase();
         if (el.textContent !== want) el.textContent = want;
     }
     function setRule(v) {
         cornerRule = v;
         try { localStorage.setItem('tauCornerRule', v); } catch (e) {}
         paintTag();
-        if (typeof showPassToast === 'function')
-            showPassToast(NAMES[v] + (typeof onlineMatch !== 'undefined' && onlineMatch ? ' (online games always use keep current)' : ''));
+        banner(v);
     }
     let typed = '', lastT = 0;
     addEventListener('keydown', e => {
@@ -12874,7 +12901,7 @@ else if (/^#nn\b/i.test(location.hash)) { labSetSide(0, 'human'); labSetSide(1, 
             if (e.clientX < r.left - pad || e.clientX > r.right + pad || e.clientY < r.top - pad || e.clientY > r.bottom + pad) return;
             const now = performance.now();
             taps = taps.filter(t => now - t < 1200); taps.push(now);
-            if (taps.length >= 3) { taps = []; setRule(cornerRule === 'k' ? 'cc' : cornerRule === 'cc' ? 'g' : 'k'); }
+            if (taps.length >= 3) { taps = []; setRule(cornerRule === 'cc' ? 'g' : cornerRule === 'g' ? 'k' : 'cc'); }
         }, true);
         // the tag's text is filled in later (build.json); keep the mode suffix on it
         new MutationObserver(paintTag).observe(el, { childList: true, characterData: true, subtree: true });
