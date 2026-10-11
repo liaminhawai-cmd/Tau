@@ -14,10 +14,11 @@
 //
 //   node nn/pull-web-games.js            (PULL-WEB-GAMES.bat)
 //
-// Reading the table needs the project's service-role key (Supabase dashboard: Project Settings ->
-// API keys). It is a secret that bypasses every row-level rule, so it lives ONLY on the training
-// machine: the SUPABASE_SERVICE_KEY environment variable, or the file nn/.supabase-service-key
-// (gitignored). Never in index.html, never committed. Without it this does nothing.
+// Reading the table needs the project's secret key (Supabase dashboard: Project Settings -> API
+// keys: a secret key, sb_secret_..., or the legacy service_role JWT). It bypasses every row-level
+// rule, so it lives ONLY on the training machine: the SUPABASE_SERVICE_KEY environment variable, or
+// the file nn/.supabase-service-key -- .txt on the end is fine, which is what Notepad saves (both
+// gitignored). Never in index.html, never committed. Without it this does nothing.
 //
 // Only one machine should pull: whichever does deletes the rows it took.
 const fs = require('fs');
@@ -28,15 +29,40 @@ const { createEngine } = require('./engine.js');
 const { features } = require('./features.js');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://lwjanmztbtfipsyfrcwg.supabase.co';
-const KEY_FILE = path.join(dir, '.supabase-service-key');
+// Notepad's "Save as" adds .txt unless told not to, and Explorer hides it, so take either.
+const KEY_FILES = ['.supabase-service-key', '.supabase-service-key.txt', 'supabase-service-key', 'supabase-service-key.txt']
+  .map(f => path.join(dir, f));
 const STATE_FILE = path.join(dir, '.web-games-state.json');   // { lastId }: never write a game twice
 const DATA = path.join(dir, 'data', `web-${machine.machineId(dir)}.jsonl`);
 const DISCOUNT = 0.995;   // arena.js's own result discount, as human-league.js uses
 const PAGE = 200;
 
+// The key out of whatever was saved: Notepad may write UTF-16 or a BOM, and a pasted line can carry
+// a label or quotes. Returns { key } or { problem } when the file holds the wrong key.
+function readKey(text) {
+  const m = text.match(/sb_secret_[A-Za-z0-9_-]+|eyJ[\w-]+\.[\w-]+\.[\w-]+/);
+  if (!m) return { problem: /sb_publishable_/.test(text)
+    ? 'that is the publishable key; the pull needs the secret key (sb_secret_...) from the same page'
+    : 'no Supabase key found in it' };
+  if (m[0].startsWith('eyJ')) {
+    let role = null;
+    try { role = JSON.parse(Buffer.from(m[0].split('.')[1], 'base64url').toString()).role; } catch (e) {}
+    if (role !== 'service_role') return { problem: `that is the ${role || 'unknown'} key; the pull needs service_role (or a secret key, sb_secret_...)` };
+  }
+  return { key: m[0] };
+}
+function decode(buf) {
+  if (buf[0] === 0xff && buf[1] === 0xfe) return buf.toString('utf16le');
+  return buf.toString('utf8');
+}
 function serviceKey() {
-  if (process.env.SUPABASE_SERVICE_KEY) return process.env.SUPABASE_SERVICE_KEY.trim();
-  try { return fs.readFileSync(KEY_FILE, 'utf8').trim() || null; } catch (e) { return null; }
+  if (process.env.SUPABASE_SERVICE_KEY) return readKey(process.env.SUPABASE_SERVICE_KEY);
+  for (const f of KEY_FILES) {
+    let buf; try { buf = fs.readFileSync(f); } catch (e) { continue; }
+    const r = readKey(decode(buf));
+    return r.problem ? { problem: `${path.basename(f)}: ${r.problem}` } : r;
+  }
+  return { problem: 'no service key (SUPABASE_SERVICE_KEY, or nn/.supabase-service-key or .supabase-service-key.txt)' };
 }
 function readState() { try { return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); } catch (e) { return { lastId: 0 }; } }
 
@@ -76,8 +102,12 @@ function rowsFor(w) {
 }
 
 async function api(key, method, query) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/ladder_wins?${query}`,
-                          { method, headers: { apikey: key, Authorization: `Bearer ${key}` } });
+  // A legacy service_role key is a JWT and goes in Authorization too, which is what gives PostgREST
+  // the role. A secret key (sb_secret_...) is not a JWT: it goes in apikey alone and Supabase's
+  // gateway turns it into the service role itself.
+  const headers = { apikey: key };
+  if (key.startsWith('eyJ')) headers.Authorization = `Bearer ${key}`;
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/ladder_wins?${query}`, { method, headers });
   if (!res.ok) throw new Error(`${method} ladder_wins: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
   return method === 'GET' ? res.json() : null;
 }
@@ -85,8 +115,8 @@ async function api(key, method, query) {
 // Returns { games, rows, file } -- file is the repo-relative path to push when rows were written --
 // or { skipped } when there is no key.
 async function pullWebGames(log = console.log) {
-  const key = serviceKey();
-  if (!key) return { skipped: 'no service key (SUPABASE_SERVICE_KEY or nn/.supabase-service-key)' };
+  const { key, problem } = serviceKey();
+  if (!key) return { skipped: problem };
   const state = readState();
   let games = 0, rows = 0, rejected = 0;
   for (;;) {

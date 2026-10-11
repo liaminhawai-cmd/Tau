@@ -1617,6 +1617,7 @@ function startSelfplayBatch() {
 // games in the background the whole time these run (sharing cores, not losing them).
 let lastTournamentAt = Date.now(), lastBenchAt = Date.now(), lastTrainAt = Date.now(),
     lastPoolAt = Date.now(), lastWebPullAt = 0;   // 0: the first tick pulls
+let webPullAnnounced = false;   // say once, at startup, whether the web-games pull is connected
 
 // Resume-train from best.json, but no longer promote it directly. It used to: an unconditional
 // atomicCopy(fresh, best) every trainEveryMin, with nothing between one tick and the next checking
@@ -2650,6 +2651,11 @@ async function schedulerLoop() {
       lastWebPullAt = now;
       try {
         const r = await require('./pull-web-games.js').pullWebGames(log);
+        if (!webPullAnnounced) {
+          webPullAnnounced = true;
+          log(r.skipped ? `web games: not pulling -- ${r.skipped}`
+                        : `web games: connected to Supabase; checking for human wins every ${webPullEveryMin} min`);
+        }
         if (r.file) writeStatus(statusState.stage, [r.file]);
       } catch (e) { log(`WARNING: web games pull failed (${(e && e.message) || e}) — continuing`); }
     }
