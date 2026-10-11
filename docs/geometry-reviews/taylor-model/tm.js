@@ -18,6 +18,22 @@ let N = 6;            // polynomial degree in t
 let KSUB = 16;        // subintervals for tight range bounds
 let symCount = 0;
 const setDegree = n => { N = n; };
+
+// Outward upper bound for the Lagrange remainder of sqrt's Taylor polynomial through the requested order.
+// |f^(order+1)(xi)/(order+1)!| * h^(order+1)
+// = |binom(1/2, order+1)| * h^(order+1) * xmin^(-order-1/2).
+// Use 1/sqrt(xmin), then divide by xmin exactly order times.
+function sqrtRemainderBound(xmin, h, order) {
+  let b = [1, 1];
+  for (let k = 0; k <= order; k++)
+    b = iv.div(iv.mul(b, [Math.abs(0.5 - k), Math.abs(0.5 - k)]), [k + 1, k + 1]);
+  let v = iv.div([1, 1], iv.sqrt([xmin, xmin]));
+  for (let k = 1; k <= order; k++) v = iv.div(v, [xmin, xmin]);
+  let hp = [1, 1];
+  for (let k = 0; k <= order; k++) hp = iv.mul(hp, [h, h]);
+  return iv.mul(iv.mul(b, v), hp)[1];
+}
+
 const newSym = () => ++symCount;
 
 // sum of |coefficients|, rounded up (a bound on |p(t)| for |t| <= 1)
@@ -209,12 +225,7 @@ class TM {
     return this.compose(k => cf[k], (Xr, h) => {
       // |binom(1/2, n+1)| * xi^(1/2-n-1) * h^(n+1), worst at the smallest xi
       let b = [1, 1]; for (let k = 0; k <= order; k++) b = iv.div(iv.mul(b, [Math.abs(0.5 - k), Math.abs(0.5 - k)]), [k + 1, k + 1]);
-      const xm = Xr[0];
-      const p = iv.mul(iv.sqrt([xm, xm]), [1, 1]);
-      let v = iv.div(p, iv.mul([xm, xm], [1, 1]));            // xi^(-1/2)
-      for (let k = 1; k <= order; k++) v = iv.div(v, [xm, xm]); // xi^(1/2 - order - 1)
-      let hp = [1, 1]; for (let k = 0; k <= order; k++) hp = iv.mul(hp, [h, h]);
-      return iv.mul(iv.mul(b, v), hp)[1];
+      return sqrtRemainderBound(Xr[0], h, order);
     }, order);
   }
   inv(order = N + 2) {
@@ -247,4 +258,4 @@ class TM {
   sin() { return this.trig('sin'); }
 }
 
-module.exports = { TM, setDegree, newSym, norm1, getN: () => N, opCount: () => OPS, setKsub: k => { KSUB = k; } };
+module.exports = { TM, setDegree, newSym, norm1, getN: () => N, opCount: () => OPS, setKsub: k => { KSUB = k; }, sqrtRemainderBound };
