@@ -1,0 +1,72 @@
+{
+  "problem": "target1-b1p",
+  "blueArm": [
+    1,
+    1
+  ],
+  "intervalDegrees": [
+    12.08,
+    12.1
+  ],
+  "degree": 4,
+  "sourceSnapshot": {
+    "docs/geometry-reviews/taylor-model/tm.js": "8f9f9b0cf69bc92687a77fcef7360c1cab32513a"
+  },
+  "cover": {
+    "cells": 1,
+    "failedLeaves": 0,
+    "attempts": 1,
+    "seconds": 12.524,
+    "minMargin": 2.954319928221366,
+    "minHubMove": 18.05431122070602,
+    "leaves": [
+      {
+        "a": 12.08,
+        "b": 12.1,
+        "m": 2.954319928221366,
+        "hub": 18.05431122070602,
+        "ms": 12523,
+        "branches": 1,
+        "mode": "plain",
+        "sym": 1,
+        "vtx": 1
+      }
+    ]
+  },
+  "replayAudit": {
+    "cells": 1,
+    "reproduced": 1,
+    "mismatches": 0,
+    "details": [
+      {
+        "a": 12.08,
+        "b": 12.1,
+        "stored": 2.954319928221366,
+        "replayed": 2.954319928221366,
+        "exactMatch": true
+      }
+    ]
+  },
+  "redLegality": {
+    "cells": 1,
+    "legal": 1,
+    "stopped": 0,
+    "details": [
+      {
+        "a": 12.08,
+        "b": 12.1,
+        "ok": true,
+        "clearance": 4.658168875595144,
+        "branches": 1,
+        "crossings": [
+          "foot 1 / r1 substeps 35..44"
+        ]
+      }
+    ]
+  },
+  "engineContainment": {
+    "status": "not run in this execution",
+    "note": "Sample-level shipped-engine containment remains outstanding."
+  },
+  "interpretation": "One plain degree-4 cell; positive margin, exact replay, and model-based Red-legality pass. Full validation awaits sample-level engine containment."
+}
