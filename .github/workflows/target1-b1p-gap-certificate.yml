@@ -1,0 +1,95 @@
+name: Target1 (1,+) gap certificate
+on:
+  push:
+    branches:
+      - "claude/serene-pasteur-psjoi2"
+    paths:
+      - ".github/workflows/target1-b1p-gap-certificate.yml"
+      - "docs/geometry-reviews/taylor-model/cover2.js"
+      - "docs/geometry-reviews/taylor-model/audit2.js"
+      - "docs/geometry-reviews/taylor-model/validate-cover2.js"
+      - "docs/geometry-reviews/taylor-model/tiling.js"
+      - "docs/geometry-reviews/taylor-model/cert2.js"
+      - "docs/geometry-reviews/taylor-model/contain2.js"
+      - "docs/geometry-reviews/taylor-model/legal-red.js"
+      - "docs/geometry-reviews/taylor-model/modes2.js"
+      - "docs/geometry-reviews/taylor-model/tm.js"
+      - "docs/geometry-reviews/taylor-model/iv.js"
+      - "docs/geometry-reviews/taylor-model/push-tm.js"
+      - "docs/geometry-reviews/taylor-model/problem.js"
+      - "docs/geometry-reviews/taylor-model/problems/target1-b1p.json"
+      - "nn/engine.js"
+      - "index.html"
+jobs:
+  gap:
+    name: "Cover and validate ${{ matrix.from }}–${{ matrix.to }} degrees"
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - from: 12
+            to: 13.5
+          - from: 13.5
+            to: 15
+          - from: 15
+            to: 16.5
+    defaults:
+      run:
+        working-directory: docs/geometry-reviews/taylor-model
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build degree-4 Taylor cover
+        env:
+          PROBLEM: target1-b1p
+          SYMREM: "1"
+          VTX: "1"
+          MAXPASSES: "8000"
+          MAXOPS: "3500000"
+          MERGE_MAXW: "0.0005"
+          MAXOPS_MERGE: "1500000"
+        run: |
+          set -euo pipefail
+          node cover2.js 1 1 ${{ matrix.from }} ${{ matrix.to }} 4 1e-5 | tee gap-cover.json
+          node -e "const r=require('./gap-cover.json'); if(r.cells===0 || r.failed!==0 || !(r.minMargin>0)) { console.error(r); process.exit(1) }"
+      - name: Verify exact tiling and positive margins
+        env:
+          PROBLEM: target1-b1p
+        run: |
+          set -euo pipefail
+          node tiling.js 1 1 ${{ matrix.from }} ${{ matrix.to }} | tee gap-tiling.json
+          node -e "const r=require('./gap-tiling.json'); if(!r.tiled || r.cells===0 || !(r.minMargin>0)) { console.error(r); process.exit(1) }"
+      - name: Replay each accepted cell
+        env:
+          PROBLEM: target1-b1p
+          SYMREM: "1"
+          VTX: "1"
+        run: |
+          set -euo pipefail
+          node audit2.js 1 1 ${{ matrix.from }} ${{ matrix.to }} 4 | tee gap-audit.json
+          node -e "const r=require('./gap-audit.json'); if(r.cells===0 || r.reproduced!==r.cells || r.mismatches!==0) { console.error(r); process.exit(1) }"
+      - name: Cellwise engine containment and Red legality
+        env:
+          PROBLEM: target1-b1p
+          SYMREM: "1"
+          VTX: "1"
+        run: |
+          set -euo pipefail
+          node validate-cover2.js 1 1 ${{ matrix.from }} ${{ matrix.to }} 3 4 | tee gap-validation.json
+          node -e "const r=require('./gap-validation.json'); if(r.cells===0 || r.containBad!==0 || r.legalBad!==0 || r.stopped!==0) { console.error(r); process.exit(1) }"
+      - name: Preserve certificate and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: target1-b1p-gap-${{ matrix.from }}-${{ matrix.to }}
+          path: |
+            docs/geometry-reviews/taylor-model/results/target1-b1p/arm_1_p/cover_${{ matrix.from }}_${{ matrix.to }}_d4.json
+            docs/geometry-reviews/taylor-model/gap-cover.json
+            docs/geometry-reviews/taylor-model/gap-tiling.json
+            docs/geometry-reviews/taylor-model/gap-audit.json
+            docs/geometry-reviews/taylor-model/gap-validation.json
+          if-no-files-found: warn
