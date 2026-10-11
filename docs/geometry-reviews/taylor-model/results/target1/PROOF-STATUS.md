@@ -47,15 +47,16 @@ cell endpoints internally. The upper 222-cell chunk was added after the earlier 
 entry; **it does not close the 4.5° gap from 12° to 16.5°**. The combined 644 cells are not a continuous
 cover of the full arm.
 
-A first adaptive cover-only probe immediately beyond the lower edge accepted [12°, 12.02°] in six
-cells (minimum recorded margin 2.9747806959u, zero failed leaves). The leaf JSON was not persisted in
-that run, and replay, cellwise containment and Red-legality validation remain outstanding; this is
-provisional exploration, not promoted coverage. See [GAP-PROBE-12.00-12.02.md](GAP-PROBE-12.00-12.02.md).
+The original adaptive six-cell probe over [12°, 12.02°] was generated before the square-root
+remainder correction. It is retained only as a historical search log, not as current proof evidence
+([report](GAP-PROBE-12.00-12.02.md)). Post-fix, just [12°, 12.0001°] has a saved, replayed cell with a
+passing Red-legality check; engine containment remains outstanding.
 
 A dedicated [gap-certificate workflow](https://github.com/liaminhawai-cmd/Tau/blob/claude/serene-pasteur-psjoi2/.github/workflows/target1-b1p-gap-certificate.yml) now targets the actual [12°, 16.5°] hole in three 1.5° bands. Its gates require positive-margin cells, exact tiling, per-cell replay, and cellwise engine-containment plus Red-legality checks. Until those jobs pass, the probe above does not count toward proved coverage.
 
-The witnesses were found by an engine scan of every red arm and stop length at 0.01° steps over each
-blue arm (`scratchpad` discovery, recorded in each fixture's `notes`); the cells are the certificate.
+Candidate witnesses were found by an engine scan of every red arm and stop length at 0.01° steps over each
+blue arm (`scratchpad` discovery, recorded in each fixture's `notes`). The saved pre-fix cells are historical;
+current proof coverage requires regenerated cells and fresh audits with the corrected arithmetic.
 
 ## Corrections made to the earlier arm (2,+) result
 
