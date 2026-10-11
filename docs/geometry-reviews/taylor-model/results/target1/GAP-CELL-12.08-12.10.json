@@ -65,8 +65,19 @@
     ]
   },
   "engineContainment": {
-    "status": "not run in this execution",
-    "note": "Sample-level shipped-engine containment remains outstanding."
+    "status": "passed",
+    "samples": 3,
+    "checks": 972,
+    "outside": 0,
+    "worstExcess": 0,
+    "bad": [],
+    "checkerSourceSnapshot": {
+      "docs/geometry-reviews/taylor-model/cert2.js": "5d81ecfd3afc6958133ce4e5ed5b3e6274fa4167",
+      "docs/geometry-reviews/taylor-model/contain2.js": "4bf1b8b07921a8c8921b78563fe30ef299ae7c2f",
+      "nn/engine.js": "e3fa3d44847575379b95bd8a4f5183c4d7741335",
+      "index.html blob": "48fdc1b1b763f594d8dc7f6b81c328da3d03dbf4"
+    },
+    "note": "Three sampled angles checked through the shipped engine; every recorded pose comparison across the sampled trajectories stayed within the Taylor-model enclosure."
   },
-  "interpretation": "One plain degree-4 cell; positive margin, exact replay, and model-based Red-legality pass. Full validation awaits sample-level engine containment."
+  "interpretation": "This current-source degree-4 cell has a positive lower throw margin, exact margin replay, interval-model Red-legality pass, and sampled containment against the shipped engine. It is an individually validated cell; full family coverage still depends on joining all validated neighboring ranges and rebuilding historical ranges against current source."
 }
