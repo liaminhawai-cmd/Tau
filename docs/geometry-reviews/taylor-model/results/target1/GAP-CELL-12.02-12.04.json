@@ -1,0 +1,69 @@
+{
+  "problem": "target1-b1p",
+  "blueArm": [
+    1,
+    1
+  ],
+  "intervalDegrees": [
+    12.02,
+    12.04
+  ],
+  "degree": 4,
+  "cover": {
+    "cells": 1,
+    "failedLeaves": 0,
+    "attempts": 1,
+    "seconds": 13.097,
+    "minMargin": 2.9045549029310673,
+    "minHubMove": 18.036123665803853,
+    "leaves": [
+      {
+        "a": 12.02,
+        "b": 12.04,
+        "m": 2.9045549029310673,
+        "hub": 18.036123665803853,
+        "ms": 13096,
+        "branches": 1,
+        "mode": "plain",
+        "sym": 1,
+        "vtx": 1
+      }
+    ]
+  },
+  "replayAudit": {
+    "cells": 1,
+    "reproduced": 1,
+    "mismatches": 0,
+    "details": [
+      {
+        "a": 12.02,
+        "b": 12.04,
+        "stored": 2.9045549029310673,
+        "replayed": 2.9045549029310673,
+        "exactMatch": true
+      }
+    ]
+  },
+  "redLegality": {
+    "cells": 1,
+    "legal": 1,
+    "stopped": 0,
+    "details": [
+      {
+        "a": 12.02,
+        "b": 12.04,
+        "ok": true,
+        "clearance": 4.637142424733724,
+        "branches": 1,
+        "crossings": [
+          "foot 1 / r1 substeps 35..44"
+        ]
+      }
+    ]
+  },
+  "engineContainment": {
+    "status": "not run in this execution",
+    "note": "The sample-level shipped-engine containment check remains outstanding; do not count this slice as fully closed until that check also passes."
+  },
+  "interpretation": "A positive-margin adaptive interval cell was found; the saved margin reproduces exactly and the real-arithmetic Red line-crossing legality checker accepts it. This is not yet promoted to full validated coverage because engine/model containment has not been checked."
+}
