@@ -6,9 +6,9 @@ Commit [344e35c](https://github.com/liaminhawai-cmd/Tau/commit/344e35c05d554af09
 
 The earlier cover corpus predates this source refactor and has not all been regenerated/replayed against the current source. That is a worthwhile reproducibility check because interval operation order can alter stored margins, but the available code diff does **not** establish that the old expression was mathematically too small or that every prior cover was invalid. The global two-ply claim remains unestablished as a full theorem: other move families are outstanding, and the interval arithmetic, engine correspondence, and idealised-rule obligations still need independent justification.
 
-The [post-fix rebuild workflow](https://github.com/liaminhawai-cmd/Tau/blob/claude/serene-pasteur-psjoi2/.github/workflows/target1-post-sqrt-rebuild.yml) regenerates the historical Target1 ranges for (2,+), (1,−), and the disconnected portions of (1,+), with arithmetic regression first and exact tiling, margin replay, sampled containment, and Red-legality gates. The [gap workflow](https://github.com/liaminhawai-cmd/Tau/blob/claude/serene-pasteur-psjoi2/.github/workflows/target1-b1p-gap-certificate.yml) now starts at 12.02° and targets the remaining [12.02°, 16.5°] gap.
+The [current-source rebuild workflow](https://github.com/liaminhawai-cmd/Tau/blob/claude/serene-pasteur-psjoi2/.github/workflows/target1-post-sqrt-rebuild.yml) regenerates the historical Target1 ranges for (2,+), (1,−), and the disconnected portions of (1,+), with arithmetic regression first and exact tiling, margin replay, sampled containment, and Red-legality gates. The [gap workflow](https://github.com/liaminhawai-cmd/Tau/blob/claude/serene-pasteur-psjoi2/.github/workflows/target1-b1p-gap-certificate.yml) now starts at 12.02° and targets the remaining [12.02°, 16.5°] gap.
 
-**New post-fix result:** the [12°, 12.02° slice](GAP-PROBE-12.00-12.02.md) has been rebuilt using the corrected square-root remainder bound and passed exact tiling, margin replay (6/6), sampled engine-containment (5,844 checks, 0 outside), and Red-legality (0 bad, 0 stopped). Its six-cell JSON is committed. This is an isolated certified slice; the pre-fix covers on [2°, 12°] and [16.5°, B] remain historical until their rebuilds pass.
+**New current-source result:** the [12°, 12.02° slice](GAP-PROBE-12.00-12.02.md) was rebuilt using the refactored square-root remainder expression and passed exact tiling, margin replay (6/6), sampled engine-containment (5,844 checks, 0 outside), and Red-legality (0 bad, 0 stopped). Its six-cell JSON is committed. This is an isolated validated slice; the pre-refactor covers on [2°, 12°] and [16.5°, B] still need fresh reproduction/replay, although the formula audit found no evidence the old expression was unsound.
 
 
 Target 1 is the mined seed from `docs/dead-regions/dead-points-mined.jsonl` line 176
@@ -34,12 +34,12 @@ witness at 9.73°. "Checks" means: every cell re-run by `audit2.js` with 0 misma
 with matching binary64 endpoints. These are recorded program checks, not independent validation of the
 Taylor-model implementation or a universal proof of binary64 engine correspondence.
 
-| Blue arm | Range [2°, B] | Red reply (substeps of 0.375°) | Prior status (historical; rebuild required) | Cells then | Min margin then |
+| Blue arm | Range [2°, B] | Red reply (substeps of 0.375°) | Prior status (pre-refactor; revalidation pending) | Cells then | Min margin then |
 | --- | --- | --- | --- | ---: | ---: |
-| (2,+) | [2, 14.334609564414993] | (0,−) 120 on [2, 9.73]; (2,+) 36 on [9.73, B] | covered before arithmetic fix; rebuild | 481 | 0.0977u |
+| (2,+) | [2, 14.334609564414993] | (0,−) 120 on [2, 9.73]; (2,+) 36 on [9.73, B] | covered in prior run; current-source rebuild/replay pending | 481 | 0.0977u |
 | (1,−) | [2, 27.6426619806354] | 96 on [2, 21.2]; 90 on [21.2, B] | covered before arithmetic fix; rebuild | 784 | 2.0836u |
 | (1,+) | [2, 20.71908458837398] | 107 | earlier ranges await current-source rebuild/replay; [12, 12.02] validated; [12.02, 16.5] open | 644 prior-run cells | 2.8653u prior run |
-| (2,−) | [2, 29.758008056522694] | 107 on [2, 15.25]; 128 on [15.25, B] | not established post-fix | | |
+| (2,−) | [2, 29.758008056522694] | 107 on [2, 15.25]; 128 on [15.25, B] | not yet established on current source | | |
 | (0,−) | [2, 31.014385516493906] | 104 (red's limit) | not established post-fix | | |
 | (0,+) | [2, 38.74919310376795] | 106 | not established post-fix | | |
 
@@ -73,9 +73,9 @@ current proof coverage requires regenerated cells and fresh audits with the corr
 
 ## What is still not established
 
-- The full Target1 cover corpus needs regenerated with the corrected square-root remainder bound.
+- The full Target1 cover corpus needs fresh reproduction/replay under current source; the cited square-root formula change has not been shown to invalidate the prior mathematical bounds.
 - Arm (1,+) still has the gap [12.02°, 16.5°]. The [12°, 12.02°] slice has six cells with exact tiling, margin replay, sampled containment and Red-legality passed; the older [2°, 12°] and [16.5°, B] ranges await current-source rebuild and replay. The formula refactor alone is not evidence those intervals fail.
-- Arms (2,−), (0,−) and (0,+) have no established post-fix cover.
+- Arms (2,−), (0,−) and (0,+) have no established cover under the current source.
 - The scope limits of Brief 6 apply unchanged: blue's moves are the plan application's (a human drag
   with another substep sequence is not covered); blue's own legality up to B is imported from the
   float engine; red's fixed stop is modelled as exact 0.375° substeps; the certificate is for the
