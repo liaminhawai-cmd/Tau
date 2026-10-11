@@ -5,6 +5,25 @@ polynomials instead of numbers, so one computation certifies a whole interval of
 is new code and **has not been independently reviewed**; treat its outputs as program results until
 someone checks them.
 
+## Critical arithmetic correction — 11 October 2026
+
+An arithmetic review found that the square-root Lagrange-remainder bound in `tm.js` used
+`xmin^(-order-3/2)` where the required factor is `xmin^(-order-1/2)`. For `xmin > 1`, the
+old expression could underbound this remainder. The formula was corrected in
+[commit 344e35c](https://github.com/liaminhawai-cmd/Tau/commit/344e35c05d554af0930c62245dca613ed6cb922c),
+and a direct analytic regression was added in
+[commit d8b9d13](https://github.com/liaminhawai-cmd/Tau/commit/d8b9d13f2a32026667fde2f52c54dd376ddd7871).
+The regression and a small randomized arithmetic run pass.
+
+**Important:** all full-arm tables, figures, and saved covers below were generated before this correction.
+They are retained as research history, but must be treated as **stale proof artifacts** until regenerated
+with the corrected arithmetic and replayed. This does not establish that every prior numeric result was
+wrong; it means the old outputs cannot currently support the advertised universal claim without a fresh
+run. The full six-arm Brief 6 claim is therefore **not presently certified by the saved corpus**.
+
+A Target 1 probe cell has since been run twice with the corrected code and its Red-legality check passed;
+that is only a single narrow cell, not a replacement for rebuilding this package's full coverage.
+
 ## Result
 
 Position: the Brief 6 seed `[-27.3934, -36.4088, 1.2052, -11.7593, -23.2838, 2.9442]` (blue x, y,
