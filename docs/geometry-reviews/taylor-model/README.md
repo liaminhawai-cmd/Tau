@@ -1,4 +1,4 @@
-# Taylor-model proof that red's reply throws blue off the board
+# Taylor-model certificate package: red's reply throws blue off the board
 
 4 October 2026. The Brief 6 seed position, blue to move. A program that runs the engine's push law on
 polynomials instead of numbers, so one computation certifies a whole interval of blue stop angles. It
@@ -24,7 +24,7 @@ run. The full six-arm Brief 6 claim is therefore **not presently certified by th
 A Target 1 probe cell has since been run twice with the corrected code and its Red-legality check passed;
 that is only a single narrow cell, not a replacement for rebuilding this package's full coverage.
 
-## Result
+## Historical result (pre-square-root-fix; rebuild required)
 
 Position: the Brief 6 seed `[-27.3934, -36.4088, 1.2052, -11.7593, -23.2838, 2.9442]` (blue x, y,
 rotation, red x, y, rotation), blue to move. Blue has six arms: pin foot 0, 1 or 2 and swing either way.
@@ -36,7 +36,7 @@ replies with arm (0,−): it pins foot 0 and swings 123 substeps of 0.375° (46.
 foot off the board, by at least 1.86u.** The board drops off at 66.667u plus 0.5u of tolerance, so the
 position is lost for blue in two plies.
 
-| Blue arm | Engine range [2°, B] | Proved range | Tiled | Cells | Cover CPU | Smallest margin | Audit | Containment | Red swing legal |
+| Blue arm | Engine range [2°, B] | Historical recorded range | Tiled then | Cells then | CPU then | Margin then | Audit then | Containment then | Legality then |
 | --- | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- |
 | (0,−) | 2 – 63.6927 | 2 – 63.7 | yes | 1858 | 131 min | 1.8578u | 1858/1858 reproduced | 56 cells, 145950 comparisons, 0 outside | 1858/1858 |
 | (0,+) | 2 – 44.3435 | 2 – 44.35 | yes | 1159 | 32 min | 4.8530u | 1159/1159 reproduced | 33 cells, 86133 comparisons, 0 outside | 1159/1159 (1 pivot-edge) |
