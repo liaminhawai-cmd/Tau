@@ -15,10 +15,13 @@ red, by up to 15.1u, and the cells model that push.
 
 ## Coverage by arm
 
-Every red reply pins red's foot 2 and swings +; only the stop length differs. "Checks" means: every
-cell re-run by `audit2.js` with 0 mismatches; `validate-cover2.js` 0 containment failures (engine
-samples inside the cell enclosures), 0 legality failures, 0 stopped cells; and `tiling.js` shows the
-cells tile the stated interval with equal binary64 endpoints.
+The Red witness is **not the same on every interval**: the table records the pivot, direction, and
+substep count used for each covered range. In particular, the complete (2,+) Blue arm switches Red
+witness at 9.73°. "Checks" means: every cell re-run by `audit2.js` with 0 mismatches;
+`validate-cover2.js` reported 0 containment failures (sampled engine states inside cell enclosures),
+0 legality failures, and 0 stopped cells; and `tiling.js` shows the saved cells tile each stated interval
+with matching binary64 endpoints. These are recorded program checks, not independent validation of the
+Taylor-model implementation or a universal proof of binary64 engine correspondence.
 
 | Blue arm | Range [2°, B] | Red reply (substeps of 0.375°) | Status | Cells | Min margin |
 | --- | --- | --- | --- | ---: | ---: |
