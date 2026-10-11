@@ -1,0 +1,154 @@
+name: Target1 post-sqrt-fix cover rebuild
+on:
+  push:
+    branches:
+      - "claude/serene-pasteur-psjoi2"
+    paths:
+      - ".github/workflows/target1-post-sqrt-rebuild.yml"
+      - "docs/geometry-reviews/taylor-model/test-tm.js"
+      - "docs/geometry-reviews/taylor-model/cover2.js"
+      - "docs/geometry-reviews/taylor-model/audit2.js"
+      - "docs/geometry-reviews/taylor-model/validate-cover2.js"
+      - "docs/geometry-reviews/taylor-model/tiling.js"
+      - "docs/geometry-reviews/taylor-model/cert2.js"
+      - "docs/geometry-reviews/taylor-model/contain2.js"
+      - "docs/geometry-reviews/taylor-model/legal-red.js"
+      - "docs/geometry-reviews/taylor-model/modes2.js"
+      - "docs/geometry-reviews/taylor-model/tm.js"
+      - "docs/geometry-reviews/taylor-model/iv.js"
+      - "docs/geometry-reviews/taylor-model/push-tm.js"
+      - "docs/geometry-reviews/taylor-model/problem.js"
+      - "docs/geometry-reviews/taylor-model/problems/target1.json"
+      - "docs/geometry-reviews/taylor-model/problems/target1-red2plus.json"
+      - "docs/geometry-reviews/taylor-model/problems/target1-b1m-lo.json"
+      - "docs/geometry-reviews/taylor-model/problems/target1-b1m-hi.json"
+      - "docs/geometry-reviews/taylor-model/problems/target1-b1p.json"
+      - "nn/engine.js"
+      - "index.html"
+jobs:
+  arithmetic-regression:
+    name: Verify Taylor arithmetic before rebuilding covers
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Full randomized and analytic remainder tests
+        run: node docs/geometry-reviews/taylor-model/test-tm.js 300 200 4
+
+  rebuild:
+    needs: arithmetic-regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: b2plus-lower
+            problem: target1
+            pivot: 2
+            direction: 1
+            from: 2
+            to: 9.73
+          - label: b2plus-upper
+            problem: target1-red2plus
+            pivot: 2
+            direction: 1
+            from: 9.73
+            to: 14.33
+          - label: b2plus-final-sliver
+            problem: target1-red2plus
+            pivot: 2
+            direction: 1
+            from: 14.33
+            to: 14.334609564414993
+          - label: b1minus-lower
+            problem: target1-b1m-lo
+            pivot: 1
+            direction: -1
+            from: 2
+            to: 21.2
+          - label: b1minus-upper
+            problem: target1-b1m-hi
+            pivot: 1
+            direction: -1
+            from: 21.2
+            to: 27.6426619806354
+          - label: b1plus-lower-a
+            problem: target1-b1p
+            pivot: 1
+            direction: 1
+            from: 2
+            to: 7
+          - label: b1plus-lower-b
+            problem: target1-b1p
+            pivot: 1
+            direction: 1
+            from: 7
+            to: 12
+          - label: b1plus-upper
+            problem: target1-b1p
+            pivot: 1
+            direction: 1
+            from: 16.5
+            to: 20.71908458837398
+    defaults:
+      run:
+        working-directory: docs/geometry-reviews/taylor-model
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Rebuild the cover using corrected arithmetic
+        env:
+          PROBLEM: ${{ matrix.problem }}
+          SYMREM: "1"
+          VTX: "1"
+          MAXPASSES: "8000"
+          MAXOPS: "3500000"
+          MERGE_MAXW: "0.0005"
+          MAXOPS_MERGE: "1500000"
+        run: |
+          set -euo pipefail
+          node cover2.js ${{ matrix.pivot }} ${{ matrix.direction }} ${{ matrix.from }} ${{ matrix.to }} 4 1e-5 | tee rebuild-cover.json
+          node -e "const r=require('./rebuild-cover.json'); if(r.cells===0 || r.failed!==0 || !(r.minMargin>0)) { console.error(r); process.exit(1) }"
+      - name: Check endpoint-exact tiling
+        env:
+          PROBLEM: ${{ matrix.problem }}
+        run: |
+          set -euo pipefail
+          node tiling.js ${{ matrix.pivot }} ${{ matrix.direction }} ${{ matrix.from }} ${{ matrix.to }} | tee rebuild-tiling.json
+          node -e "const r=require('./rebuild-tiling.json'); if(!r.tiled || r.cells===0 || !(r.minMargin>0)) { console.error(r); process.exit(1) }"
+      - name: Replay every saved cell margin
+        env:
+          PROBLEM: ${{ matrix.problem }}
+          SYMREM: "1"
+          VTX: "1"
+        run: |
+          set -euo pipefail
+          node audit2.js ${{ matrix.pivot }} ${{ matrix.direction }} ${{ matrix.from }} ${{ matrix.to }} 4 | tee rebuild-audit.json
+          node -e "const r=require('./rebuild-audit.json'); if(r.cells===0 || r.reproduced!==r.cells || r.mismatches!==0) { console.error(r); process.exit(1) }"
+      - name: Validate sampled engine containment and Red legality
+        env:
+          PROBLEM: ${{ matrix.problem }}
+          SYMREM: "1"
+          VTX: "1"
+        run: |
+          set -euo pipefail
+          node validate-cover2.js ${{ matrix.pivot }} ${{ matrix.direction }} ${{ matrix.from }} ${{ matrix.to }} 3 4 | tee rebuild-validation.json
+          node -e "const r=require('./rebuild-validation.json'); if(r.cells===0 || r.containBad!==0 || r.legalBad!==0 || r.stopped!==0) { console.error(r); process.exit(1) }"
+      - name: Preserve the regenerated cells and checks
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: target1-post-sqrt-${{ matrix.label }}
+          path: |
+            docs/geometry-reviews/taylor-model/results/${{ matrix.problem }}/arm_${{ matrix.pivot }}_${{ matrix.direction == 1 && 'p' || 'm' }}/cover_${{ matrix.from }}_${{ matrix.to }}_d4.json
+            docs/geometry-reviews/taylor-model/rebuild-cover.json
+            docs/geometry-reviews/taylor-model/rebuild-tiling.json
+            docs/geometry-reviews/taylor-model/rebuild-audit.json
+            docs/geometry-reviews/taylor-model/rebuild-validation.json
+          if-no-files-found: warn
