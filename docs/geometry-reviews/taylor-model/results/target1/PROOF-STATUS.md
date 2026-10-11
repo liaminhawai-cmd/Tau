@@ -44,7 +44,9 @@ Taylor-model implementation or a universal proof of binary64 engine corresponden
 | (0,+) | [2, 38.74919310376795] | 106 | not established post-fix | | |
 
 The previously recorded degree-4 covers tile [2°, 7°] (174 cells), [7°, 12°] (248 cells), and
-[16.5°, 20.71908458837398°] (222 cells), for 644 cells across two disjoint ranges. They predate the
+[16.5°, 20.71908458837398°] (222 cells), for 644 cells across two disjoint ranges.
+
+A new current-source cell [12.10°, 12.12°] is now fully checked in [GAP-CELL-12.10-12.12.json](GAP-CELL-12.10-12.12.json): one plain cell, margin 2.9550250438994676u; exact replay 1/1; Red legality 1/1; sampled engine containment 972 checks, 0 outside. This is a validated isolated slice only. Because [12.02°, 12.10°] still lacks containment checks, the entire middle interval is not yet a continuous validated cover. They predate the
 square-root expression refactor and remain pending current-source reproduction/replay; the review has
 not shown that they are mathematically invalid. The new six-cell cover tiles [12°, 12.02°] and passed
 replay, sampled containment and Red-legality. Four adjacent current-source probe cells now cover [12.02°, 12.10°]. The [12.02°–12.04° cell](GAP-CELL-12.02-12.04.json) has margin 2.9045549029u; [12.04°–12.06°](GAP-CELL-12.04-12.06.json), 2.9425976801u; [12.06°–12.08°](GAP-CELL-12.06-12.08.json), 2.9535615589u; and [12.08°–12.10°](GAP-CELL-12.08-12.10.json), 2.9543199282u. All four margins replay exactly (4/4), and the model-based Red-legality checks pass (4/4). Sample-level shipped-engine containment is still outstanding for these four cells, so these probes do not yet reduce the formal coverage gap. The pre-refactor [2°, 12°] range also needs fresh replay or re-certification. The formal residual central gap therefore remains [12.02°, 16.5°] (4.48°) until the new cells pass the full validation layer.
