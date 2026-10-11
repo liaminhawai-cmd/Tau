@@ -62,8 +62,22 @@
     ]
   },
   "engineContainment": {
-    "status": "not run in this execution",
-    "note": "The sample-level shipped-engine containment check remains outstanding; do not count this slice as fully closed until that check also passes."
+    "status": "passed",
+    "samples": 3,
+    "checks": 972,
+    "outside": 0,
+    "worstExcess": 0,
+    "bad": [],
+    "checkerSourceSnapshot": {
+      "docs/geometry-reviews/taylor-model/cert2.js": "5d81ecfd3afc6958133ce4e5ed5b3e6274fa4167",
+      "docs/geometry-reviews/taylor-model/contain2.js": "4bf1b8b07921a8c8921b78563fe30ef299ae7c2f",
+      "nn/engine.js": "e3fa3d44847575379b95bd8a4f5183c4d7741335",
+      "index.html blob": "48fdc1b1b763f594d8dc7f6b81c328da3d03dbf4"
+    },
+    "note": "Three sampled angles checked through the shipped engine; every recorded pose comparison across the sampled trajectories stayed within the Taylor-model enclosure."
   },
-  "interpretation": "A positive-margin adaptive interval cell was found; the saved margin reproduces exactly and the real-arithmetic Red line-crossing legality checker accepts it. This is not yet promoted to full validated coverage because engine/model containment has not been checked."
+  "interpretation": "This current-source degree-4 cell has a positive lower throw margin, exact margin replay, interval-model Red-legality pass, and sampled containment against the shipped engine. It is an individually validated cell; full family coverage still depends on joining all validated neighboring ranges and rebuilding historical ranges against current source.",
+  "sourceSnapshot": {
+    "docs/geometry-reviews/taylor-model/tm.js": "8f9f9b0cf69bc92687a77fcef7360c1cab32513a"
+  }
 }
