@@ -1,0 +1,34 @@
+{
+  "problem": "target1-b1p",
+  "blueArm": [1, 1],
+  "intervalDeg": [12, 12.0001],
+  "degree": 4,
+  "options": {
+    "symRem": true,
+    "vertexDedup": true
+  },
+  "cover": {
+    "cells": 1,
+    "failedLeaves": 0,
+    "marginLo": 2.9747806958784504,
+    "hubMoveLo": 18.053467425994466,
+    "passes": 1442,
+    "pushes": 1518,
+    "regimes": 2
+  },
+  "replay": {
+    "runs": 2,
+    "reproduced": 1,
+    "mismatches": 0,
+    "marginLoEqual": true,
+    "hubMoveLoEqual": true
+  },
+  "redLegality": {
+    "checked": true,
+    "passed": true,
+    "smallestClearanceOtherPairs": 4.631725918927365,
+    "crossingEpisode": "foot 1 / r1 substeps 35..43"
+  },
+  "engineContainmentChecked": false,
+  "scope": "One corrected-arithmetic Taylor cell only; does not close the full [12,16.5] degree interval."
+}
