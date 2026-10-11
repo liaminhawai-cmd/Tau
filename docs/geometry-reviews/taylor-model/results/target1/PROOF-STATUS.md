@@ -6,9 +6,9 @@ A review found that the previous square-root Taylor-remainder bound could be too
 
 **The previously saved Target1 cover corpus below was generated before this correction. Treat those results as historical until regenerated and re-audited with the corrected code.** The global two-ply claim is not presently established by the saved cover corpus.
 
-A [post-fix rebuild workflow](https://github.com/liaminhawai-cmd/Tau/blob/claude/serene-pasteur-psjoi2/.github/workflows/target1-post-sqrt-rebuild.yml) now regenerates the formerly reported Target1 ranges for (2,+), (1,−), and the disconnected covered portions of (1,+). It gates each range on exact tiling, replay of each margin, and cellwise containment plus Red-legality checks; its arithmetic-regression job must pass first. The separate [gap workflow](https://github.com/liaminhawai-cmd/Tau/blob/claude/serene-pasteur-psjoi2/.github/workflows/target1-b1p-gap-certificate.yml) covers the still-open (1,+) interval [12°, 16.5°]. I have not verified successful completion of these remote jobs yet.
+The [post-fix rebuild workflow](https://github.com/liaminhawai-cmd/Tau/blob/claude/serene-pasteur-psjoi2/.github/workflows/target1-post-sqrt-rebuild.yml) regenerates the historical Target1 ranges for (2,+), (1,−), and the disconnected portions of (1,+), with arithmetic regression first and exact tiling, margin replay, sampled containment, and Red-legality gates. The [gap workflow](https://github.com/liaminhawai-cmd/Tau/blob/claude/serene-pasteur-psjoi2/.github/workflows/target1-b1p-gap-certificate.yml) now starts at 12.02° and targets the remaining [12.02°, 16.5°] gap.
 
-A single post-fix cell at [12°, 12.0001°] has been accepted and replayed twice with identical bounds; Red-legality checking passes. The separate engine-containment replay has not been run. See the [cell](probes/arm_1_p/cover_12_12.0001_d4.json) and [validation record](probes/arm_1_p/validation_12_12.0001.json).
+**New post-fix result:** the [12°, 12.02° slice](GAP-PROBE-12.00-12.02.md) has been rebuilt using the corrected square-root remainder bound and passed exact tiling, margin replay (6/6), sampled engine-containment (5,844 checks, 0 outside), and Red-legality (0 bad, 0 stopped). Its six-cell JSON is committed. This is an isolated certified slice; the pre-fix covers on [2°, 12°] and [16.5°, B] remain historical until their rebuilds pass.
 
 
 Target 1 is the mined seed from `docs/dead-regions/dead-points-mined.jsonl` line 176
@@ -38,23 +38,18 @@ Taylor-model implementation or a universal proof of binary64 engine corresponden
 | --- | --- | --- | --- | ---: | ---: |
 | (2,+) | [2, 14.334609564414993] | (0,−) 120 on [2, 9.73]; (2,+) 36 on [9.73, B] | covered before arithmetic fix; rebuild | 481 | 0.0977u |
 | (1,−) | [2, 27.6426619806354] | 96 on [2, 21.2]; 90 on [21.2, B] | covered before arithmetic fix; rebuild | 784 | 2.0836u |
-| (1,+) | [2, 20.71908458837398] | 107 | prior ranges historical; [12, 16.5] remains open | 644 across two disjoint intervals | 2.8653u |
+| (1,+) | [2, 20.71908458837398] | 107 | pre-fix ranges historical; post-fix [12, 12.02] validated; [12.02, 16.5] open | 644 historical cells | 2.8653u historical |
 | (2,−) | [2, 29.758008056522694] | 107 on [2, 15.25]; 128 on [15.25, B] | not established post-fix | | |
 | (0,−) | [2, 31.014385516493906] | 104 (red's limit) | not established post-fix | | |
 | (0,+) | [2, 38.74919310376795] | 106 | not established post-fix | | |
 
-For arm (1,+), the saved degree-4 covers tile [2°, 7°] (174 cells), [7°, 12°] (248 cells), and
-[16.5°, 20.71908458837398°] (222 cells). Each saved cover has zero failed leaves and contiguous
-cell endpoints internally. The upper 222-cell chunk was added after the earlier 422-cell status
-entry; **it does not close the 4.5° gap from 12° to 16.5°**. The combined 644 cells are not a continuous
-cover of the full arm.
+The historical pre-fix degree-4 covers tile [2°, 7°] (174 cells), [7°, 12°] (248 cells), and
+[16.5°, 20.71908458837398°] (222 cells), for 644 cells across two disjoint ranges. They remain
+historical after the square-root arithmetic correction. The new post-fix six-cell cover tiles [12°, 12.02°]
+and is independently audited and validated; it does **not** yet join the old [2°, 12°] cover as current
+post-fix evidence. The residual central gap is [12.02°, 16.5°] (4.48°).
 
-The original adaptive six-cell probe over [12°, 12.02°] was generated before the square-root
-remainder correction. It is retained only as a historical search log, not as current proof evidence
-([report](GAP-PROBE-12.00-12.02.md)). Post-fix, just [12°, 12.0001°] has a saved, replayed cell with a
-passing Red-legality check; engine containment remains outstanding.
-
-A dedicated [gap-certificate workflow](https://github.com/liaminhawai-cmd/Tau/blob/claude/serene-pasteur-psjoi2/.github/workflows/target1-b1p-gap-certificate.yml) now targets the actual [12°, 16.5°] hole in three 1.5° bands. Its gates require positive-margin cells, exact tiling, per-cell replay, and cellwise engine-containment plus Red-legality checks. Until those jobs pass, the probe above does not count toward proved coverage.
+The original in-memory six-cell probe over [12°, 12.02°] was generated before the square-root remainder correction and is historical. It has now been superseded by the post-fix [six-cell CI certificate](GAP-PROBE-12.00-12.02.md), which passed replay, sampled containment, and Red-legality. The dedicated [gap-certificate workflow](https://github.com/liaminhawai-cmd/Tau/blob/claude/serene-pasteur-psjoi2/.github/workflows/target1-b1p-gap-certificate.yml) now targets [12.02°, 16.5°] in three bands, with the first band starting at 12.02° so it abuts but does not overlap the validated slice.
 
 Candidate witnesses were found by an engine scan of every red arm and stop length at 0.01° steps over each
 blue arm (`scratchpad` discovery, recorded in each fixture's `notes`). The saved pre-fix cells are historical;
@@ -77,7 +72,7 @@ current proof coverage requires regenerated cells and fresh audits with the corr
 ## What is still not established
 
 - The full Target1 cover corpus needs regenerated with the corrected square-root remainder bound.
-- Arm (1,+) still has the gap [12°, 16.5°]; only [12°, 12.0001°] has a post-fix cell with replay and Red-legality results.
+- Arm (1,+) still has the gap [12.02°, 16.5°]. The post-fix [12°, 12.02°] slice has six cells with exact tiling, margin replay, sampled containment and Red-legality passed; the older [2°, 12°] and [16.5°, B] ranges require post-fix rebuild and re-audit.
 - Arms (2,−), (0,−) and (0,+) have no established post-fix cover.
 - The scope limits of Brief 6 apply unchanged: blue's moves are the plan application's (a human drag
   with another substep sequence is not covered); blue's own legality up to B is imported from the
