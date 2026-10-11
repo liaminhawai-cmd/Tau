@@ -2652,16 +2652,19 @@ function swingStateRestore(s){
 // at the crossing limit, otherwise resolve the push. Returns false when it was refused.
 function swingSubstep(step){
     const active=G.pieces[G.active], opp=G.pieces[1-G.active];
-    const before=active.feet();
+    const before=active.feet(), bx=active.x, by=active.y, br=active.rot;
+    // a refused substep is undone by putting the piece back exactly, not by rotating back: the
+    // inverse rotation is off by a rounding error, and a refined walk starts from this pose
+    const undo = () => { active.x=bx; active.y=by; active.rot=br; };
     active.rotateAround(G.pivot.x, G.pivot.y, step);
     // You can't swing yourself off: if this substep would carry one of the ACTIVE piece's own
     // feet past the rim, roll it back and stop the swing right at the edge. Checked BEFORE the
     // crossing rule so a rolled-back step never records a phantom crossing. (Pushing the OPPONENT
     // off is untouched -- that happens in resolvePush and is still how you win.)
     if (active.anyFootOff()){
-        active.rotateAround(G.pivot.x, G.pivot.y, -step); G.atLimit=true; G.limitReason='selfoff'; return false; }
+        undo(); G.atLimit=true; G.limitReason='selfoff'; return false; }
     if (crossingSubstep(before, active.feet(), G)){          // hit the one-crossing limit: roll this step back
-        active.rotateAround(G.pivot.x, G.pivot.y, -step); G.atLimit=true; G.limitReason='cross'; return false; }
+        undo(); G.atLimit=true; G.limitReason='cross'; return false; }
     G.netRad+=step;
     // Contact is only RECORDED here. The click that goes with it is played by updateAudioMovement,
     // frame by frame, not from inside this loop: the AI's planner runs this exact function in
@@ -2669,6 +2672,25 @@ function swingSubstep(step){
     // times), and a click fired from here played every one of those simulated shoves -- a
     // crackle of knocks through the whole think with nothing on screen to explain it.
     G.pushContact = resolvePush(active, opp);
+    return true;
+}
+// A whole grid step was refused: walk that one step again in SWING_REFINE equal pieces from the grid
+// point, as far as the rules allow (up to `upto`, at most one grid step). A refused step only says
+// the swing cannot reach the NEXT grid point -- the line it would have crossed may be most of the
+// way there, or the step may have reached two lines at once where a finer walk crosses the first
+// and stops before the second (shown as "crossings 0/1, that would cross a 2nd line" when the
+// whole step was simply dropped). Starting from the grid point with fixed-size pieces keeps the
+// answer a function of the angle alone. A refused substep changes no rule state, so this starts
+// exactly where the refused step did. Returns false when it stopped at a limit.
+const SWING_REFINE = 8;
+function swingRefine(sgn, upto){
+    const F = CFG.substepDeg*Math.PI/180/SWING_REFINE;
+    G.atLimit = false; G.limitReason = null;
+    for (let i = 0, done = 0; i < SWING_REFINE && done < upto - 1e-12; i++) {
+        const d = Math.min(F, upto - done);
+        if (!swingSubstep(sgn*d)) return false;
+        done += d;
+    }
     return true;
 }
 function applySwing(dA) {
@@ -2705,15 +2727,21 @@ function applySwing(dA) {
     if (!G.atLimit) {
         // whole grid steps first; k counts them from the pin, so floating drift cannot move the grid
         const kNow = Math.round(Math.abs(G.netRad)/S), kTo = Math.floor(Math.abs(target)/S + 1e-9);
-        for (let k = kNow; k < kTo; k++) if (!swingSubstep(sgn*S)) break;
+        // (a refused one is walked again in finer pieces, which either stops at the limit inside it
+        // or, rarely, gets through and the grid carries on from the next point)
+        for (let k = kNow; k < kTo; k++) if (!swingSubstep(sgn*S) && !swingRefine(sgn, S)) break;
         // then the part of a step beyond the last grid point: shown, never committed
         const rest = Math.abs(target) - kTo*S;
         if (!G.atLimit && rest > 1e-9) {
             const onGrid = swingStateSnap();
-            const nextOk = swingSubstep(sgn*S), why = G.limitReason;
+            const nextOk = swingSubstep(sgn*S);
             swingStateRestore(onGrid);
-            if (!nextOk) { G.atLimit = true; G.limitReason = why; }
-            else {
+            if (!nextOk) {
+                // the next grid point is out of reach: go as far as the rules allow toward the
+                // target in fine pieces, and replay from the grid point next time
+                swingRefine(sgn, rest);
+                G.gridSnap = { pivot: G.pivot, shownNet: G.netRad, state: onGrid };
+            } else {
                 const active=G.pieces[G.active], opp=G.pieces[1-G.active];
                 active.rotateAround(G.pivot.x, G.pivot.y, sgn*rest);
                 G.netRad += sgn*rest;
