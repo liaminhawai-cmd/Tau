@@ -4482,8 +4482,14 @@ const AI_LADDER = [
     // L22 -> the Brawler (see ladderBrawlPlan): the biggest swing it can take that is not a retreat.
     // Appended, like every other addition, so no existing index moves.
     { kind:'brawl', label:'Brawler', noCorner:true },
+    // L23 -> rung 14 since Oct 12 2026: resume-656 D3, the league's gold medal, in place of
+    // resume-619 D3 (AI_LADDER[20], kept so no index moves). It beat resume-619 D3 2-0, as Blue and
+    // as Red, on this file's code. mutant-129 D3, the league's top face at the time, only split 1-1
+    // with it. Not a clean chain like rungs 11-14 were: as Red, resume-656 D3 loses to rungs 13, 11
+    // and 10 (and beats every other rung), so it is the best net against the old summit, not a net
+    // that beats everything. It is also a small net (94-208-128-92-64-1, 0.3MB against the old
+    // summit's 8.5MB), so it thinks far faster in the browser.
     { kind:'net', label:'resume-656 D3', nets:['resume-656'], noCorner:true, o:{ depth:3, keepStops:4, temperature:0, sliceMs:13, guardMs:90000 } },
-    { kind:'net', label:'mutant-129 D3', nets:['mutant-129'], noCorner:true, o:{ depth:3, keepStops:4, temperature:0, sliceMs:13, guardMs:90000 } },
 ];
 let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
 // The player-visible ladder's rung NUMBER and the AI it plays are deliberately two different axes.
@@ -4498,7 +4504,7 @@ let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder
 // 40-0, loses to L2 40-80, takes L3 77-43 and loses to L4 32-88 -- it cycles by style), but people
 // find a thing that swings as hard as it can every turn much harder than the machines do, so it sits
 // after L2 and before L3, where a human is meeting real resistance for the first time.
-const RUNG_TO_AI_LADDER = [0, 1, 21, 2, 3, 4, 5, 6, 7, 8, 17, 18, 19, 20];
+const RUNG_TO_AI_LADDER = [0, 1, 21, 2, 3, 4, 5, 6, 7, 8, 17, 18, 19, 22];
 // One-time migration for a save written under the old 11-rung numbering (Walnut at rung 1 ...
 // Colossus at rung 11), now that Yellow has taken rung 1 and everything else shifted up by one.
 // Left un-migrated, a player's own saved clears would be read back under the WRONG rung the moment
