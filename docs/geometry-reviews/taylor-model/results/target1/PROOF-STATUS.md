@@ -1,10 +1,10 @@
 # Target 1 — proof status
 
-## Arithmetic correction — 11 October 2026
+## Square-root remainder review — 11 October 2026
 
-A review found that the previous square-root Taylor-remainder bound could be too small when its lower input bound exceeded 1. The formula has been corrected in [commit 344e35c](https://github.com/liaminhawai-cmd/Tau/commit/344e35c05d554af0930c62245dca613ed6cb922c), and an analytic regression was added in [commit d8b9d13](https://github.com/liaminhawai-cmd/Tau/commit/d8b9d13f2a32026667fde2f52c54dd376ddd7871). The regression and a small randomized arithmetic run pass.
+Commit [344e35c](https://github.com/liaminhawai-cmd/Tau/commit/344e35c05d554af0930c62245dca613ed6cb922c) rewrote the square-root Lagrange-remainder expression and [d8b9d13](https://github.com/liaminhawai-cmd/Tau/commit/d8b9d13f2a32026667fde2f52c54dd376ddd7871) added analytic regression cases. A follow-up review found that the old and new expressions are algebraically equivalent: both yield \`xmin^(-order-1/2) * h^(order+1)\` times the same binomial coefficient. The old expression also passed the regression's four analytic inputs and a separate 5,000-case seeded diagnostic. See the [review note](SQRT-REMAINDER-REVIEW.md).
 
-**The previously saved Target1 cover corpus below was generated before this correction. Treat those results as historical until regenerated and re-audited with the corrected code.** The global two-ply claim is not presently established by the saved cover corpus.
+The earlier cover corpus predates this source refactor and has not all been regenerated/replayed against the current source. That is a worthwhile reproducibility check because interval operation order can alter stored margins, but the available code diff does **not** establish that the old expression was mathematically too small or that every prior cover was invalid. The global two-ply claim remains unestablished as a full theorem: other move families are outstanding, and the interval arithmetic, engine correspondence, and idealised-rule obligations still need independent justification.
 
 The [post-fix rebuild workflow](https://github.com/liaminhawai-cmd/Tau/blob/claude/serene-pasteur-psjoi2/.github/workflows/target1-post-sqrt-rebuild.yml) regenerates the historical Target1 ranges for (2,+), (1,−), and the disconnected portions of (1,+), with arithmetic regression first and exact tiling, margin replay, sampled containment, and Red-legality gates. The [gap workflow](https://github.com/liaminhawai-cmd/Tau/blob/claude/serene-pasteur-psjoi2/.github/workflows/target1-b1p-gap-certificate.yml) now starts at 12.02° and targets the remaining [12.02°, 16.5°] gap.
 
@@ -38,18 +38,20 @@ Taylor-model implementation or a universal proof of binary64 engine corresponden
 | --- | --- | --- | --- | ---: | ---: |
 | (2,+) | [2, 14.334609564414993] | (0,−) 120 on [2, 9.73]; (2,+) 36 on [9.73, B] | covered before arithmetic fix; rebuild | 481 | 0.0977u |
 | (1,−) | [2, 27.6426619806354] | 96 on [2, 21.2]; 90 on [21.2, B] | covered before arithmetic fix; rebuild | 784 | 2.0836u |
-| (1,+) | [2, 20.71908458837398] | 107 | pre-fix ranges historical; post-fix [12, 12.02] validated; [12.02, 16.5] open | 644 historical cells | 2.8653u historical |
+| (1,+) | [2, 20.71908458837398] | 107 | earlier ranges await current-source rebuild/replay; [12, 12.02] validated; [12.02, 16.5] open | 644 prior-run cells | 2.8653u prior run |
 | (2,−) | [2, 29.758008056522694] | 107 on [2, 15.25]; 128 on [15.25, B] | not established post-fix | | |
 | (0,−) | [2, 31.014385516493906] | 104 (red's limit) | not established post-fix | | |
 | (0,+) | [2, 38.74919310376795] | 106 | not established post-fix | | |
 
-The historical pre-fix degree-4 covers tile [2°, 7°] (174 cells), [7°, 12°] (248 cells), and
-[16.5°, 20.71908458837398°] (222 cells), for 644 cells across two disjoint ranges. They remain
-historical after the square-root arithmetic correction. The new post-fix six-cell cover tiles [12°, 12.02°]
-and is independently audited and validated; it does **not** yet join the old [2°, 12°] cover as current
-post-fix evidence. The residual central gap is [12.02°, 16.5°] (4.48°).
+The previously recorded degree-4 covers tile [2°, 7°] (174 cells), [7°, 12°] (248 cells), and
+[16.5°, 20.71908458837398°] (222 cells), for 644 cells across two disjoint ranges. They predate the
+square-root expression refactor and remain pending current-source reproduction/replay; the review has
+not shown that they are mathematically invalid. The new six-cell cover tiles [12°, 12.02°] and passed
+replay, sampled containment and Red-legality. Until the adjoining [2°, 12°] range is freshly replayed or
+re-certified, this new slice is isolated as current-source evidence. The residual central gap is
+[12.02°, 16.5°] (4.48°).
 
-The original in-memory six-cell probe over [12°, 12.02°] was generated before the square-root remainder correction and is historical. It has now been superseded by the post-fix [six-cell CI certificate](GAP-PROBE-12.00-12.02.md), which passed replay, sampled containment, and Red-legality. The dedicated [gap-certificate workflow](https://github.com/liaminhawai-cmd/Tau/blob/claude/serene-pasteur-psjoi2/.github/workflows/target1-b1p-gap-certificate.yml) now targets [12.02°, 16.5°] in three bands, with the first band starting at 12.02° so it abuts but does not overlap the validated slice.
+The original in-memory six-cell probe over [12°, 12.02°] was generated before the source refactor and is not proof evidence. It has been superseded by the current-source [six-cell CI certificate](GAP-PROBE-12.00-12.02.md), which passed replay, sampled containment, and Red-legality. The dedicated [gap-certificate workflow](https://github.com/liaminhawai-cmd/Tau/blob/claude/serene-pasteur-psjoi2/.github/workflows/target1-b1p-gap-certificate.yml) now targets [12.02°, 16.5°] in three bands, with the first band starting at 12.02° so it abuts but does not overlap the validated slice.
 
 Candidate witnesses were found by an engine scan of every red arm and stop length at 0.01° steps over each
 blue arm (`scratchpad` discovery, recorded in each fixture's `notes`). The saved pre-fix cells are historical;
@@ -72,7 +74,7 @@ current proof coverage requires regenerated cells and fresh audits with the corr
 ## What is still not established
 
 - The full Target1 cover corpus needs regenerated with the corrected square-root remainder bound.
-- Arm (1,+) still has the gap [12.02°, 16.5°]. The post-fix [12°, 12.02°] slice has six cells with exact tiling, margin replay, sampled containment and Red-legality passed; the older [2°, 12°] and [16.5°, B] ranges require post-fix rebuild and re-audit.
+- Arm (1,+) still has the gap [12.02°, 16.5°]. The [12°, 12.02°] slice has six cells with exact tiling, margin replay, sampled containment and Red-legality passed; the older [2°, 12°] and [16.5°, B] ranges await current-source rebuild and replay. The formula refactor alone is not evidence those intervals fail.
 - Arms (2,−), (0,−) and (0,+) have no established post-fix cover.
 - The scope limits of Brief 6 apply unchanged: blue's moves are the plan application's (a human drag
   with another substep sequence is not covered); blue's own legality up to B is imported from the
