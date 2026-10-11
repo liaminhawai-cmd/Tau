@@ -1,0 +1,95 @@
+{
+  "problem": "target1-b1p",
+  "blueArm": [
+    1,
+    1
+  ],
+  "intervalDegrees": [
+    12.16,
+    12.18
+  ],
+  "degree": 4,
+  "sourceSnapshot": {
+    "docs/geometry-reviews/taylor-model/cover2.js": "a6055c5a1d342a5b08da955fb300398af4756638",
+    "docs/geometry-reviews/taylor-model/cert2.js": "5d81ecfd3afc6958133ce4e5ed5b3e6274fa4167",
+    "docs/geometry-reviews/taylor-model/push-tm.js": "094d6ee4f0be98c02afbd71b761ca2518eb67c66",
+    "docs/geometry-reviews/taylor-model/tm.js": "8f9f9b0cf69bc92687a77fcef7360c1cab32513a",
+    "docs/geometry-reviews/taylor-model/iv.js": "5dbfe6455ea58fe3a9c757b5122c8b665c03805f",
+    "docs/geometry-reviews/taylor-model/modes2.js": "f52f71e82cd4b9b31e6d53cb5893dfec0484060c",
+    "docs/geometry-reviews/taylor-model/problem.js": "9fd455366a52057ee926b42a98b2c948460f975e",
+    "docs/geometry-reviews/taylor-model/problems/target1-b1p.json": "b4e67257cc6582eeb1f21b9ce6473ad7cf039614",
+    "docs/geometry-reviews/taylor-model/legal-red.js": "b4f0e02cec1927f46751b8777957d4beba2beba6",
+    "docs/geometry-reviews/taylor-model/contain2.js": "4bf1b8b07921a8c8921b78563fe30ef299ae7c2f",
+    "nn/engine.js": "e3fa3d44847575379b95bd8a4f5183c4d7741335",
+    "index.html blob": "48fdc1b1b763f594d8dc7f6b81c328da3d03dbf4"
+  },
+  "cover": {
+    "cells": 1,
+    "failedLeaves": 0,
+    "attempts": 1,
+    "seconds": 26.194,
+    "minMargin": 2.922572175178686,
+    "minHubMove": 18.047795204445617,
+    "leaves": [
+      {
+        "a": 12.16,
+        "b": 12.18,
+        "m": 2.922572175178686,
+        "hub": 18.047795204445617,
+        "ms": 13550,
+        "branches": 3,
+        "mode": "straddle",
+        "sym": 1,
+        "vtx": 1
+      }
+    ]
+  },
+  "replayAudit": {
+    "cells": 1,
+    "reproduced": 1,
+    "mismatches": 0,
+    "details": [
+      {
+        "a": 12.16,
+        "b": 12.18,
+        "stored": 2.922572175178686,
+        "replayed": 2.922572175178686,
+        "exactMatch": true
+      }
+    ]
+  },
+  "redLegality": {
+    "cells": 1,
+    "legal": 1,
+    "stopped": 0,
+    "details": [
+      {
+        "a": 12.16,
+        "b": 12.18,
+        "ok": true,
+        "clearance": 4.686136081843023,
+        "crossings": [
+          "foot 1 / r1 substeps 35..44"
+        ]
+      }
+    ]
+  },
+  "engineContainment": {
+    "samples": 3,
+    "checks": 972,
+    "outside": 0,
+    "worstExcess": 0,
+    "details": [
+      {
+        "a": 12.16,
+        "b": 12.18,
+        "checks": 972,
+        "fails": 0,
+        "worst": 0,
+        "bad": [],
+        "skipped": 0
+      }
+    ]
+  },
+  "interpretation": "This current-source degree-4 straddle cell has a positive certified throw lower bound, exact margin replay, passed interval-model Red-legality, and 972 sampled shipped-engine containment comparisons with zero outside. This is local interval evidence, not by itself a global dead-position theorem."
+}
