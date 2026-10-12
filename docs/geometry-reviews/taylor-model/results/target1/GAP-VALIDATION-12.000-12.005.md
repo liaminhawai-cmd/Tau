@@ -1,3 +1,5 @@
+<!-- Historical diagnostic only: this run predates the current sqrt-remainder source revision. The stored margins differ by a few ulps from the current-source cover for the same endpoints. It is not a current-source proof artifact and must not be counted by tiling/audit; the overlapping cover JSON was removed from arm_1_p. -->
+
 # Target1 arm (1,+): validated gap slice [12°, 12.005°]
 
 This slice extends the accepted cover immediately above the prior lower interval. It uses the fixed Red response from `problems/target1-b1p.json`: pivot 2, direction +, 107 substeps (0.375° each).
