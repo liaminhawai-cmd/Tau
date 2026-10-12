@@ -65,24 +65,33 @@ function validateValueNet(file) {
 }
 
 // The data-amount trial (Oct 2026). Training reads the corpus through the packed store
-// (packed_data.py), so RAM no longer caps it at the newest ~16%. Whether MORE data -- older games,
-// from weaker nets -- makes better nets is the open question, so births alternate, kind by kind
-// (resume, mutant, scratch, ultra, ...), between all of the corpus and its newest 25%. Variant
-// lineages count as one kind (ultra-m21-741 and ultra-m22-742 are both "ultra"): each lineage
-// births rarely, so per-lineage counters would put nearly every variant in the "all" arm.
+// (packed_data.py), so RAM no longer caps how much of it a net sees. Round 1 (all of it vs the
+// newest 25%) leaned clearly to the newest 25%: old games from weaker nets hurt more than the extra
+// volume helps. Round 2 looks for the best amount around that: births rotate, kind by kind
+// (resume, mutant, scratch, ultra, ...), through the newest 12.5%, 25% and 50% of the corpus.
+// Variant lineages count as one kind (ultra-m21-741 and ultra-m22-742 are both "ultra"): each
+// lineage births rarely, so per-lineage counters would leave most variants in one arm.
 // Each run is logged to nn/data-trial.jsonl and nn/data-trial-report.js reads it against the
-// league's Elo. An explicit data choice from the caller, --poseInput, or TAU_DATA_TRIAL=off skips it.
+// league's Elo. TAU_DATA_TRIAL=off trains everything on the newest 25% (no trial); an explicit data
+// choice from the caller or --poseInput leaves the data alone.
+const DATA_TRIAL_ARMS = [
+  { arm: 'newest12', frac: '0.125' },
+  { arm: 'newest25', frac: '0.25' },
+  { arm: 'newest50', frac: '0.5' },
+];
 function dataTrialArm(out) {
-  if (process.env.TAU_DATA_TRIAL === 'off' || original.includes('--poseInput')) return null;
+  if (original.includes('--poseInput')) return null;
   if (['data', 'dataBudgetMB', 'dataSinceDays', 'dataRecentRows', 'dataFrac'].some(k => arg(k) != null)) return null;
+  if (process.env.TAU_DATA_TRIAL === 'off') return { arm: '', frac: '0.25' };
   const kind = path.basename(out).replace(/\.json$/i, '').replace(/-\d+$/, '').replace(/-m\d+$/, '');
   const file = path.join(HERE, '.data-trial-state.json');
   let st = {};
   try { st = JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch (_) {}
-  const n = +st[kind] || 0;
-  st[kind] = n + 1;
+  const round = st.round2 || (st.round2 = {});
+  const n = +round[kind] || 0;
+  round[kind] = n + 1;
   try { fs.writeFileSync(file, JSON.stringify(st, null, 1)); } catch (_) {}
-  return n % 2 === 0 ? { arm: 'all', frac: '1' } : { arm: 'newest25', frac: '0.25' };
+  return DATA_TRIAL_ARMS[n % DATA_TRIAL_ARMS.length];
 }
 
 async function main() {
@@ -97,8 +106,8 @@ async function main() {
   if (cudaAvailable()) {
     const hidden = arg('hidden') || hiddenOf(resume) || '96,96';
     const trial = dataTrialArm(out);
-    if (trial) console.log(`[value-train] data trial: this ${path.basename(out, '.json')} trains on ` +
-                           (trial.arm === 'all' ? 'ALL of the corpus' : 'the NEWEST 25% of the corpus'));
+    if (trial) console.log(`[value-train] ${trial.arm ? 'data trial: ' : ''}this ${path.basename(out, '.json')} trains on ` +
+                           `the NEWEST ${+trial.frac * 100}% of the corpus`);
     const torchArgs = [
       path.join('nn', 'torch-train.py'),
       '--epochs', arg('epochs', '8'),
@@ -125,7 +134,7 @@ async function main() {
       ...(arg('eloWeightFloor') ? ['--eloWeightFloor', arg('eloWeightFloor')] : []),
       ...(arg('dataBudgetMB') ? ['--dataBudgetMB', arg('dataBudgetMB')] : []),
       ...(arg('dataFrac') ? ['--dataFrac', arg('dataFrac')] : []),
-      ...(trial ? ['--dataFrac', trial.frac, '--dataTrialArm', trial.arm] : []),
+      ...(trial ? ['--dataFrac', trial.frac, ...(trial.arm ? ['--dataTrialArm', trial.arm] : [])] : []),
       ...(arg('dataSinceDays') ? ['--dataSinceDays', arg('dataSinceDays')] : []),
       ...(arg('dataRecentRows') ? ['--dataRecentRows', arg('dataRecentRows')] : []),
       ...(arg('eloWeightTemp') ? ['--eloWeightTemp', arg('eloWeightTemp')] : []),

@@ -1,5 +1,5 @@
 'use strict';
-// How the data-amount trial is going: nets trained on ALL of the corpus vs its NEWEST 25%.
+// How the data-amount trial is going: how much of the corpus (newest first) makes the best nets.
 //
 //   node nn/data-trial-report.js
 //
@@ -51,11 +51,13 @@ const rows = runs.map(r => ({ ...r, kind: kindOf(r.model), rating: live[r.model]
 const mean = a => a.reduce((s, x) => s + x, 0) / a.length;
 const fmt = (a) => a.length ? `${mean(a).toFixed(0).padStart(5)} mean Elo over ${a.length} rated` : '    - no rated nets yet';
 
-console.log(`Data trial: ${rows.length} nets trained (${rows.filter(r => r.arm === 'all').length} all data, ` +
-            `${rows.filter(r => r.arm === 'newest25').length} newest 25%)\n`);
+const ARMS = ['all', 'newest12', 'newest25', 'newest50'];
+const arms = ARMS.filter(a => rows.some(r => r.arm === a)).concat([...new Set(rows.map(r => r.arm))].filter(a => !ARMS.includes(a)));
+console.log(`Data trial: ${rows.length} nets trained (` + arms.map(a => `${rows.filter(r => r.arm === a).length} ${a}`).join(', ') + ')');
+console.log('Round 1 was all vs newest25; round 2 (newest12 / newest25 / newest50) started 12 Oct.\n');
 for (const kind of [...new Set(rows.map(r => r.kind))].sort()) {
   console.log(kind);
-  for (const arm of ['all', 'newest25']) {
+  for (const arm of arms) {
     const these = rows.filter(r => r.kind === kind && r.arm === arm);
     if (!these.length) continue;
     const elos = these.filter(r => r.rating).map(r => r.rating.elo);
@@ -63,7 +65,9 @@ for (const kind of [...new Set(rows.map(r => r.kind))].sort()) {
                 these.map(r => `${r.model}${r.rating ? ` ${Math.round(r.rating.elo)}${r.rating.retired ? 'r' : ''}` : ' ?'}`).join(', '));
   }
 }
-const all = rows.filter(r => r.arm === 'all' && r.rating).map(r => r.rating.elo);
-const n25 = rows.filter(r => r.arm === 'newest25' && r.rating).map(r => r.rating.elo);
-console.log(`\noverall   all data ${fmt(all)}\n          newest25 ${fmt(n25)}`);
+console.log('');
+for (const arm of arms) {
+  const e = rows.filter(r => r.arm === arm && r.rating).map(r => r.rating.elo);
+  console.log(`overall   ${arm.padEnd(9)} ${fmt(e)}`);
+}
 console.log('\n(r = retired by the cull; ? = not rated on 6+ games yet. Elo is each net\'s best face.)');
