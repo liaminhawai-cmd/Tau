@@ -152,7 +152,10 @@ def cap_files(paths, budget_mb, since_days=0.0, recent_rows=0, frac=0.0):
             except OSError:
                 pass
         budget = min(1.0, float(frac)) * total / (1 << 20)
-        budget_bytes = total if frac >= 1 else int(budget * (1 << 20))
+        # frac 1 is every file, not "the bytes counted a moment ago": a file the league is still
+        # appending to grows between that count and the listing below and would push the oldest
+        # file out of an "all" run.
+        budget_bytes = float('inf') if frac >= 1 else int(budget * (1 << 20))
     listed = []
     for pth in paths:
         try:
@@ -796,9 +799,15 @@ def main():
         return torch.cat([model(x[i:i + 65536]) for i in range(0, x.shape[0], 65536)])
 
     best_val, best_state, best_epoch = float('inf'), None, 0
+    # Divergence guard. A deep plain-tanh net trained from scratch can blow up a few hundred steps
+    # in (Oct 2026: scratch-132 and scratch-135 both went to val sign-acc 51.7% -- a constant
+    # output -- at epoch 2 and spent 28 more epochs dead, shipping their epoch-1 weights). When
+    # validation error jumps past 1.5x the best so far, go back to the best weights with a fresh
+    # optimiser and half the learning rate, and keep going. A healthy run never trips it.
+    lr_scale, rollbacks = 1.0, 0
     for ep in range(1, args.epochs + 1):
         t = (ep - 1) / (args.epochs - 1) if args.epochs > 1 else 0.0
-        lr_ep = args.lr if args.lrDecay == 'flat' else args.lr * (0.1 + 0.9 * 0.5 * (1.0 + math.cos(math.pi * t)))
+        lr_ep = lr_scale * (args.lr if args.lrDecay == 'flat' else args.lr * (0.1 + 0.9 * 0.5 * (1.0 + math.cos(math.pi * t))))
         for group in opt.param_groups:
             group['lr'] = lr_ep
         model.train()
@@ -836,6 +845,13 @@ def main():
         print(f"epoch {ep}/{args.epochs}: train mse {tot/n:.5f}, val mse {vmse:.5f}, "
               + (f"val mse vs result {zmse:.5f}, " if zmse is not None else "")
               + f"val sign-acc {sign_acc*100:.1f}% (lr {lr_ep:.6f}){flag}", flush=True)
+        if best_state is not None and (not math.isfinite(vmse) or vmse > 1.5 * best_val):
+            model.load_state_dict(best_state)
+            opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
+            lr_scale *= 0.5
+            rollbacks += 1
+            print(f"  diverged (val mse {vmse:.5f} vs best {best_val:.5f} at epoch {best_epoch}): "
+                  f"back to epoch {best_epoch}'s weights, learning rate x{lr_scale:g} from here", flush=True)
 
     if best_state is not None:
         model.load_state_dict(best_state)
