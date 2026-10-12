@@ -1,0 +1,53 @@
+{
+  "interval": [
+    12,
+    12.005
+  ],
+  "cells": 4,
+  "tiled": true,
+  "tilingProblems": [],
+  "allMarginsPositive": true,
+  "replay": {
+    "reproduced": 4,
+    "mismatches": 0,
+    "rows": [
+      {
+        "a": 12,
+        "b": 12.000625,
+        "storedMargin": 2.974780695877939,
+        "replayedMargin": 2.974780695877939,
+        "exactMatch": true,
+        "hubMoveLo": 18.05346742599431,
+        "regimes": 2
+      },
+      {
+        "a": 12.000625,
+        "b": 12.00125,
+        "storedMargin": 2.9749894157186385,
+        "replayedMargin": 2.9749894157186385,
+        "exactMatch": true,
+        "hubMoveLo": 18.05370240203435,
+        "regimes": 1
+      },
+      {
+        "a": 12.00125,
+        "b": 12.002500000000001,
+        "storedMargin": 2.975025469575797,
+        "replayedMargin": 2.975025469575797,
+        "exactMatch": true,
+        "hubMoveLo": 18.053718054930535,
+        "regimes": 1
+      },
+      {
+        "a": 12.002500000000001,
+        "b": 12.005,
+        "storedMargin": 2.9750974296670587,
+        "replayedMargin": 2.9750974296670587,
+        "exactMatch": true,
+        "hubMoveLo": 18.053749268962534,
+        "regimes": 1
+      }
+    ]
+  },
+  "elapsedMs": 75876
+}
