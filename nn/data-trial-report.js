@@ -20,7 +20,10 @@ const faceModel = id => String(id).replace(/(\+P)?@D[1-9]$/, '');
 
 let mid = null;
 try { mid = require('./machine-id.js').machineId(dir); } catch (e) {}
-const summary = (mid && readJson(path.join(dir, `elo-summary-${mid}.json`))) || readJson(path.join(dir, 'elo-summary.json')) || {};
+// This machine's summary if it has one, else the newest elo-summary-<machine>.json (e.g. reading the trainer's pushed copy elsewhere).
+let others = [];
+try { others = fs.readdirSync(dir).filter(f => /^elo-summary-.+\.json$/.test(f)).map(f => path.join(dir, f)).sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs); } catch (e) {}
+const summary = (mid && readJson(path.join(dir, `elo-summary-${mid}.json`))) || (others[0] && readJson(others[0])) || readJson(path.join(dir, 'elo-summary.json')) || {};
 const live = {};
 for (const [id, r] of Object.entries(summary.players || {})) {
   if (r.kind !== 'nn' || r.elo == null || (r.games || 0) < 6 || !r.model) continue;
