@@ -163,5 +163,8 @@
         ]
       }
     }
-  ]
+  ],
+  "recordStatus": "historical diagnostic only; generated before current sqrt-remainder source revision",
+  "currentSourceValidated": false,
+  "note": "Stored margins differ by a few ulps from the current-source cover at identical endpoints. Do not count this report as current-source coverage; its overlapping cover JSON was removed from the active arm directory."
 }
