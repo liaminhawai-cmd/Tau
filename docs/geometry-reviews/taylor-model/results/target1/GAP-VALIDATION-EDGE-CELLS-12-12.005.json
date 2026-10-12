@@ -62,5 +62,8 @@
       }
     }
   ],
-  "elapsedMs": 57161
+  "elapsedMs": 57161,
+  "recordStatus": "historical diagnostic only; generated before current sqrt-remainder source revision",
+  "currentSourceValidated": false,
+  "note": "This report is not a current-source proof artifact."
 }
