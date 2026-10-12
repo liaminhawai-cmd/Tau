@@ -7,3 +7,4 @@
 {"model": "resume-668", "arm": "newest25", "frac": 0.25, "positions": 1670828, "games": 87835, "bestValMse": 0.267385, "sizes": [94, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 1], "resume": "best.json", "at": "2026-10-12T08:23:25"}
 {"model": "scratch-132", "arm": "all", "frac": 1.0, "positions": 6694770, "games": 345712, "bestValMse": 0.366519, "sizes": [94, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 1], "resume": null, "at": "2026-10-12T08:50:22"}
 {"model": "deep-m17-744", "arm": "all", "frac": 1.0, "positions": 6695761, "games": 345788, "bestValMse": 0.337897, "sizes": [94, 128, 128, 56, 64, 28, 1], "resume": "deep-m17-713.json", "at": "2026-10-12T08:57:33"}
+{"model": "resume-669", "arm": "all", "frac": 1.0, "positions": 6710281, "games": 346560, "bestValMse": 0.316142, "sizes": [94, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 1], "resume": "best.json", "at": "2026-10-12T11:09:08"}
