@@ -34,14 +34,14 @@ function check(opts = {}) {
   let html = '';
   try { html = fs.readFileSync(path.join(dir, '..', 'index.html'), 'utf8'); } catch (e) {}
   const map = rungMap(html);
-  if (!map) { log('ladder check skipped: index.html has no RUNG_TO_AI_LADDER (merge main into this checkout)'); return null; }
+  if (!map) { log('ladder check skipped: this checkout\'s index.html has no RUNG_TO_AI_LADDER, so it cannot tell which brains the shipped rungs are'); return null; }
   if (!rungs) rungs = map.map((_, i) => map.length - i);   // every rung on the menu, top first
   if (!fs.existsSync(net)) { log(`ladder check skipped: ${net} not found`); return null; }
   // Already played? The record is keyed by the weights' hash plus the faces tested (rung -> ladder
   // index, depth, keepStops, games), so the same net is never re-run against the same rungs, while a
   // changed rung, face or game count counts as new. A re-promotion of identical weights is skipped.
   const hash = crypto.createHash('sha1').update(fs.readFileSync(net)).digest('hex').slice(0, 16);
-  const key = hash + '|' + rungs.map(r => r + ':' + map[r - 1]).join(',') + `|D${depth}k${keep}g${games}`;
+  const key = hash + '|' + rungs.map(r => r + ':' + map[r - 1]).join(',') + `|D${depth}k${keep}g${games}|corner`;
   const donePath = path.join(dir, 'ladder-checked.json');
   let done = {};
   try { done = JSON.parse(fs.readFileSync(donePath, 'utf8')); } catch (e) {}
@@ -49,20 +49,31 @@ function check(opts = {}) {
   const results = [];
   // Strongest rung first, so a loser is dropped after one slow game. Both colours: the champion is
   // Red in one game (rung is --a, Blue by arena's rule) and Blue in the other (champion is --a).
+  // Rungs from L7 up flip a coin each game in the real app (index.html CORNER_OPENING_P) and open
+  // with the corner cross half the time, unless marked noCorner. The arena pins the coin ("L9" never,
+  // "L9+corner" always), so such a rung is two faces here and the champion has to beat both: the
+  // corner face is the one the league stopped rating, and an old champion lost to it on both colours.
+  let ladder = [];
+  try { ladder = require('./engine.js').createEngine().AI_LADDER; } catch (e) {}
+  const faces = [];
   for (const rung of rungs) {
     const L = map[rung - 1] + 1;           // arena's L<n> is AI_LADDER[n-1]
-    const rec = { rung, ladderIndex: L - 1, red: [0, 0, 0], blue: [0, 0, 0] };
+    faces.push({ rung, L, spec: 'L' + L });
+    if (L >= 7 && !(ladder[L - 1] && ladder[L - 1].noCorner)) faces.push({ rung, L, spec: 'L' + L + '+corner' });
+  }
+  for (const { rung, L, spec } of faces) {
+    const rec = { rung, face: spec, ladderIndex: L - 1, red: [0, 0, 0], blue: [0, 0, 0] };
     for (const colour of ['red', 'blue']) {
       for (let g = 0; g < games; g++) {
-        const resFile = path.join(dir, 'arena-logs', `.ladder-check-${process.pid}-${rung}-${colour}.jsonl`);
+        const resFile = path.join(dir, 'arena-logs', `.ladder-check-${process.pid}-${spec.replace('+', '_')}-${colour}.jsonl`);
         try { fs.unlinkSync(resFile); } catch (e) {}
         const rungA = colour === 'red';
         const r = spawnSync(process.execPath, [path.join(dir, 'arena.js'),
-          '--a', rungA ? 'L' + L : 'nn:0:' + net, '--b', rungA ? 'nn:0:' + net : 'L' + L,
+          '--a', rungA ? spec : 'nn:0:' + net, '--b', rungA ? 'nn:0:' + net : spec,
           rungA ? '--depthB' : '--depthA', String(depth), rungA ? '--keepB' : '--keepA', String(keep),
           '--games', '1', '--openingPlies', games > 1 ? '2' : '0', '--resultsJsonl', resFile],
           { encoding: 'utf8', timeout: 45 * 60 * 1000 });
-        if (r.status !== 0) log(`ladder check: arena failed vs rung ${rung} (${colour}): ${(r.stderr || '').split('\n')[0]}`);
+        if (r.status !== 0) log(`ladder check: arena failed vs ${spec} (${colour}): ${(r.stderr || '').split('\n')[0]}`);
         const mine = rungA ? 'B' : 'A', theirs = rungA ? 'A' : 'B';
         try {
           for (const ln of fs.readFileSync(resFile, 'utf8').split('\n')) {
@@ -77,12 +88,12 @@ function check(opts = {}) {
     results.push(rec);
     if (rec.red[1] || rec.red[2] || rec.blue[1] || rec.blue[2] || !rec.red[0] || !rec.blue[0]) break;   // first failure ends it
   }
-  const pass = results.length === rungs.length && results.every(r => !r.red[1] && !r.red[2] && !r.blue[1] && !r.blue[2] && r.red[0] && r.blue[0]);
+  const pass = results.length === faces.length && results.every(r => !r.red[1] && !r.red[2] && !r.blue[1] && !r.blue[2] && r.red[0] && r.blue[0]);
   const verdict = { at: new Date().toISOString(), name, net, face: `D${depth} keep ${keep}`, vs: results, pass };
   done[key] = { name, at: verdict.at, pass };
   fs.writeFileSync(donePath, JSON.stringify(done, null, 1));
   fs.writeFileSync(path.join(dir, 'ladder-candidate.json'), JSON.stringify(verdict, null, 1));
-  log(`ladder check ${name}@D${depth} as Red and Blue: ` + results.map(r => `rung ${r.rung} red ${r.red.join('-')} blue ${r.blue.join('-')}`).join(', ') +
+  log(`ladder check ${name}@D${depth} as Red and Blue: ` + results.map(r => `rung ${r.rung} (${r.face}) red ${r.red.join('-')} blue ${r.blue.join('-')}`).join(', ') +
       (pass ? ' -- CANDIDATE for a new top rung' : ' -- not a candidate'));
   if (pass) {
     const out = path.join(dir, 'ladder-candidates', name);
