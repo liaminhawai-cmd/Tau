@@ -166,6 +166,7 @@ function queue() {
   const md = path.join(dir, 'models');
   const skip = /^(best|ckpt-|pool-slot|committee|dual|policy|lfx-games)|\.partial\.json$|\.pre-/i;
   const maxAgeH = +arg('maxAgeHours', 48);
+  if (!fs.existsSync(md)) return [];
   return fs.readdirSync(md).filter(f => f.endsWith('.json') && !skip.test(f))
     .map(f => ({ f: path.join(md, f), t: fs.statSync(path.join(md, f)).mtimeMs }))
     .filter(x => Date.now() - x.t < maxAgeH * 3600e3)
@@ -192,6 +193,7 @@ function main() {
       try { if (has('queue')) fs.utimesSync(lock, new Date(), new Date()); runNet(L, n, depth); }
       catch (e) { log(`${path.basename(n)}: ${e.message}`); }
     }
+  } catch (e) { log('stopped: ' + e.message); process.exitCode = 1;
   } finally { if (has('queue')) try { fs.unlinkSync(lock); } catch (e) {} }
 }
 
