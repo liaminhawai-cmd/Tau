@@ -2183,6 +2183,10 @@ async function runPoolCycle() {
         // the strongest ladder rung, entering the league as an ordinary face from the next pass.
         try { require('./committee.js').formForChampion(dir, winner.path, { log: m => log(`pool cycle ${num} — ${m}`) }); }
         catch (e) { log(`pool cycle ${num} — committee not formed (${e.message})`); }
+        // Does the new champion also belong on the game's top rung? Plays rungs 14/13/12 as Red; a clean sweep
+        // exports its weights to nn/ladder-candidates/ for a person to swap in (ladder-candidate.js).
+        try { require('./ladder-candidate.js').check({ dir, net: best, name: winner.name, log: m => log(`pool cycle ${num} — ${m}`) }); }
+        catch (e) { log(`pool cycle ${num} — ladder check failed (${e.message})`); }
         gateLine = `promoted ${winner.name}@D${winner.depth}: ${winner.w}-${winner.l}-${winner.d} vs ${incumbentName}@D${defended}, ` +
                    `${fmtEloRange(winner.rating)} (lower bound clears +${gateMargin})`;
       } else {
