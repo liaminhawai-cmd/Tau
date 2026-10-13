@@ -1970,6 +1970,17 @@ async function runPoolCycle() {
   for (const p of dualRun.focus) if (!focus.includes(p)) focus.push(p);
 
   const wide = poolWideEvery > 0 && num % poolWideEvery === 0;
+  // The live-ladder gauntlet (rung-gauntlet.js): every new net plays every rung the shipped game has,
+  // as Red first, Blue as well where Red was lost; a clean sweep is a candidate for a new top rung.
+  // Its own background process, one at a time (it holds a lock and works through whatever is new),
+  // so the pool cycle never waits on it. TAU_GAUNTLET=off turns it off.
+  if (process.env.TAU_GAUNTLET !== 'off') {
+    try {
+      const out = fs.openSync(path.join(dir, 'rung-gauntlet.log'), 'a');
+      spawn(process.execPath, [path.join(dir, 'rung-gauntlet.js'), '--queue'], { cwd: dir, detached: true, windowsHide: true, stdio: ['ignore', out, out] }).unref();
+      log(`pool cycle ${num} — live-ladder gauntlet started for any new nets (log: nn/rung-gauntlet.log)`);
+    } catch (e) { log(`pool cycle ${num} — gauntlet not started (${e.message})`); }
+  }
   log(`pool cycle ${num} — placing ${focus.map(f => path.basename(f)).join(', ')} in the rating pool` +
       (wide ? ' (wide pass: budget goes wherever the pool is least certain)' : ''));
   writeStatus(`rating pool placement (started ${new Date().toISOString()})`);
@@ -2183,10 +2194,6 @@ async function runPoolCycle() {
         // the strongest ladder rung, entering the league as an ordinary face from the next pass.
         try { require('./committee.js').formForChampion(dir, winner.path, { log: m => log(`pool cycle ${num} — ${m}`) }); }
         catch (e) { log(`pool cycle ${num} — committee not formed (${e.message})`); }
-        // Does the new champion earn a new rung? It must beat every menu rung as Red and Blue; a clean sweep
-        // exports its weights to nn/ladder-candidates/ for a person to append (ladder-candidate.js).
-        try { require('./ladder-candidate.js').check({ dir, net: best, name: winner.name, log: m => log(`pool cycle ${num} — ${m}`) }); }
-        catch (e) { log(`pool cycle ${num} — ladder check failed (${e.message})`); }
         gateLine = `promoted ${winner.name}@D${winner.depth}: ${winner.w}-${winner.l}-${winner.d} vs ${incumbentName}@D${defended}, ` +
                    `${fmtEloRange(winner.rating)} (lower bound clears +${gateMargin})`;
       } else {

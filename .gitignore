@@ -103,3 +103,6 @@ nn/svx/
 nn/lfx/
 nn/ladder-candidate.json
 nn/ladder-checked.json
+nn/rung-gauntlet.log
+nn/rung-gauntlet-done.json
+nn/.rung-gauntlet.lock
