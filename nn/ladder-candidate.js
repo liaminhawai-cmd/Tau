@@ -15,6 +15,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 
 function arg(name, dflt) { const i = process.argv.indexOf('--' + name); return i >= 0 ? process.argv[i + 1] : dflt; }
@@ -36,6 +37,15 @@ function check(opts = {}) {
   const map = rungMap(html);
   if (!map) { log('ladder check skipped: index.html has no RUNG_TO_AI_LADDER (merge main into this checkout)'); return null; }
   if (!fs.existsSync(net)) { log(`ladder check skipped: ${net} not found`); return null; }
+  // Already played? The record is keyed by the weights' hash plus the faces tested (rung -> ladder
+  // index, depth, keepStops, games), so the same net is never re-run against the same rungs, while a
+  // changed rung, face or game count counts as new. A re-promotion of identical weights is skipped.
+  const hash = crypto.createHash('sha1').update(fs.readFileSync(net)).digest('hex').slice(0, 16);
+  const key = hash + '|' + rungs.map(r => r + ':' + map[r - 1]).join(',') + `|D${depth}k${keep}g${games}`;
+  const donePath = path.join(dir, 'ladder-checked.json');
+  let done = {};
+  try { done = JSON.parse(fs.readFileSync(donePath, 'utf8')); } catch (e) {}
+  if (done[key]) { log(`ladder check skipped: ${name} already played rungs ${rungs.join('/')} at D${depth} (${done[key].name}, ${done[key].pass ? 'candidate' : 'not a candidate'})`); return null; }
   const results = [];
   for (const rung of rungs) {
     const L = map[rung - 1] + 1;           // arena's L<n> is AI_LADDER[n-1]
@@ -62,6 +72,8 @@ function check(opts = {}) {
   }
   const pass = results.length > 0 && results.every(r => r.l === 0 && r.d === 0 && r.w >= 1);
   const verdict = { at: new Date().toISOString(), name, net, face: `D${depth} keep ${keep}`, asRed: results, pass };
+  done[key] = { name, at: verdict.at, pass };
+  fs.writeFileSync(donePath, JSON.stringify(done, null, 1));
   fs.writeFileSync(path.join(dir, 'ladder-candidate.json'), JSON.stringify(verdict, null, 1));
   log(`ladder check ${name}@D${depth} as Red: ` + results.map(r => `rung ${r.rung} ${r.w}-${r.l}-${r.d}`).join(', ') +
       (pass ? ' -- CANDIDATE for the top rung' : ' -- not a candidate'));

@@ -102,3 +102,4 @@ nn/svx/
 # leaf-label.js / lfx-experiment.js working files, same kind
 nn/lfx/
 nn/ladder-candidate.json
+nn/ladder-checked.json
