@@ -147,8 +147,8 @@
   // future board that arrives without one.
   const UNLOCKS = {};
   function boardRung(id) { const i = LADDER_BOARDS.findIndex(r => r.board === id); return i < 0 ? 0 : i + 1; }
-  // A rung past the end of this list (index.html's LADDER_N grew to 15 before anyone lived on rung
-  // 15) plays on the top board against its owner, rather than falling back to Yellow and Wren.
+  // A rung past the end of this list (if index.html's LADDER_N ever outgrows it) plays on the top
+  // board against its owner, rather than falling back to Yellow and Wren.
   function rungEntry(n) { return LADDER_BOARDS[n-1] || (n > LADDER_BOARDS.length ? LADDER_BOARDS[LADDER_BOARDS.length-1] : LADDER_BOARDS[0]); }
   function rungBoard(n) { return rungEntry(n).board; }
   function rungName(n) { return rungEntry(n).opponent; }
@@ -719,7 +719,7 @@
   // The whole ladder at once, as boards with people on them. A locked rung is shown greyed with what
   // it is waiting for, never hidden: you can see who is two boards up, you just cannot skip to them.
   function openOpponentSheet() {
-    const tiles = LADDER_BOARDS.map((r, i) => {
+    const tiles = LADDER_BOARDS.slice(0, LADDER_N).map((r, i) => {   // only rungs the ladder has
       const n = i + 1, open = isUnlocked(r.board), seen = rungRevealed(n);
       // A rung you cannot see yet keeps its slot and its shape -- so the ladder is still visibly
       // eleven boards long -- and gives up everything else: the face, the finish, the name.
@@ -1320,7 +1320,7 @@
     const fullscreen = window.tauSteam?.setFullscreen;
     showModal(t('Settings'), `<label class="desktop-setting desktop-volume">${esc(t('Sound'))} <output id="desktopVolumeValue">${userVol}%</output><input id="desktopVolume" aria-label="${esc(t('Sound volume'))}" type="range" min="0" max="200" step="5" value="${userVol}"></label>
       <label class="desktop-setting">${esc(t('Mute'))}<input id="desktopMute" type="checkbox" ${soundOn?'':'checked'}></label>
-      <label class="desktop-setting">${esc(t('Opponent'))}<select id="desktopSettingsOpponent"${inMatch() ? ` disabled title="${esc(t('Pick a new opponent from the menu or Levels'))}"` : ''}>${LADDER_BOARDS.map((r, i) => { const n = i + 1;
+      <label class="desktop-setting">${esc(t('Opponent'))}<select id="desktopSettingsOpponent"${inMatch() ? ` disabled title="${esc(t('Pick a new opponent from the menu or Levels'))}"` : ''}>${LADDER_BOARDS.slice(0, LADDER_N).map((r, i) => { const n = i + 1;
         return `<option value="${n}"${isUnlocked(r.board) ? '' : ' disabled'}>${esc(tf('Level {n} · {name}', { n, name: rungRevealed(n) ? r.opponent : SECRET_NAME }))}</option>`; }).join('')}</select></label>
       <label class="desktop-setting">${esc(t('Board'))}<select id="desktopBoard">${BOARD_FINISHES.map(b=>isUnlocked(b.id)?`<option value="${b.id}">${esc(b.name)}</option>`:boardRevealed(b.id)?`<option value="${b.id}" disabled>${esc(boardLabel(b))} · ${esc(unlockText(b.id))}</option>`:`<option value="${b.id}" disabled>${esc(SECRET_NAME)}</option>`).join('')}</select></label>
       ${testBoards ? '<p class="desktop-result-detail">All boards are open for testing. Type <b>ALLBOARDS</b> on the main menu to restore locks.</p>' : ''}
