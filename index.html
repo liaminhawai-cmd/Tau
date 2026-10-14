@@ -7206,6 +7206,23 @@ function saveLadderProgress(p){ try { localStorage.setItem('tauLadder', JSON.str
 function ladderCleared(n, color){ const p=ladderProgress(); return !!(color===0?p.b:p.r)[n]; }
 function markLadderCleared(n, color){ const p=ladderProgress(); (color===0?p.b:p.r)[n]=1; saveLadderProgress(p); }
 migrateLadderRenumbering();   // right after progress is readable, before anything below reads it
+// The net rungs (11 and up) are rebuilt whenever a net that beats everything below it on both
+// colours arrives, so the brain behind a rung number from 11 up can change. A clear there was won
+// against an opponent that may no longer be on that rung, so when the net rungs change, clears from
+// rung 11 up are dropped (rungs 1-10 keep theirs) and Ranked comes back down to rung 11 Blue at most.
+// Keyed by the net rungs themselves, so the next rebuild resets them again with no new code.
+function resetChangedNetRungs() {
+    try {
+        const key = 'tauLadderNetRungs', sig = RUNG_TO_AI_LADDER.slice(10).join(',');
+        if (localStorage.getItem(key) === sig) return;
+        const p = ladderProgress(), keep = obj => { const o = {}; for (const k in obj) if (+k <= 10) o[k] = obj[k]; return o; };
+        saveLadderProgress({ b: keep(p.b), r: keep(p.r) });
+        const r = localStorage.getItem('tauRankedLevel');
+        if (r != null && +r > 21) localStorage.setItem('tauRankedLevel', '21');
+        localStorage.setItem(key, sig);
+    } catch (e) {}
+}
+resetChangedNetRungs();
 // ---------- Ranked: no level picker, just your current rank, stepping on every result ----------
 // rankedMode distinguishes a Ranked game from a plain Freeplay ladder game -- both route through
 // startLadderLevel/ladderLevel, but only Ranked adjusts rank on game-over. Reset to false at the
