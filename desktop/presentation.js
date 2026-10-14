@@ -147,8 +147,11 @@
   // future board that arrives without one.
   const UNLOCKS = {};
   function boardRung(id) { const i = LADDER_BOARDS.findIndex(r => r.board === id); return i < 0 ? 0 : i + 1; }
-  function rungBoard(n) { return (LADDER_BOARDS[n-1] || LADDER_BOARDS[0]).board; }
-  function rungName(n) { return (LADDER_BOARDS[n-1] || LADDER_BOARDS[0]).opponent; }
+  // A rung past the end of this list (index.html's LADDER_N grew to 16 before anyone lived on 15 and
+  // 16) plays on the top board against its owner rather than falling back to Yellow and Wren.
+  function rungEntry(n) { return LADDER_BOARDS[n-1] || (n > LADDER_BOARDS.length ? LADDER_BOARDS[LADDER_BOARDS.length-1] : LADDER_BOARDS[0]); }
+  function rungBoard(n) { return rungEntry(n).board; }
+  function rungName(n) { return rungEntry(n).opponent; }
   // "Dojo · Sensei" wherever the BOARD is what is being picked, so the name in an unlock line
   // ("beat Sensei as Red") is never a person the player cannot place.
   function boardLabel(b) { const r = boardRung(b.id); return r ? b.name + ' · ' + rungName(r) : b.name; }

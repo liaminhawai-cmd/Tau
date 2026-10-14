@@ -4490,6 +4490,12 @@ const AI_LADDER = [
     // that beats everything. It is also a small net (94-208-128-92-64-1, 0.3MB against the old
     // summit's 8.5MB), so it thinks far faster in the browser.
     { kind:'net', label:'resume-656 D3', nets:['resume-656'], noCorner:true, o:{ depth:3, keepStops:4, temperature:0, sliceMs:13, guardMs:90000 } },
+    // L24, L25 -> candidates for new rungs 15 and 16 (Oct 15 2026). The trainer's live-ladder gauntlet
+    // (nn/rung-gauntlet.js) plays every new net against every face of the shipped rungs as Red and as
+    // Blue; these two were the first to win all 34 games. A new rung must also beat every rung below
+    // it, so extra-143 only goes above resume-686 if it beats it as Blue and as Red.
+    { kind:'net', label:'resume-686 D2', nets:['resume-686'], noCorner:true, o:{ depth:2, keepStops:4, temperature:0, sliceMs:13, guardMs:90000 } },
+    { kind:'net', label:'extra-143 D2', nets:['extra-143'], noCorner:true, o:{ depth:2, keepStops:4, temperature:0, sliceMs:13, guardMs:90000 } },
 ];
 let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
 // The player-visible ladder's rung NUMBER and the AI it plays are deliberately two different axes.
