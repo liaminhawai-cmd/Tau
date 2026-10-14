@@ -4454,7 +4454,7 @@ const AI_LADDER = [
     // It plays its considered best every move (temperature 0). The Committee stays at L15 for the
     // lab and the arena; putting it back on rung 13 is one number in RUNG_TO_AI_LADDER.
     { kind:'net', label:'Champion d3', nets:['champion'], o:{ depth:3, keepStops:3, temperature:0, sliceMs:12, guardMs:45000 } },
-    // ---- The league ladder: the player ladder's rungs 11-14 (Oct 2026) ----
+    // ---- The league ladder: the player ladder's rungs 11-15 (Oct 2026) ----
     // The trainer's league plays every pair as two games from the real start, one as each colour,
     // temperature 0 -- so whether one brain beats another as Blue AND as Red is a fixed fact about
     // the pair, and the league's own record says how big a gap that takes: under 100 Elo almost
@@ -4490,12 +4490,13 @@ const AI_LADDER = [
     // that beats everything. It is also a small net (94-208-128-92-64-1, 0.3MB against the old
     // summit's 8.5MB), so it thinks far faster in the browser.
     { kind:'net', label:'resume-656 D3', nets:['resume-656'], noCorner:true, o:{ depth:3, keepStops:4, temperature:0, sliceMs:13, guardMs:90000 } },
-    // L24, L25 -> candidates for new rungs 15 and 16 (Oct 15 2026). The trainer's live-ladder gauntlet
-    // (nn/rung-gauntlet.js) plays every new net against every face of the shipped rungs as Red and as
-    // Blue; these two were the first to win all 34 games. A new rung must also beat every rung below
-    // it, so extra-143 only goes above resume-686 if it beats it as Blue and as Red.
+    // L24 -> rung 15 since Oct 15 2026: resume-686 D2. The trainer's live-ladder gauntlet
+    // (nn/rung-gauntlet.js on the trainer branch) plays every new net against every face of the
+    // shipped rungs, corner-opening faces pinned both ways, as Red and as Blue; resume-686 D2 was the
+    // first to win all 34 games, and it does again on this file's code (float32 committee weights).
+    // extra-143 D2 also swept the trainer's run, but only split 1-1 with resume-686 D2 (each won as
+    // Red), and a new rung must beat every rung below it, so it is not added.
     { kind:'net', label:'resume-686 D2', nets:['resume-686'], noCorner:true, o:{ depth:2, keepStops:4, temperature:0, sliceMs:13, guardMs:90000 } },
-    { kind:'net', label:'extra-143 D2', nets:['extra-143'], noCorner:true, o:{ depth:2, keepStops:4, temperature:0, sliceMs:13, guardMs:90000 } },
 ];
 let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder game, else null
 // The player-visible ladder's rung NUMBER and the AI it plays are deliberately two different axes.
@@ -4510,7 +4511,7 @@ let ladderLevel = null;   // 0-based index into AI_LADDER while playing a ladder
 // 40-0, loses to L2 40-80, takes L3 77-43 and loses to L4 32-88 -- it cycles by style), but people
 // find a thing that swings as hard as it can every turn much harder than the machines do, so it sits
 // after L2 and before L3, where a human is meeting real resistance for the first time.
-const RUNG_TO_AI_LADDER = [0, 1, 21, 2, 3, 4, 5, 6, 7, 8, 17, 18, 19, 22];
+const RUNG_TO_AI_LADDER = [0, 1, 21, 2, 3, 4, 5, 6, 7, 8, 17, 18, 19, 22, 23];
 // One-time migration for a save written under the old 11-rung numbering (Walnut at rung 1 ...
 // Colossus at rung 11), now that Yellow has taken rung 1 and everything else shifted up by one.
 // Left un-migrated, a player's own saved clears would be read back under the WRONG rung the moment
@@ -7194,11 +7195,12 @@ function chooseAiColour(difficulty) {
 // ===================== AI Ladder UI (vs Computer) =====================
 // Progress is per level AND per colour: beating a rung as Blue and as Red are separate clears.
 // The tripods carry the state (faint = not yet, lit = beaten) — no status text, per the design.
-// The shipped player ladder is fourteen rungs: L1-L9's hand-tuned difficulties at rungs 1-10
-// (L1 twice), then the league ladder at rungs 11-14 -- four trained nets, each checked to beat the
-// rung below it as Blue and as Red (see the league ladder's note at the end of AI_LADDER). L10-L17
+// The shipped player ladder is fifteen rungs: L1-L9's hand-tuned difficulties at rungs 1-10
+// (L1 twice), then the league ladder at rungs 11-15 -- trained nets, each checked against the rungs
+// below it as Blue and as Red (see the league ladder's notes at the end of AI_LADDER). Rung 15 came
+// from the trainer's live-ladder gauntlet: a net that beats every shipped rung on both colours. L10-L17
 // in AI_LADDER's own numbering stay for the lab, the arena and old logs; none is a player rung now.
-const LADDER_N = 14;
+const LADDER_N = 15;
 function ladderProgress(){ try { return JSON.parse(localStorage.getItem('tauLadder')||'{"b":{},"r":{}}'); } catch(e){ return {b:{},r:{}}; } }
 function saveLadderProgress(p){ try { localStorage.setItem('tauLadder', JSON.stringify(p)); } catch(e){} }
 function ladderCleared(n, color){ const p=ladderProgress(); return !!(color===0?p.b:p.r)[n]; }
