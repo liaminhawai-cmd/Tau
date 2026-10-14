@@ -164,7 +164,9 @@ function runNet(live, netPath, depth, opts = {}) {
 // ---- the queue: every recent model that has not played this ladder yet ------------------------
 function queue() {
   const md = path.join(dir, 'models');
-  const skip = /^(best|ckpt-|pool-slot|committee|dual|policy|lfx-games)|\.partial\.json$|\.pre-/i;
+  // dotfiles are the trainer's bookkeeping (.pool-cycle.json etc.), and the bare names (value, deep,
+  // ultra, scratch ...) are aliases of numbered models that get played under their own names
+  const skip = /^\.|^(best|ckpt-|pool-slot|committee|dual|policy|lfx-games)|\.partial\.json$|\.pre-|^[a-z_]+\.json$/i;
   const maxAgeH = +arg('maxAgeHours', 48);
   if (!fs.existsSync(md)) return [];
   return fs.readdirSync(md).filter(f => f.endsWith('.json') && !skip.test(f))
@@ -178,9 +180,11 @@ function main() {
   const depth = +arg('depth', 2);
   const lock = path.join(dir, '.rung-gauntlet.lock');
   if (has('queue')) {
-    try {                         // one gauntlet at a time; a lock untouched for 3h is a dead run
+    try {                         // one gauntlet at a time; a lock whose process is gone (a reboot) or untouched for 3h is dead
       const st = fs.statSync(lock);
-      if (Date.now() - st.mtimeMs < 3 * 3600e3) { log('another gauntlet is running; leaving the queue to it'); return; }
+      const pid = +fs.readFileSync(lock, 'utf8');
+      let alive = false; try { process.kill(pid, 0); alive = true; } catch (e) { alive = e.code === 'EPERM'; }
+      if (alive && Date.now() - st.mtimeMs < 3 * 3600e3) { log('another gauntlet is running; leaving the queue to it'); return; }
     } catch (e) {}
     fs.writeFileSync(lock, String(process.pid));
   }
@@ -188,9 +192,15 @@ function main() {
     if (!has('noUpdate')) ensureLive(live);
     const L = loadLive(live);
     log(`live ladder: ${L.map.length} rungs, ${L.faces.length} faces (${L.faces.filter(f => f.corner).length} corner-opening) from ${live}`);
-    const nets = has('queue') ? queue() : [path.resolve(arg('net', path.join(dir, 'models', 'best.json')))];
-    for (const n of nets) {
-      try { if (has('queue')) fs.utimesSync(lock, new Date(), new Date()); runNet(L, n, depth); }
+    if (!has('queue')) { runNet(L, path.resolve(arg('net', path.join(dir, 'models', 'best.json'))), depth); return; }
+    // re-read the queue after every net so models minted while this runs are picked up newest-first,
+    // instead of waiting for a later pool cycle (whose own start found this run's lock and stood down)
+    const tried = new Set();
+    for (;;) {
+      const n = queue().find(f => !tried.has(f));
+      if (!n) break;
+      tried.add(n);
+      try { fs.utimesSync(lock, new Date(), new Date()); runNet(L, n, depth); }
       catch (e) { log(`${path.basename(n)}: ${e.message}`); }
     }
   } catch (e) { log('stopped: ' + e.message); process.exitCode = 1;
