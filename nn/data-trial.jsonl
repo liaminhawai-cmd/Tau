@@ -75,3 +75,5 @@
 {"model": "extra-150", "arm": "newest12", "frac": 0.125, "positions": 877043, "games": 47908, "bestValMse": 0.285177, "sizes": [94, 400, 400, 400, 400, 400, 400, 400, 400, 460, 400, 1], "resume": "mutant-141.json", "at": "2026-10-15T15:03:48"}
 {"model": "deep-m18-769", "arm": "newest12", "frac": 0.125, "positions": 877042, "games": 47907, "bestValMse": 0.302579, "sizes": [94, 128, 64, 28, 1], "resume": "deep-m18-753.json", "at": "2026-10-15T15:04:19"}
 {"model": "resume-694", "arm": "newest25", "frac": 0.25, "positions": 1771363, "games": 95761, "bestValMse": 0.268678, "sizes": [94, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 1], "resume": "best.json", "at": "2026-10-15T17:48:36"}
+{"model": "mutant-151", "arm": "newest12", "frac": 0.125, "positions": 878771, "games": 47937, "bestValMse": 0.299191, "sizes": [94, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 1], "resume": null, "at": "2026-10-15T17:55:38"}
+{"model": "deep-m19-770", "arm": "newest25", "frac": 0.25, "positions": 1771584, "games": 95778, "bestValMse": 0.311692, "sizes": [94, 64, 28, 1], "resume": "deep-m19-762.json", "at": "2026-10-15T17:56:14"}
