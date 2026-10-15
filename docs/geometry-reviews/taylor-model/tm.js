@@ -12,6 +12,7 @@
 const iv = require('./iv.js');
 const { dn, up } = iv;
 const U = 1.1102230246251565e-16;   // 2^-53: half an ulp, relative
+const SUBN = 2 ** -1074;            // smallest positive subnormal: absolute floor |fl(ab)-ab| <= u|ab| + SUBN/2
 
 let OPS = 0;          // number of linear combinations and products so far: a work measure for budgets
 let N = 6;            // polynomial degree in t
@@ -76,19 +77,27 @@ class TM {
   // ---- linear operations ----
   static lin(A, ka, B, kb) {    // ka*A + kb*B, ka and kb exact doubles
     OPS++;
-    const out = new TM(); let err = 0;
-    for (let k = 0; k <= N; k++) { const v = ka * A.c[k] + kb * B.c[k]; out.c[k] = v; err += Math.abs(v) + Math.abs(ka * A.c[k]) + Math.abs(kb * B.c[k]); }
+    const out = new TM(); let err = 0, subn = 0;
+    for (let k = 0; k <= N; k++) {
+      const v = ka * A.c[k] + kb * B.c[k]; out.c[k] = v;
+      err += Math.abs(v) + Math.abs(ka * A.c[k]) + Math.abs(kb * B.c[k]);
+      if (ka !== 0 && A.c[k] !== 0) subn++;
+      if (kb !== 0 && B.c[k] !== 0) subn++;
+    }
     const keys = new Set([...A.s.keys(), ...B.s.keys()]);
     for (const j of keys) {
       const pa = A.s.get(j), pb = B.s.get(j), p = new Float64Array(N + 1);
       for (let k = 0; k <= N; k++) {
         const a = pa ? ka * pa[k] : 0, b = pb ? kb * pb[k] : 0, v = a + b;
         p[k] = v; err += Math.abs(v) + Math.abs(a) + Math.abs(b);
+        if (pa && ka !== 0 && pa[k] !== 0) subn++;
+        if (pb && kb !== 0 && pb[k] !== 0) subn++;
       }
       out.s.set(j, p);
     }
-    // two roundings per coefficient at most (a scaled product, then the sum)
-    err = up(err * 2 * U * (1 + 1e-10));
+    // two roundings per coefficient at most (a scaled product, then the sum); plus the absolute
+    // subnormal floor per nonzero product (|fl(ab)-ab| <= u|ab| + SUBN/2, we add the full SUBN)
+    err = up(err * 2 * U * (1 + 1e-10) + subn * SUBN);
     const ra = iv.scale([A.lo, A.hi], ka), rb = iv.scale([B.lo, B.hi], kb);
     out.lo = dn(ra[0] + rb[0] - err); out.hi = up(ra[1] + rb[1] + err);
     return out;
@@ -97,10 +106,10 @@ class TM {
   sub(B) { return TM.lin(this, 1, B, -1); }
   neg() { const o = this.clone(); for (let k = 0; k <= N; k++) o.c[k] = -o.c[k]; for (const p of o.s.values()) for (let k = 0; k <= N; k++) p[k] = -p[k]; o.lo = -this.hi; o.hi = -this.lo; return o; }
   scale(k) {
-    const out = new TM(); let err = 0;
-    for (let i = 0; i <= N; i++) { const v = k * this.c[i]; out.c[i] = v; err += Math.abs(v); }
-    for (const [j, p] of this.s) { const q = new Float64Array(N + 1); for (let i = 0; i <= N; i++) { const v = k * p[i]; q[i] = v; err += Math.abs(v); } out.s.set(j, q); }
-    err = up(err * 2 * U * (1 + 1e-10));
+    const out = new TM(); let err = 0, subn = 0;
+    for (let i = 0; i <= N; i++) { const v = k * this.c[i]; out.c[i] = v; err += Math.abs(v); if (k !== 0 && this.c[i] !== 0) subn++; }
+    for (const [j, p] of this.s) { const q = new Float64Array(N + 1); for (let i = 0; i <= N; i++) { const v = k * p[i]; q[i] = v; err += Math.abs(v); if (k !== 0 && p[i] !== 0) subn++; } out.s.set(j, q); }
+    err = up(err * 2 * U * (1 + 1e-10) + subn * SUBN);
     const r = iv.scale([this.lo, this.hi], k);
     out.lo = dn(r[0] - err); out.hi = up(r[1] + err);
     return out;
@@ -124,17 +133,17 @@ class TM {
     let bound = 0;      // truncation + rounding, symmetric
     const pm = (a, b, dst) => {
       // dst += a*b truncated to degree N; returns the error bound of this product
-      let tr = 0, abs = 0;
+      let tr = 0, abs = 0, subn = 0;
       for (let i = 0; i <= N; i++) {
         const ai = a[i]; if (ai === 0) continue;
         for (let j = 0; j <= N; j++) {
           const bj = b[j]; if (bj === 0) continue;
-          const v = ai * bj;
+          const v = ai * bj; subn++;
           if (i + j <= N) { dst[i + j] += v; abs += Math.abs(v) + Math.abs(dst[i + j]); }
           else tr += Math.abs(v);
         }
       }
-      return tr * (1 + 4 * N * U) + abs * 2 * U * (1 + 1e-10);
+      return tr * (1 + 4 * N * U) + abs * 2 * U * (1 + 1e-10) + subn * SUBN;
     };
     bound += pm(A.c, B.c, out.c);
     const keys = new Set([...A.s.keys(), ...B.s.keys()]);

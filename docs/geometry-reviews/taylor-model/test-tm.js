@@ -72,6 +72,28 @@ let failed = 0;
   console.log(`${bad ? 'FAIL' : 'ok  '} sqrtLag   ${cases} analytic upper-bound cases`);
   if (bad) failed++;
 }
+// Subnormal-underflow regression (defect found by the Copilot audit): with a = 1.4e-162 every product
+// a*a = 1.96e-324 underflows to 0, so A.mul(A) for A=[a,a,a,a,a] computes all-zero coefficients. The
+// exact polynomial value at t=1 is 25*a^2 ~ 4.94e-323, which the enclosure must still contain. The old
+// u|ab|-only bound missed it (range upper ~4.45e-323); the repair adds SUBN per nonzero product.
+{
+  const a = 1.4e-162;
+  const A = new TM(Float64Array.from([a, a, a, a, a]));
+  const C = A.mul(A);
+  // exact 25*a^2 via BigInt: a = m * 2^e (m a 53-bit int), so 25*a^2 = (25*m^2) * 2^(2e).
+  const b = new ArrayBuffer(8), dv = new DataView(b); dv.setFloat64(0, a);
+  const hi = dv.getUint32(0), lo = dv.getUint32(4), eb = (hi >>> 20) & 0x7ff;
+  const m = eb === 0 ? ((BigInt(hi & 0xfffff) << 32n) | BigInt(lo)) : ((1n << 52n) | (BigInt(hi & 0xfffff) << 32n) | BigInt(lo));
+  const e = eb === 0 ? -1074 : eb - 1075;
+  // num * 2^(2e), computed without the intermediate 2^(2e) underflowing: fold factors of 2 into x
+  // until the remaining exponent is representable (>= -1074), then one final pow.
+  let x = Number(25n * m * m), e2 = 2 * e;
+  while (e2 < -1074) { x /= 2; e2 += 1; }
+  const exact = x * Math.pow(2, e2);
+  const ok = C.range()[0] <= exact && exact <= C.range()[1];
+  console.log(`${ok ? 'ok  ' : 'FAIL'} subnMul   exact 25*a^2=${exact.toExponential(3)} range=[${C.range()[0].toExponential(3)},${C.range()[1].toExponential(3)}]`);
+  if (!ok) failed++;
+}
 for (const [name, op] of Object.entries(ops)) {
   let worst = 0, run = 0, skipped = 0;
   for (let c = 0; c < cases; c++) {
