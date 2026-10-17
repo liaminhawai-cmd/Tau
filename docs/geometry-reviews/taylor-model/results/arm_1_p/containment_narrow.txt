@@ -1,0 +1,5 @@
+arm (1,1) cell [2.0048828125, 2.00537109375] plain (narrowest): margin >= 4.64043; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [7.7508544921875, 7.750862121582031] plain (narrowest): margin >= 5.59957; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [10.64599609375, 10.646240234375] branch+merge+sym (narrowest): margin >= 5.99140; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,1) cell [14.23681640625, 14.2369384765625] plain+sym (narrowest): margin >= 6.56915; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+TOTAL: 4 cells, 10416 comparisons, 0 outside, 0 stopped

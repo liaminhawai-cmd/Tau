@@ -1,0 +1,55 @@
+{
+ "arm": [
+  1,
+  1
+ ],
+ "interval": [
+  7.5,
+  8
+ ],
+ "deg": 4,
+ "cells": 58,
+ "failed": 3,
+ "runs": 121,
+ "seconds": 230.195,
+ "width": {
+  "min": 0.00000762939453125,
+  "median": 0.00390625,
+  "max": 0.0625
+ },
+ "minMargin": 5.552904592729106,
+ "minHubMove": 10.101561602289523,
+ "modes": {
+  "plain": 52,
+  "branch": 6
+ },
+ "splitReasons": {
+  "phas# B subst#p #: n#ar#parall#l s#gm#nts: d#nom rang# #": 2,
+  "phas# B subst#p #: sqrt: rang# not positiv# #": 32,
+  "phas# B subst#p #: hub#hub: hubs may coincid#: d# rang# # dx # dy # st#x # H #": 4,
+  "phas# B subst#p #: d#p#crossing rul# not #xclud#d: dist #": 4,
+  "phas# B subst#p #: v#rtical contact (hf < #) not #xclud#d: hf #": 16,
+  "phas# B subst#p #: inv: rang# contains # #": 5
+ },
+ "fails": [
+  {
+   "a": 7.750862121582031,
+   "b": 7.7508697509765625,
+   "why": "phase B substep 84: inv: range contains 0 -2.465032785142633,4.465137103345331"
+  },
+  {
+   "a": 7.7508697509765625,
+   "b": 7.750877380371094,
+   "why": "phase B substep 84: inv: range contains 0 -73.47285964524748,75.47296393516241"
+  },
+  {
+   "a": 7.750877380371094,
+   "b": 7.750885009765625,
+   "why": "phase B substep 84: vertical contact (hf < 1e-4) not excluded: hf -261.8625117579308,262.9983215811613"
+  }
+ ]
+}
+
+real	3m50.264s
+user	3m42.308s
+sys	0m2.000s

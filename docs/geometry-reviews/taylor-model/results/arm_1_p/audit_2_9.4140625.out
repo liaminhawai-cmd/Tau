@@ -1,0 +1,20 @@
+{
+ "arm": [
+  1,
+  1
+ ],
+ "cells": 497,
+ "reproduced": 497,
+ "mismatches": 0,
+ "cellsUsing": {
+  "floor": 0,
+  "cap": 0,
+  "hubPush": 0,
+  "hubHub": 0,
+  "relaxed": 497,
+  "branched": 111,
+  "straddle": 13
+ },
+ "minMargin": 4.6393196533444,
+ "minHubMove": 10.055626532384057
+}

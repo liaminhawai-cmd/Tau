@@ -1,0 +1,33 @@
+{
+ "arm": [
+  0,
+  1
+ ],
+ "interval": [
+  35,
+  36
+ ],
+ "deg": 4,
+ "cells": 3,
+ "failed": 0,
+ "runs": 5,
+ "seconds": 3.091,
+ "width": {
+  "min": 0.25,
+  "median": 0.25,
+  "max": 0.5
+ },
+ "minMargin": 12.076230477231586,
+ "minHubMove": 19.893845319436068,
+ "modes": {
+  "plain": 3
+ },
+ "splitReasons": {
+  "phas# B subst#p #: inv: rang# contains # #": 2
+ },
+ "fails": []
+}
+
+real	0m3.153s
+user	0m2.910s
+sys	0m0.157s

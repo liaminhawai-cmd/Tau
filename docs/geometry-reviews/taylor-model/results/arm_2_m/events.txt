@@ -1,0 +1,13 @@
+substep 20 (hub first touches at 20): pushes 2 -> 12 at 14.500143821, in cell [14.50013671875, 14.500146484375] (9.77e-6 wide), 0.00e+0 from the narrowest cell [14.50013671875, 14.500146484375] (9.77e-6)
+substep 19 (hub first touches at 19): pushes 2 -> 11 at 14.621380875, in cell [14.621376953124999, 14.621381835937498] (4.88e-6 wide), 0.00e+0 from the narrowest cell [14.621376953124999, 14.621381835937498] (4.88e-6)
+substep 18 (hub first touches at 19): pushes 1 -> 2 at 14.741213938, in cell [14.741213912963866, 14.741213989257812] (7.63e-8 wide), 2.52e-8 from the narrowest cell [14.741213836669921, 14.741213912963866] (7.63e-8)
+substep 18 (hub first touches at 18): pushes 2 -> 12 at 14.742374031, in cell [14.742373046875, 14.742375488281251] (2.44e-6 wide), 1.46e-6 from the narrowest cell [14.742375488281251, 14.742376708984375] (1.22e-6)
+substep 17 (hub first touches at 17): pushes 2 -> 14 at 14.863116419, in cell [14.863115234375, 14.86311767578125] (2.44e-6 wide), 1.26e-6 from the narrowest cell [14.86311767578125, 14.863118896484375] (1.22e-6)
+substep 16 (hub first touches at 16): pushes 2 -> 12 at 14.983601314, in cell [14.983598632812502, 14.983603515625001] (4.88e-6 wide), 0.00e+0 from the narrowest cell [14.983598632812502, 14.983603515625001] (4.88e-6)
+substep 16 (hub first touches at 16): pushes 15 -> 14 at 15.036913672, in cell [15.036874999999998, 15.036953124999998] (7.81e-5 wide), 0.00e+0 from the narrowest cell [15.036874999999998, 15.036953124999998] (7.81e-5)
+substep 15 (hub first touches at 15): pushes 2 -> 13 at 15.103822144, in cell [15.103818359375, 15.103823242187499] (4.88e-6 wide), 2.32e-6 from the narrowest cell [15.103824462890625, 15.10382568359375] (1.22e-6)
+substep 14 (hub first touches at 14): pushes 2 -> 12 at 15.223772480, in cell [15.22376953125, 15.2237744140625] (4.88e-6 wide), 2.54e-6 from the narrowest cell [15.223775024414063, 15.223775634765625] (6.10e-7)
+substep 14 (hub first touches at 14): pushes 14 -> 20 at 15.275959297, in cell [15.275957031249998, 15.275976562499999] (1.95e-5 wide), 2.27e-6 from the narrowest cell [15.275937499999998, 15.275957031249998] (1.95e-5)
+substep 13 (hub first touches at 13): pushes 14 -> 20 at 15.395024450, in cell [15.39501953125, 15.395029296875] (9.77e-6 wide), 0.00e+0 from the narrowest cell [15.39501953125, 15.395029296875] (9.77e-6)
+substep 12 (hub first touches at 12): pushes 15 -> 20 at 15.513788792, in cell [15.51375, 15.513789062499999] (3.91e-5 wide), 2.70e-7 from the narrowest cell [15.513789062499999, 15.51380859375] (1.95e-5)
+TOTAL: 12 clusters of cells under 1e-4 degrees; in 12 the engine changes inside one of the cluster's cells, at most 2.54e-6 degrees from its narrowest cell

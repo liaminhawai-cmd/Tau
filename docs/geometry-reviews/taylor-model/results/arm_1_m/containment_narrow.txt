@@ -1,0 +1,4 @@
+arm (1,-1) cell [5.58203125, 5.583984375] plain (narrowest): margin >= 3.56559; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (1,-1) cell [6.1015625, 6.1025390625] plain (narrowest): margin >= 3.49704; 2604 comparisons at 7 angles, 0 outside; worst excess 2.22e-16
+arm (1,-1) cell [12.15234375, 12.1533203125] plain (narrowest): margin >= 2.72160; 2604 comparisons at 7 angles, 0 outside; worst excess 3.33e-16
+TOTAL: 3 cells, 7812 comparisons, 0 outside, 0 stopped

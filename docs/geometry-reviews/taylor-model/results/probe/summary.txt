@@ -1,0 +1,18 @@
+arm (0,-) limit 63.375: 1235 probes, 1235 ok (100%); no failures
+   failure reasons: none
+   runs of 3+ probes: ok 2.00-63.35
+arm (0,+) limit 44.25: 851 probes, 851 ok (100%); no failures
+   failure reasons: none
+   runs of 3+ probes: ok 2.00-44.25
+arm (1,-) limit 16.5: 292 probes, 292 ok (100%); no failures
+   failure reasons: none
+   runs of 3+ probes: ok 2.00-16.50
+arm (1,+) limit 14.625: 254 probes, 128 ok (50%); first failure at 8.40
+   failure reasons: sqrt 71, hubhub 19, steep 18, deep 14, inv 4
+   runs of 3+ probes: ok 2.00-8.35 | FAIL 8.40-14.60
+arm (2,-) limit 15.75: 277 probes, 125 ok (45%); first failure at 8.25
+   failure reasons: sqrt 83, steep 22, deep 21, inv 15, hubhub 11
+   runs of 3+ probes: ok 2.00-8.20 | FAIL 8.25-15.75
+arm (2,+) limit 4.875: 58 probes, 58 ok (100%); no failures
+   failure reasons: none
+   runs of 3+ probes: ok 2.00-4.85

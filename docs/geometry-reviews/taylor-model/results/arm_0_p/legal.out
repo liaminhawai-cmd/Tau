@@ -1,0 +1,26 @@
+{
+ "arm": [
+  0,
+  1
+ ],
+ "range": [
+  2,
+  44.35
+ ],
+ "cells": 1159,
+ "legalCells": 1159,
+ "notShown": 0,
+ "stopped": 0,
+ "pivotAtBandEdge": [
+  {
+   "a": 43.875,
+   "b": 44,
+   "pivot": "r0 band edge, distance in [0.808107, 0.856594]"
+  }
+ ],
+ "crossingKinds": {
+  "foot 1 / r1 ": 1159
+ },
+ "smallestClearanceOfOtherPairs": 2.798753311455584,
+ "firstBad": []
+}

@@ -1,0 +1,36 @@
+{
+ "arm": [
+  0,
+  -1
+ ],
+ "interval": [
+  63,
+  63.375
+ ],
+ "deg": 4,
+ "cells": 6,
+ "failed": 0,
+ "runs": 11,
+ "seconds": 37.965,
+ "width": {
+  "min": 0.01171875,
+  "median": 0.046875,
+  "max": 0.1875
+ },
+ "minMargin": 3.303400324684474,
+ "minHubMove": 5.116047230055645,
+ "modes": {
+  "branch": 1,
+  "plain": 5
+ },
+ "splitReasons": {
+  "phas# B subst#p #: sqrt: rang# not positiv# #": 3,
+  "phas# B subst#p #: v#rtical contact (hf < #) not #xclud#d: hf #": 1,
+  "phas# B subst#p #: n#ar#parall#l s#gm#nts: d#nom rang# #": 1
+ },
+ "fails": []
+}
+
+real	0m38.052s
+user	0m28.800s
+sys	0m0.532s

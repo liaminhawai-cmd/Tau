@@ -1,0 +1,23 @@
+arm (2,-1) cell [14.741213912963866, 14.741213989257812] plain+sym+vtx (vertexDedup): margin >= 2.72137; 2604 comparisons at 7 angles, 0 outside; worst excess 3.33e-16
+arm (2,-1) cell [15.34, 15.36] plain+sym+vtx (vertexDedup): margin >= 2.80545; 2604 comparisons at 7 angles, 0 outside; worst excess 6.66e-16
+arm (2,-1) cell [15.46, 15.48] plain+sym+vtx (vertexDedup): margin >= 2.82219; 2604 comparisons at 7 angles, 0 outside; worst excess 6.66e-16
+arm (2,-1) cell [15.58, 15.6] plain+sym+vtx (vertexDedup): margin >= 2.83889; 2604 comparisons at 7 angles, 0 outside; worst excess 6.66e-16
+arm (2,-1) cell [15.62, 15.64] plain+sym+vtx (vertexDedup): margin >= 2.84450; 2604 comparisons at 7 angles, 0 outside; worst excess 8.88e-16
+arm (2,-1) cell [15.64, 15.66] plain+sym+vtx (vertexDedup): margin >= 2.84728; 2604 comparisons at 7 angles, 0 outside; worst excess 7.77e-16
+arm (2,-1) cell [15.66, 15.68] plain+sym+vtx (vertexDedup): margin >= 2.85004; 2604 comparisons at 7 angles, 0 outside; worst excess 6.66e-16
+arm (2,-1) cell [15.68, 15.7] plain+sym+vtx (vertexDedup): margin >= 2.85279; 2604 comparisons at 7 angles, 0 outside; worst excess 6.66e-16
+arm (2,-1) cell [15.7, 15.72] plain+sym+vtx (vertexDedup): margin >= 2.85556; 2604 comparisons at 7 angles, 0 outside; worst excess 6.66e-16
+arm (2,-1) cell [15.72, 15.74] plain+sym+vtx (vertexDedup): margin >= 2.85836; 2604 comparisons at 7 angles, 0 outside; worst excess 6.66e-16
+arm (2,-1) cell [15.74, 15.76] plain+sym+vtx (vertexDedup): margin >= 2.86116; 2604 comparisons at 7 angles, 0 outside; worst excess 6.66e-16
+arm (2,-1) cell [15.76, 15.78] plain+sym+vtx (vertexDedup): margin >= 2.86393; 2604 comparisons at 7 angles, 0 outside; worst excess 8.88e-16
+arm (2,-1) cell [15.78, 15.8] plain+sym+vtx (vertexDedup): margin >= 2.86669; 2625 comparisons at 7 angles, 0 outside; worst excess 8.88e-16
+arm (2,-1) cell [15.8, 15.82] plain+sym+vtx (vertexDedup): margin >= 2.86942; 2625 comparisons at 7 angles, 0 outside; worst excess 8.88e-16
+arm (2,-1) cell [15.82, 15.84] plain+sym+vtx (vertexDedup): margin >= 2.87220; 2604 comparisons at 7 angles, 0 outside; worst excess 5.55e-16
+arm (2,-1) cell [15.84, 15.86] plain+sym+vtx (vertexDedup): margin >= 2.87500; 2604 comparisons at 7 angles, 0 outside; worst excess 7.77e-16
+arm (2,-1) cell [15.86, 15.88] plain+sym+vtx (vertexDedup): margin >= 2.87779; 2604 comparisons at 7 angles, 0 outside; worst excess 6.66e-16
+arm (2,-1) cell [15.88, 15.9] plain+sym+vtx (vertexDedup): margin >= 2.88056; 2604 comparisons at 7 angles, 0 outside; worst excess 8.88e-16
+arm (2,-1) cell [15.9, 15.92] plain+sym+vtx (vertexDedup): margin >= 2.88331; 2604 comparisons at 7 angles, 0 outside; worst excess 5.55e-16
+arm (2,-1) cell [15.92, 15.94] plain+sym+vtx (vertexDedup): margin >= 2.88603; 2604 comparisons at 7 angles, 0 outside; worst excess 6.66e-16
+arm (2,-1) cell [15.94, 15.96] plain+sym+vtx (vertexDedup): margin >= 2.88881; 2604 comparisons at 7 angles, 0 outside; worst excess 7.77e-16
+arm (2,-1) cell [15.96, 15.98] plain+sym+vtx (vertexDedup): margin >= 2.89161; 1860 comparisons at 5 angles (2 beyond the engine's limit skipped), 0 outside; worst excess 9.99e-16
+TOTAL: 22 cells, 56586 comparisons, 0 outside, 0 stopped
