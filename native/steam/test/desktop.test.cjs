@@ -2414,7 +2414,9 @@ test('at rest the traced scene is built from the board and the pieces, and motio
   assert.equal(g.read('tauDesktop.renderFrame()'),true,'held still, the tracer takes the frame');
   assert.equal(g.read('JSON.stringify(window.__pt.calls)'),JSON.stringify(['setScene','renderSample']));
   assert.equal(g.read('window.__pt.scene.children.includes(boardTop) && window.__pt.scene.children.includes(boardRim)'),true);
-  assert.equal(g.read('tripods.every(t=>window.__pt.scene.children.includes(t))'),true,'both pieces are in it');
+  // Mesh by mesh, so a tinted glass leg can go in as its traced copy (ptLegProxy).
+  assert.equal(g.read(`tripods.every(t=>{ let all=true; t.traverseVisible(o=>{ if(o.isMesh && !window.__pt.scene.children.includes(o)
+    && !window.__pt.scene.children.some(c=>c.userData && c.userData.src===o.geometry)) all=false; }); return all; })`),true,'every part of both pieces is in it');
   assert.equal(g.read('window.__pt.scene.children.some(o=>o.isPoints)'),false,'dust and motes are not');
   assert.equal(g.read('window.__pt.scene.children.includes(hoverDisc) || window.__pt.scene.children.includes(pivotGlowMesh)'),
     false,'nor the glow and hover planes');

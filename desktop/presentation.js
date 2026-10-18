@@ -1959,6 +1959,47 @@
   // dust and mote clouds (Points, which a path tracer has no notion of), the glow and hover
   // planes, the coach's rails, and the fog — none of them survive as geometry — and the crowd,
   // whose InstancedMesh this version of the tracer would bake as one figure at the group origin.
+  // GLASS LEGS KEEP THEIR COLOUR IN THE TRACE. Marble's legs are tinted by a shader patch
+  // (installLegGradient in boards.js: the ball's colour running down from the crown and up from the
+  // foot, clear between), and the path tracer cannot run shader patches -- it reads the material's
+  // plain properties, so every glass leg came out water-clear and only the solid balls kept their
+  // colour. The tracer does read vertex colours, so it is handed a copy of each tinted leg with the
+  // same ramp baked into its vertices: tinted glass at both ends, clear through the middle. The copy
+  // sits outside the live scene, following the real leg's world matrix, and is rebuilt only when the
+  // leg's geometry or tint changes.
+  const ptLegProxies = new WeakMap();
+  function ptLegProxy(mesh) {
+    const mat = mesh.material, ud = mat && !Array.isArray(mat) ? mat.userData : null;
+    if (!ud || ud.legTint == null || !mesh.geometry || !mesh.geometry.attributes.position) return mesh;
+    let px = ptLegProxies.get(mesh);
+    if (!px || px.userData.src !== mesh.geometry || px.userData.tint !== ud.legTint || px.userData.mat !== mat) {
+      const g = mesh.geometry.clone(), pos = g.attributes.position, n = pos.count, col = new Float32Array(n * 4);
+      const base = mat.color.clone(), tint = new THREE.Color(ud.legTint), c = new THREE.Color();
+      const top = ud.legFootTop != null ? ud.legFootTop : 3.6;
+      const smooth = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+      for (let i = 0; i < n; i++) {
+        // the shader's own arithmetic, vertex by vertex (installLegGradient)
+        const u = Math.hypot(pos.getX(i), pos.getZ(i)), yy = pos.getY(i) - top;
+        const legT = Math.min(1, Math.max(0, (yy > 0 ? Math.atan2(u, yy) : Math.PI / 2) / (Math.PI / 2)));
+        const legG = Math.max(smooth(0.25, 1, legT), 1 - smooth(0, 0.28, legT));
+        c.copy(base).lerp(tint, legG); col[i * 4] = c.r; col[i * 4 + 1] = c.g; col[i * 4 + 2] = c.b; col[i * 4 + 3] = 1;
+      }
+      // four values a vertex: the tracer packs colour as RGBA, and three-wide colours were read out of
+      // step -- the legs came out patched with black.
+      g.setAttribute('color', new THREE.BufferAttribute(col, 4));
+      const m = mat.clone();
+      m.onBeforeCompile = () => {}; m.customProgramCacheKey = () => 'ptLeg';
+      m.vertexColors = true;
+      px = new THREE.Mesh(g, m);
+      px.matrixAutoUpdate = false;
+      px.userData = { src: mesh.geometry, tint: ud.legTint, mat };
+      ptLegProxies.set(mesh, px);
+    }
+    mesh.updateMatrixWorld(true);
+    px.matrix.copy(mesh.matrixWorld); px.matrixWorld.copy(mesh.matrixWorld);
+    px.castShadow = mesh.castShadow; px.receiveShadow = mesh.receiveShadow;
+    return px;
+  }
   function ptObjects() {
     const out = [], add = o => { if (o && o.visible) out.push(o); };
     if (typeof boardTop !== 'undefined') add(boardTop);
@@ -1966,7 +2007,11 @@
     add(boardTrim);
     if (typeof fallFloor !== 'undefined') add(fallFloor);
     for (const pair of [typeof tripods !== 'undefined' ? tripods : null, typeof htpTripods !== 'undefined' ? htpTripods : null])
-      for (const t of pair || []) add(t);
+      for (const t of pair || []) {
+        if (!t || !t.visible) continue;
+        // a piece goes in mesh by mesh, so a tinted glass leg can be swapped for its traced copy
+        t.traverseVisible(o => { if (o.isMesh) out.push(ptLegProxy(o)); });
+      }
     if (envGroup) envGroup.traverse(o => { if (o.isMesh && !o.isInstancedMesh) add(o); });
     scene.traverse(o => { if (o.isDirectionalLight) out.push(o); });   // the key and its rim; hemisphere light has no equivalent
     return out;

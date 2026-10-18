@@ -937,6 +937,7 @@ function softDiscTexture() {
 }
 function installLegGradient(material, tint) {
   material.userData.legTint = tint;   // read by the game's glass proxies, which wear the same ramp
+  material.userData.legFootTop = LEG_FOOT_TOP;   // and by the path tracer's copy (ptLegProxy), which bakes it
   material.onBeforeCompile = shader => {
     shader.uniforms.uLegTint = { value: new THREE.Color(tint) };
     shader.uniforms.uFootTop = { value: LEG_FOOT_TOP };
