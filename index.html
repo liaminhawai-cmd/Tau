@@ -2531,6 +2531,13 @@ const CFG = {
     // within this of the printed corner). The crossing rule no longer reads it -- continuous contact
     // replaced the corner check, see crossingSubstep -- but tools that model the old rule still do.
     cornerEps: 0.81,
+    // CORNER HOLD (the rule since Oct 16 2026). A foot already on one line that picks up a second
+    // keeps it as the same crossing only if it is still touching the first line at the moment it
+    // crosses the second line's centreline; slip off the first line before that and the second is
+    // its own crossing. See crossingSubstep. ?corner=old plays the previous rule (continuous contact
+    // alone) for comparison: then ladder wins aren't banked or posted, online play is off, and a
+    // badge says so.
+    cornerHold: (() => { try { return new URLSearchParams(location.search).get('corner') !== 'old'; } catch (e) { return true; } })(),
     // The swing's fixed step, measured from where the turn started. A swing is played ONLY on this
     // grid -- see applySwing -- so where it stops is a function of the angle reached, never of how
     // the motion was chopped up on the way. 0.375 = 3/8: the 3-degree chunks every AI, the league
@@ -2775,6 +2782,7 @@ function crossingSubstep(before, after, st) {
         st.startSide = before.map((f,i) => { const m={}; for (const id of st.contact[i]) m[id]=lineSideOf(f,id); return m; });
         st.entrySide = [{},{},{}];     // approach side of each line entered THIS turn
         st.pendingMerge = [{},{},{}];  // corner-merged lines awaiting centreline validation: id -> sponsor id
+        st.billedDepart = [{},{},{}];  // start lines a foot was billed for crossing off (cornerHold)
         // Snapshot of what each foot was ALREADY resting on when the turn began -- a park position
         // paid for last turn, not this one. The one-line-per-foot rule below must count only lines
         // FRESHLY entered this turn against that budget; a foot that starts parked on a line and
@@ -2791,6 +2799,8 @@ function crossingSubstep(before, after, st) {
     const newSides = [{},{},{}];   // entrySide additions, committed only if the substep stands
     const newPending = [{},{},{}], resolvedPending = [[],[],[]];
     const justCrossed = [];   // every line id a foot's PAD newly touched this substep (billed or free)
+    let forced = 0;           // cornerHold: broken merges, each a crossing of its own whatever the episode
+    const billedDepart = st.billedDepart || (st.billedDepart = [{},{},{}]), newDepart = [{},{},{}];
     for (let i=0;i<3;i++){
         // PER-FOOT contact episodes. hadContact must be this foot's own state, NOT the whole piece's:
         // a stationary pivot foot resting on a line keeps continuous contact all turn, and a piece-level
@@ -2808,6 +2818,7 @@ function crossingSubstep(before, after, st) {
             if (st.startSide && st.startSide[i] && st.startSide[i][id] !== undefined &&
                 lineSideOf(after[i], id) !== st.startSide[i][id]) {
                 opened++;
+                newDepart[i][id] = true;
                 justCrossed.push(id);
             }
         }
@@ -2823,6 +2834,19 @@ function crossingSubstep(before, after, st) {
         for (const id of kept) {
             const sponsor = st.pendingMerge[i][id];
             if (sponsor === undefined) continue;
+            if (Array.isArray(sponsor)) {
+                // cornerHold merge: judged once, when the foot crosses the new line's centreline.
+                // Still touching any line it held when it picked this one up = same crossing. Off
+                // them all = a crossing of its own -- unless every one of those lines was a start
+                // line the foot backed off on its own side, which cost nothing, leaving this line
+                // as the turn's one crossing (already billed when it was touched).
+                if (st.entrySide[i][id] === undefined || lineSideOf(after[i], id) === st.entrySide[i][id]) continue;
+                resolvedPending[i].push(id);
+                if (sponsor.some(sp => lineDistOf(after[i], sp) <= CFG.holdEps)) continue;
+                const sponsorPaid = sponsor.some(sp => !st.turnStartContact[i].includes(sp) || billedDepart[i][sp] || newDepart[i][sp]);
+                if (sponsorPaid) forced++;
+                continue;
+            }
             const flipped = st.entrySide[i][id] !== undefined && lineSideOf(after[i], id) !== st.entrySide[i][id];
             if (flipped) {
                 if (lineDistOf(after[i], sponsor) > CFG.holdEps) opened++;   // missed the corner: it's a real 2nd crossing
@@ -2838,6 +2862,7 @@ function crossingSubstep(before, after, st) {
             }
         }
         let entered = false;
+        const heldBefore = kept.slice();   // lines this foot was already touching (cornerHold sponsors)
         for (const id of nearLineIds(after[i], CFG.touchEps))
             if (!kept.includes(id)) {
                 // CONTINUOUS CONTACT. A foot taking a new line while its magnet is still on another
@@ -2857,9 +2882,14 @@ function crossingSubstep(before, after, st) {
                 // never stops short of the old steady drag. The one thing it allows that the corner
                 // check refused on purpose: the max-CW-then-max-CCW opening, where foot1 rides r0
                 // onto a0 1.9mm beside their corner, now runs to ~74 degrees instead of stopping at 12.
+                // CORNER HOLD (CFG.cornerHold, the rule since Oct 16 2026) closes that one: the new
+                // line is filed as a pending merge sponsored by the lines the foot already holds, and
+                // judged when the foot crosses its centreline (above). That opening stops at 13.5
+                // degrees again; no other two-turn opening changes.
                 kept.push(id);
                 if (!earned.includes(id)) earned.push(id);   // fresh billed entry: genuine contact
                 newSides[i][id] = lineSideOf(after[i], id);  // approach side, for the centreline-flip check
+                if (CFG.cornerHold && heldBefore.length) newPending[i][id] = heldBefore.slice();
                 justCrossed.push(id);
                 entered = true;
             }
@@ -2885,10 +2915,11 @@ function crossingSubstep(before, after, st) {
     // has visibly left the line, chaining crossings that are plainly separate.
     // The pivot is excluded throughout -- it is the centre of rotation, never moves and crosses
     // nothing, so a foot parked there neither costs a crossing nor keeps one open.
-    if (opened && !st.episodeCharged) {
-        if (st.crossings + 1 > CFG.maxCrossingsPerTurn) return true;   // over the per-turn budget: roll back
-        st.crossings += 1;                  // billed when it OPENS (parking on a line spends it too)
-        st.episodeCharged = true;
+    const opens = (opened && !st.episodeCharged) ? 1 : 0;
+    if (opens + forced) {
+        if (st.crossings + opens + forced > CFG.maxCrossingsPerTurn) return true;   // over the per-turn budget: roll back
+        st.crossings += opens + forced;     // billed when it OPENS (parking on a line spends it too)
+        if (opens) st.episodeCharged = true;
     }
     st.contact = next;
     st.earned = nextEarned;
@@ -2899,6 +2930,7 @@ function crossingSubstep(before, after, st) {
         st.episodeCharged = false;
     for (let i=0;i<3;i++) {
         for (const id in newSides[i]) st.entrySide[i][id] = newSides[i][id];
+        for (const id in newDepart[i]) billedDepart[i][id] = true;
         for (const id in newPending[i]) st.pendingMerge[i][id] = newPending[i][id];
         for (const id of resolvedPending[i]) delete st.pendingMerge[i][id];
         for (const id in st.pendingMerge[i]) if (!next[i].includes(id)) delete st.pendingMerge[i][id];   // backed out of the band unflipped: free retreat
