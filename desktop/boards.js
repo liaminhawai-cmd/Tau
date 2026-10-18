@@ -1018,6 +1018,40 @@ const MATH_PASS =
   '    outgoingLight += tint * alpha * 0.55;\n' +
   '  }\n' +
   '}\n';
+// The surface passes, as strings, so the live shader (installDetailShader) and the path tracer's bake
+// (bakeDetailSurface in presentation.js) run the very same code and cannot drift apart.
+// DETAIL_PASS: wood grain and marble veining -- the albedo and roughness, with the relief height dH.
+const DETAIL_PASS =
+  'float dH = 0.0; float dRough = roughnessFactor;\n' +
+  'if (uDetail > 0.5 && uDetail < 1.5) { float r; vec3 w = woodDetail(vWPos.xz, r); diffuseColor.rgb *= w.x * uDetailTint; dRough = r; dH = w.z; }\n' +
+  'if (uDetail > 1.5 && uDetail < 2.5) { float r; vec3 c; float lum = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722)); vec3 m = marbleDetail(woodFrame(vWPos.xz), lum, r, c); diffuseColor.rgb *= c; dRough = r; dH = m.z; }\n' +
+  'if (uDetail > 0.5) roughnessFactor = clamp(dRough, 0.02, 1.0);\n';
+// ALIEN_PASS: the living membrane, on the lit colour -- outgoingLight scaled (the blotches) and added
+// to (the veins). Linear in outgoingLight, which is what lets the bake split it into the two.
+const ALIEN_PASS =
+  'if (uAlien > 0.5) {\n' +
+  // THE MEMBRANE LEANS TOWARDS WHAT RESTS ON IT, the way moss grows towards its light: near a
+  // piece that has been standing still a while its veins are drawn in a little towards it
+  // and it does not darken as deeply. Built up over tens of seconds (alienSeekTick), so it is
+  // only there to be noticed by somebody who has been looking at one position a long time.
+  '  float reach = 0.0; vec2 lean = vec2(0.0);\n' +
+  '  for (int i = 0; i < 8; i++) { vec2 d = uSeek[i].xy - vWPos.xz; float w = uSeek[i].z * exp(-dot(d, d) / 150.0); reach += w; lean += d * w; }\n' +
+  '  reach = min(reach, 1.0);\n' +
+  '  vec2 p = (vWPos.xz + lean * 0.22) * 0.06;\n' +
+  '  vec2 q = vec2(afbm3(p), afbm3(p + vec2(5.2, 1.3)));\n' +
+  // three layers of the same living noise, each an order finer than the last, so whatever
+  // distance you look from there is structure at that size and it is moving
+  '  float warp = lfbm6(p + 1.8*q, uAlienTime);\n' +
+  '  float vein = pow(1.0 - abs(warp*2.0 - 1.0), 6.0);\n' +
+  '  float fine = lfbm4(p*3.9 + 4.0*q, uAlienTime*1.7);\n' +
+  '  vein += 0.55 * pow(1.0 - abs(fine*2.0 - 1.0), 9.0);\n' +
+  '  float finer = lfbm4(p*14.0 + 2.0*q, uAlienTime*2.6);\n' +
+  '  vein += 0.30 * pow(1.0 - abs(finer*2.0 - 1.0), 11.0);\n' +
+  '  float pulse = 0.65 + 0.35*sin(uAlienTime*0.7 + warp*6.28);\n' +
+  '  float blotch = smoothstep(0.32, 0.72, q.x);\n' +
+  '  outgoingLight *= (1.0 - blotch*0.3*(1.0 - 0.55*reach)) * (1.0 + 0.10*reach);\n' +
+  '  outgoingLight += vec3(0.10, 0.95, 0.80) * vein * 0.55 * pulse * (1.0 + 0.55*reach);\n' +
+  '}\n';
 const ALIEN_GLSL = `
 uniform float uAlien; uniform float uAlienTime; varying vec3 vWPos;
 // Where the membrane is being drawn to: each foot and each piece's hub (xz), and how long it has
@@ -1157,40 +1191,14 @@ function installDetailShader(material) {
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\n' + ALIEN_GLSL + DETAIL_GLSL + MATH_GLSL)
       // colour + roughness: right after the maps have had their say
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n' +
-        'float dH = 0.0; float dRough = roughnessFactor;\n' +
-        'if (uDetail > 0.5 && uDetail < 1.5) { float r; vec3 w = woodDetail(vWPos.xz, r); diffuseColor.rgb *= w.x * uDetailTint; dRough = r; dH = w.z; }\n' +
-        'if (uDetail > 1.5 && uDetail < 2.5) { float r; vec3 c; float lum = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722)); vec3 m = marbleDetail(woodFrame(vWPos.xz), lum, r, c); diffuseColor.rgb *= c; dRough = r; dH = m.z; }\n' +
-        'if (uDetail > 0.5) roughnessFactor = clamp(dRough, 0.02, 1.0);\n')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n' + DETAIL_PASS)
       // relief: after the normal is final, bend it by the detail height's screen-space slope
       .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' +
         'if (uDetail > 0.5) { vec2 dHdxy = vec2(dFdx(dH), dFdy(dH)) * (uDetail < 1.5 ? 0.45 : 0.4); normal = perturbDetail(-vViewPosition, normal, dHdxy, gl_FrontFacing ? 1.0 : -1.0); }\n')
       // the alien membrane, as the showcase draws it
       .replace(finalHook,
         MATH_PASS +
-        'if (uAlien > 0.5) {\n' +
-        // THE MEMBRANE LEANS TOWARDS WHAT RESTS ON IT, the way moss grows towards its light: near a
-        // piece that has been standing still a while its veins are drawn in a little towards it
-        // and it does not darken as deeply. Built up over tens of seconds (alienSeekTick), so it is
-        // only there to be noticed by somebody who has been looking at one position a long time.
-        '  float reach = 0.0; vec2 lean = vec2(0.0);\n' +
-        '  for (int i = 0; i < 8; i++) { vec2 d = uSeek[i].xy - vWPos.xz; float w = uSeek[i].z * exp(-dot(d, d) / 150.0); reach += w; lean += d * w; }\n' +
-        '  reach = min(reach, 1.0);\n' +
-        '  vec2 p = (vWPos.xz + lean * 0.22) * 0.06;\n' +
-        '  vec2 q = vec2(afbm3(p), afbm3(p + vec2(5.2, 1.3)));\n' +
-        // three layers of the same living noise, each an order finer than the last, so whatever
-        // distance you look from there is structure at that size and it is moving
-        '  float warp = lfbm6(p + 1.8*q, uAlienTime);\n' +
-        '  float vein = pow(1.0 - abs(warp*2.0 - 1.0), 6.0);\n' +
-        '  float fine = lfbm4(p*3.9 + 4.0*q, uAlienTime*1.7);\n' +
-        '  vein += 0.55 * pow(1.0 - abs(fine*2.0 - 1.0), 9.0);\n' +
-        '  float finer = lfbm4(p*14.0 + 2.0*q, uAlienTime*2.6);\n' +
-        '  vein += 0.30 * pow(1.0 - abs(finer*2.0 - 1.0), 11.0);\n' +
-        '  float pulse = 0.65 + 0.35*sin(uAlienTime*0.7 + warp*6.28);\n' +
-        '  float blotch = smoothstep(0.32, 0.72, q.x);\n' +
-        '  outgoingLight *= (1.0 - blotch*0.3*(1.0 - 0.55*reach)) * (1.0 + 0.10*reach);\n' +
-        '  outgoingLight += vec3(0.10, 0.95, 0.80) * vein * 0.55 * pulse * (1.0 + 0.55*reach);\n' +
-        '}\n' + finalHook);
+        ALIEN_PASS + finalHook);
     holder.uniforms = shader.uniforms;
   };
   material.customProgramCacheKey = () => 'tau-detail';
@@ -1199,7 +1207,7 @@ function installDetailShader(material) {
 }
 
   return { S, sc, ox, oy, px, LW, DOTS, canvas2d, strokeLines, noiseCanvas, vignette, tex, texL,
-           THEMES, ALIEN_GLSL, DETAIL_GLSL, MATH_GLSL, installDetailShader, installLegGradient, shadeZones, softDiscTexture };
+           THEMES, ALIEN_GLSL, DETAIL_GLSL, MATH_GLSL, DETAIL_PASS, ALIEN_PASS, MATH_PASS, installDetailShader, installLegGradient, shadeZones, softDiscTexture };
 }
 if (typeof window !== 'undefined') window.makeShowcaseBoards = makeShowcaseBoards;
 if (typeof module !== 'undefined') module.exports = makeShowcaseBoards;

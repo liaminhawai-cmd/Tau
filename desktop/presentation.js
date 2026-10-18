@@ -2000,9 +2000,101 @@
     px.castShadow = mesh.castShadow; px.receiveShadow = mesh.receiveShadow;
     return px;
   }
+  // THE BOARD'S SURFACE, BAKED FOR THE TRACE. Wood grain, marble veining, the Alien membrane and the
+  // Math board's live construction are all drawn by the detail shader (installDetailShader), which
+  // the tracer cannot run: on Ultra, once the scene settled, Walnut lost its grain, Math its
+  // compass arcs, and Alien went to a black disc with lines on it. So, when the traced scene is
+  // built, the same passes (DETAIL_PASS, MATH_PASS, ALIEN_PASS -- the strings the live shader is made
+  // of) are run once over the board top in its own UV space, into two pictures the tracer does read:
+  // the surface colour with its roughness, and the glow. The membrane and the arcs act on the lit
+  // colour (out = f*in + e), so they are run twice, from black and from white, which separates the
+  // part that tints the surface (f) from the part that shines (e). The trace gets a copy of the board
+  // top wearing those; the live board is untouched.
+  const PT_BAKE = 2048;
+  let ptBake = null;   // { mat, rt, scene, cam, tex:{map,rough,emit}, proxy }
+  function bakeDetailSurface() {
+    const SH = showcase(), u = detail && detail.uniforms;
+    if (!SH || !u || !boardTop || !SH.DETAIL_PASS) return null;
+    if (!(u.uDetail.value > 0.5 || u.uAlien.value > 0.5 || u.uMath.value > 0.5)) return null;
+    const src = boardTop.material;
+    if (!ptBake) {
+      const vert = 'varying vec2 vBakeUv; varying vec3 vWPos;\n' +
+        'void main(){ vBakeUv = uv; vWPos = (modelMatrix * vec4(position, 1.0)).xyz; gl_Position = vec4(uv * 2.0 - 1.0, 0.0, 1.0); }';
+      const frag = 'uniform sampler2D uBakeMap; uniform float uBakeHasMap; uniform vec3 uBakeColor;\n' +
+        'uniform sampler2D uBakeRough; uniform float uBakeHasRough; uniform float uBakeRoughness; uniform float uBakePass; uniform float uBakeGlow;\n' +
+        'uniform vec3 uBakeEmit; uniform sampler2D uBakeEmitMap; uniform float uBakeHasEmitMap;\n' +
+        'varying vec2 vBakeUv;\n' + SH.ALIEN_GLSL + SH.DETAIL_GLSL + SH.MATH_GLSL +
+        'vec3 bakeEncode(vec3 c){ c = max(c, 0.0); return mix(c * 12.92, 1.055 * pow(c, vec3(1.0/2.4)) - 0.055, step(0.0031308, c)); }\n' +
+        'void main(){\n' +
+        '  vec4 diffuseColor = vec4(uBakeColor, 1.0); if (uBakeHasMap > 0.5) diffuseColor *= texture2D(uBakeMap, vBakeUv);\n' +
+        '  float roughnessFactor = uBakeRoughness; if (uBakeHasRough > 0.5) roughnessFactor *= texture2D(uBakeRough, vBakeUv).g;\n' +
+        SH.DETAIL_PASS +
+        '  vec3 outgoingLight = vec3(1.0);\n' + SH.MATH_PASS + SH.ALIEN_PASS + '  vec3 lit1 = outgoingLight;\n' +
+        '  outgoingLight = vec3(0.0);\n' + SH.MATH_PASS + SH.ALIEN_PASS + '  vec3 glow = outgoingLight;\n' +
+        '  vec3 tint = max(lit1 - glow, 0.0);\n' +
+        // the board's own glow (Alien's lines live there) goes in with the pass's
+        '  vec3 own = uBakeEmit; if (uBakeHasEmitMap > 0.5) own *= texture2D(uBakeEmitMap, vBakeUv).rgb;\n' +
+        '  if (uBakePass < 0.5) gl_FragColor = vec4(bakeEncode(diffuseColor.rgb * tint), clamp(roughnessFactor, 0.0, 1.0));\n' +
+        '  else gl_FragColor = vec4(bakeEncode(glow * uBakeGlow + own), 1.0);\n' +
+        '}';
+      const mat = new THREE.ShaderMaterial({ vertexShader: vert, fragmentShader: frag, uniforms: {}, side: THREE.DoubleSide,
+        depthTest: false, depthWrite: false, blending: THREE.NoBlending });
+      const rt = new THREE.WebGLRenderTarget(PT_BAKE, PT_BAKE, { type: THREE.UnsignedByteType, depthBuffer: false });
+      const mesh = new THREE.Mesh(boardTop.geometry, mat); mesh.frustumCulled = false; mesh.matrixAutoUpdate = false;
+      const scn = new THREE.Scene(); scn.add(mesh);
+      ptBake = { mat, rt, mesh, scene: scn, cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), tex: null, proxy: null };
+    }
+    const B = ptBake;
+    // the live shader's own uniform objects, so the bake sees exactly the values the frame did
+    Object.assign(B.mat.uniforms, u, {
+      uBakeMap: { value: src.map || null }, uBakeHasMap: { value: src.map ? 1 : 0 }, uBakeColor: { value: src.color.clone() },
+      uBakeRough: { value: src.roughnessMap || null }, uBakeHasRough: { value: src.roughnessMap ? 1 : 0 },
+      uBakeRoughness: { value: src.roughness != null ? src.roughness : 1 }, uBakePass: { value: 0 },
+      // Glow is light the surface gives off, not light it gets, so it is not trimmed with the lamps.
+      uBakeGlow: { value: 1 },
+      uBakeEmit: { value: src.emissive ? src.emissive.clone().multiplyScalar(src.emissiveIntensity != null ? src.emissiveIntensity : 1) : new THREE.Color(0) },
+      uBakeEmitMap: { value: src.emissiveMap || null }, uBakeHasEmitMap: { value: src.emissiveMap ? 1 : 0 } });
+    boardTop.updateMatrixWorld(true);
+    B.mesh.matrix.copy(boardTop.matrixWorld); B.mesh.matrixWorld.copy(boardTop.matrixWorld);
+    const read = pass => {
+      B.mat.uniforms.uBakePass.value = pass;
+      const prevRT = renderer.getRenderTarget(), prevAuto = renderer.autoClear;
+      renderer.setRenderTarget(B.rt); renderer.autoClear = true; renderer.render(B.scene, B.cam);
+      const px = new Uint8Array(PT_BAKE * PT_BAKE * 4);
+      renderer.readRenderTargetPixels(B.rt, 0, 0, PT_BAKE, PT_BAKE, px);
+      renderer.setRenderTarget(prevRT); renderer.autoClear = prevAuto;
+      return px;
+    };
+    const ownGlow = src.emissive && (src.emissive.r + src.emissive.g + src.emissive.b) * (src.emissiveIntensity != null ? src.emissiveIntensity : 1) > 0;
+    const albedo = read(0), glowPx = (u.uAlien.value > 0.5 || u.uMath.value > 0.5 || ownGlow) ? read(1) : null;
+    const rough = new Uint8Array(albedo.length);
+    for (let i = 0; i < albedo.length; i += 4) { rough[i + 1] = albedo[i + 3]; rough[i + 3] = 255; albedo[i + 3] = 255; }
+    const mk = (data, srgb) => { const t = new THREE.DataTexture(data, PT_BAKE, PT_BAKE, THREE.RGBAFormat);
+      t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.magFilter = THREE.LinearFilter;
+      t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.needsUpdate = true; return t; };
+    if (B.tex) for (const k in B.tex) if (B.tex[k]) B.tex[k].dispose();
+    B.tex = { map: mk(albedo, true), rough: mk(rough, false), emit: glowPx ? mk(glowPx, true) : null };
+    if (!B.proxy || B.proxy.userData.src !== src) {
+      const m = src.clone(); m.onBeforeCompile = () => {}; m.customProgramCacheKey = () => 'ptBoard';
+      B.proxy = new THREE.Mesh(boardTop.geometry, m); B.proxy.matrixAutoUpdate = false; B.proxy.userData.src = src;
+    }
+    const m = B.proxy.material;
+    m.map = B.tex.map; m.color.set(0xffffff);
+    m.roughnessMap = B.tex.rough; m.roughness = 1;
+    if (B.tex.emit) { m.emissiveMap = B.tex.emit; m.emissive = new THREE.Color(0xffffff); m.emissiveIntensity = 1; }
+    else { m.emissiveMap = null; m.emissive = new THREE.Color(0); }
+    m.needsUpdate = true;
+    B.proxy.matrix.copy(boardTop.matrixWorld); B.proxy.matrixWorld.copy(boardTop.matrixWorld);
+    B.proxy.castShadow = boardTop.castShadow; B.proxy.receiveShadow = boardTop.receiveShadow;
+    return B.proxy;
+  }
   function ptObjects() {
     const out = [], add = o => { if (o && o.visible) out.push(o); };
-    if (typeof boardTop !== 'undefined') add(boardTop);
+    if (typeof boardTop !== 'undefined' && boardTop && boardTop.visible) {
+      let baked = null;
+      try { baked = bakeDetailSurface(); } catch (e) { console.warn('board bake for the trace failed', e); }
+      out.push(baked || boardTop);
+    }
     if (typeof boardRim !== 'undefined') add(boardRim);
     add(boardTrim);
     if (typeof fallFloor !== 'undefined') add(fallFloor);
