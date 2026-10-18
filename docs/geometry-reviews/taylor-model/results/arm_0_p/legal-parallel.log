@@ -1,0 +1,2 @@
+arm (0,1): 1159 cells in 2 ranges: [2, 13.357421875] [13.357421875, 44.35]
+{"cells":1159,"legalCells":1159,"notShown":0,"stopped":0,"pivotAtBandEdge":1,"crossingKinds":{"foot 1 / r1 ":1159},"clearance":2.798753311455584}

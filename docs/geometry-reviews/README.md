@@ -93,3 +93,16 @@ outputs reproduce from the **post-reply** pose on committed code. The unit
 correction and two enclosure defects remain. The [reproduction package](brief6/README.md)
 records the seed/post-reply comparison, current-engine replay, degree/radian
 runs and the repeated chord/frame audit at `431f13129d57fb41dd17e0844b3bd55624e2c3b4`.
+
+
+## Taylor-model proof: red's reply throws blue on every arm
+
+[Read the package README](taylor-model/README.md). A program that runs the engine's push law on
+polynomials in blue's stop angle, so one computation certifies a whole interval of angles. On the
+Brief 6 seed, blue to move, it covers every stop the engine's plan application can play on all six blue
+arms, from 2° to the largest target the engine executes, with 5,710 cells: red's (0,−) reply throws
+blue off the board everywhere, by at least 1.86u, in the real-arithmetic model of the engine. An
+independent re-run reproduces every cell's bound; the engine's margin at every sampled stop is at least
+its cell's bound; the engine replayed inside sampled cells stays inside the model; red's swing is legal in
+every cell. New code, not yet independently reviewed. It is not a bound on floating-point execution, and
+blue's legal range (the largest target the engine executes) is imported from the engine.

@@ -1,0 +1,11 @@
+arm (0,1) cell [3.1132466793060303, 3.11324679851532] branch+merge (narrowest): margin >= 5.21885; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (0,1) cell [6.0703125, 6.072265625] branch+merge (narrowest): margin >= 6.17748; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+arm (0,1) cell [14.3125, 14.314453125] branch+merge (narrowest): margin >= 8.43997; 2604 comparisons at 7 angles, 0 outside; worst excess 8.88e-16
+arm (0,1) cell [18.2578125, 18.259765625] plain (narrowest): margin >= 9.31851; 2604 comparisons at 7 angles, 0 outside; worst excess 6.66e-16
+arm (0,1) cell [22.02734375, 22.029296875] branch+merge (narrowest): margin >= 10.06655; 2604 comparisons at 7 angles, 0 outside; worst excess 8.88e-16
+arm (0,1) cell [27.26171875, 27.263671875] branch (narrowest): margin >= 10.95470; 2604 comparisons at 7 angles, 0 outside; worst excess 1.78e-15
+arm (0,1) cell [31.04296875, 31.044921875] plain (narrowest): margin >= 11.50065; 2604 comparisons at 7 angles, 0 outside; worst excess 7.11e-15
+arm (0,1) cell [36.25, 36.375] plain (narrowest): margin >= 12.24697; 2604 comparisons at 7 angles, 0 outside; worst excess 2.13e-14
+arm (0,1) cell [40.625, 40.6875] plain (narrowest): margin >= 12.77820; 2604 comparisons at 7 angles, 0 outside; worst excess 2.84e-14
+arm (0,1) cell [43.826171875, 43.8271484375] plain (narrowest): margin >= 13.10808; 2604 comparisons at 7 angles, 0 outside; worst excess 0.00e+0
+TOTAL: 10 cells, 26040 comparisons, 0 outside, 0 stopped
