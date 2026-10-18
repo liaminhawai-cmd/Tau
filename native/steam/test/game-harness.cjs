@@ -32,6 +32,8 @@ async function game(query = '?steam=1&premium=1', storage = {}, opts = {}) {
       // The showcase boards bake 2048^2 procedural maps; on the CPU canvas stub that is pure cost
       // with nothing to look at, so the desktop asks for tiny bakes when this flag is present.
       w.TAU_TEST_BAKE_SIZE=128;
+      // opts.shot: the store-art renderer's mode (scripts/steam-shots), the only place ray tracing is offered.
+      if (opts.shot) w.TAU_SHOT={samples:256};
       // Feature queries (prefers-*, pointer, display-mode) stay false; width/height ones are
       // answered from the window, so a test can put the layout on a phone-sized screen.
       w.matchMedia=q=>{

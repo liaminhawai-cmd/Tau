@@ -1190,7 +1190,7 @@ test('Low graphics cuts the passes and the pixels, not the board',async t=>{
   // Low is offered in the picker, below Balanced, and says out loud what it gives up.
   g.$('desktopSettings').click();
   const q=g.$('desktopQuality');
-  assert.deepEqual([...q.options].map(o=>o.value),['low','balanced','high','ultra'],'Low is the first tier');
+  assert.deepEqual([...q.options].map(o=>o.value),['low','balanced','high'],'Low is the first tier (and no ray tracing in play)');
   q.value='low'; q.onchange({target:q});
   assert.equal(g.read('tauDesktop.quality'),'low');
   assert.match(g.$('desktopQualityNote').textContent,/no shadows/,'and it says what it is doing');
@@ -2332,8 +2332,20 @@ const ptStage = `renderer={capabilities:{getMaxAnisotropy:()=>8},setPixelRatio()
   hoverDisc.visible=pivotGlowMesh.visible=false; scene.add(hoverDisc,pivotGlowMesh);
   scene.updateMatrixWorld(true);`;
 
-test('ray tracing is off by default, persists when turned on, and fetches its bundle once',async t=>{
-  const g=await game();t.after(g.close);
+test('ray tracing is not offered in play, and a saved Ultra plays at High',async t=>{
+  const g=await game('?steam=1&premium=1',{tauDesktopSettingsV1:JSON.stringify({quality:'ultra',qualityPicked:true,rayTrace:true})});t.after(g.close);
+  g.$('desktopSettings').click();g.tick();
+  assert.ok(![...g.$('desktopQuality').options].some(o=>o.value==='ultra'),'Graphics does not offer Ultra');
+  assert.equal(g.read('tauDesktop.quality'),'high','a save that had Ultra plays at High');
+  assert.equal(g.read('tauDesktop.rayTrace'),false,'and nothing traces');
+  g.read('tauDesktop.rayTrace=true');
+  assert.equal(g.read('tauDesktop.rayTrace'),false,'nor can it be switched on from outside');
+  assert.equal(g.w.document.querySelectorAll('script[src="vendor/pathtracer/pathtracer.global.js"]').length,0,'and the bundle is never fetched');
+  assert.deepEqual(g.errors,[]);
+});
+
+test('in the store-art renderer, ray tracing is off by default, persists when turned on, and fetches its bundle once',async t=>{
+  const g=await game('?steam=1&premium=1',{},{shot:true});t.after(g.close);
   const tags=()=>g.w.document.querySelectorAll('script[src="vendor/pathtracer/pathtracer.global.js"]').length;
   g.$('desktopSettings').click();g.tick();
   // It lives in the Graphics picker, where someone looking for a graphics setting will find it --
@@ -2376,7 +2388,7 @@ test('the rest detector tells a held frame from a moving one',async t=>{
 });
 
 test('a path tracer that cannot start on this GPU hands the frame back to the rasteriser',async t=>{
-  const g=await game();t.after(g.close);
+  const g=await game('?steam=1&premium=1',{},{shot:true});t.after(g.close);
   g.read(ptStage);
   g.read(`window.TAU_PT={WebGLPathTracer:function(){throw new Error('no float blending');}};
     tauDesktop.rayTrace=true;`);
@@ -2399,7 +2411,7 @@ test('a path tracer that cannot start on this GPU hands the frame back to the ra
 });
 
 test('at rest the traced scene is built from the board and the pieces, and motion drops it',async t=>{
-  const g=await game();t.after(g.close);
+  const g=await game('?steam=1&premium=1',{},{shot:true});t.after(g.close);
   g.read(ptStage);
   g.read(`window.__pt=null;
     window.TAU_PT={WebGLPathTracer:class{

@@ -364,6 +364,13 @@
   // It also quarters the board bake, which is a per-pixel loop in JavaScript on the main thread --
   // not a frame cost at all, but the reason a board takes a moment to appear when you pick it.
   const QUALITIES = ['low','balanced','high','ultra'];
+  // RAY TRACING IS NOT OFFERED IN PLAY. A path tracer only looks right once it has dozens of samples
+  // a pixel, which it gets by the picture holding still -- so in play it could only ever arrive
+  // seconds after the camera stopped and vanish the moment anything moved, a second look swapping in
+  // and out under the player. Rather than that, it is not in the game: Ultra is offered only to the
+  // store-art renderer (scripts/steam-shots sets window.TAU_SHOT before the page loads), where
+  // nothing moves and waiting is the point. A save that had Ultra plays at High.
+  const TRACE_ALLOWED = !!(typeof window !== 'undefined' && window.TAU_SHOT);
   const lowGfx = () => settings.quality === 'low';
   // A touchscreen. Not "a small window" -- a desktop dragged narrow is still a desktop -- but a
   // coarse pointer with no hover, which is the pair of things only a touch device answers to.
@@ -451,7 +458,7 @@
   } catch (_) {}
   // A phone never runs the traced tier, whatever a save says: the bundle it loads is not something
   // a phone GPU finishes, and the picker does not offer it there for a saved value to come back to.
-  if (phoneClass() && settings.quality === 'ultra') settings.quality = 'high';
+  if ((phoneClass() || !TRACE_ALLOWED) && settings.quality === 'ultra') settings.quality = 'high';
   settings.rayTrace = settings.quality === 'ultra';   // one switch, not two that can disagree
   // A player on the default route gets the board that goes with the rung they are being pointed at.
   // One who has skipped keeps whatever board they last chose -- that is the free-play half.
@@ -1055,7 +1062,7 @@
   function qualityTiers() {
     const all = [['low', t('Low')], ['balanced', t('Balanced')], ['high', t('High')],
                  ['ultra', t('Ultra · ray tracing')]];
-    return phoneClass() ? all.slice(0, 3) : all;
+    return phoneClass() || !TRACE_ALLOWED ? all.slice(0, 3) : all;
   }
   function qualityOptions() {
     return qualityTiers().map(([v, label]) => `<option value="${v}">${esc(label)}</option>`).join('');
@@ -3402,7 +3409,7 @@
     get quality(){return settings.quality;},   // read-only: the picker is the way to change it
     get qualityPicked(){return settings.qualityPicked;},   // false while the device guess is still in charge
     get rayTrace(){return settings.rayTrace;},
-    set rayTrace(v){ settings.rayTrace=!!v; settings.quality = settings.rayTrace ? 'ultra' : (settings.quality==='ultra'?'high':settings.quality);
+    set rayTrace(v){ settings.rayTrace=!!v && TRACE_ALLOWED; settings.quality = settings.rayTrace ? 'ultra' : (settings.quality==='ultra'?'high':settings.quality);
       saveSettings(); if($('desktopQuality')) $('desktopQuality').value=settings.quality;
       if(settings.rayTrace) rayTraceLoad(); drawQualityNote(); },
     rayTraceStatus(){return ptPhase;},
