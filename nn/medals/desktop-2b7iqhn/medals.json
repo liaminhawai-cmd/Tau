@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-19T18:54:23.118Z",
+  "updated": "2026-10-19T19:48:27.486Z",
   "machine": "desktop-2b7iqhn",
   "basis": "global 90% Elo lower bound across D1-D4",
   "medals": {
@@ -8,27 +8,27 @@
       "sourceId": "ckpt-775@D3",
       "depth": 3,
       "games": 22,
-      "elo": 306.5,
-      "eloLo": 197,
-      "eloHi": 416
+      "elo": 304.2,
+      "eloLo": 180.4,
+      "eloHi": 428.1
     },
     "silver": {
       "source": "resume-703",
       "sourceId": "resume-703@D1",
       "depth": 1,
       "games": 64,
-      "elo": 181.8,
-      "eloLo": 109.1,
-      "eloHi": 254.6
+      "elo": 172.5,
+      "eloLo": 109.4,
+      "eloHi": 235.6
     },
     "bronze": {
-      "source": "resume-687",
-      "sourceId": "resume-687@D1",
-      "depth": 1,
-      "games": 174,
-      "elo": 141.1,
-      "eloLo": 95.4,
-      "eloHi": 186.8
+      "source": "recent-131",
+      "sourceId": "recent-131@D3",
+      "depth": 3,
+      "games": 14,
+      "elo": 248.8,
+      "eloLo": 97.9,
+      "eloHi": 399.8
     }
   }
 }
