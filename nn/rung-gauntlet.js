@@ -16,6 +16,10 @@
 // nn/ladder-candidates/<name>-D<d>.{bin,meta.json}, and appending the rung is a reviewed PR against
 // the game. Nets that fall short just carry on in the league, rated by Elo as before.
 //
+// TOP DOWN (the user's, 20 Oct): faces are played from the top rung down, and the run stops at the
+// first face the net does not beat as Red (after its Blue game, for the split-or-full-loss record).
+// A pass needs every face anyway, so the rungs below a loss cost an hour per net and decide nothing.
+//
 // FACES: the rungs are the SHIPPED game's, read from a checkout of main (--live, default a git
 // worktree at ../../Tau-live next to this checkout, created and refreshed automatically): its
 // index.html for the brains and RUNG_TO_AI_LADDER for which menu rung is which, its committee/ for
@@ -126,13 +130,15 @@ function runNet(live, netPath, depth, opts = {}) {
   const t0 = Date.now();
   const rec = [];
   let g = 0;
-  for (const face of faces) {
+  let stoppedAt = null;
+  for (const face of [...faces].reverse()) {
     const red = playGame(eng, face, netFn, false, rows, `${tag}-${g++}`, netId);
     const r = { face: face.id, rung: face.rung, red: red.result };
     if (red.result !== 'win') r.blue = playGame(eng, face, netFn, true, rows, `${tag}-${g++}`, netId).result;
     rec.push(r);
+    if (red.result !== 'win') { stoppedAt = face.id; break; }
   }
-  let pass = rec.every(r => r.red === 'win');
+  let pass = !stoppedAt && rec.every(r => r.red === 'win');
   if (pass) {                     // a candidate: confirm every face as Blue too before calling it
     for (const r of rec) {
       const face = faces.find(f => f.id === r.face);
@@ -142,7 +148,7 @@ function runNet(live, netPath, depth, opts = {}) {
   }
   const secs = Math.round((Date.now() - t0) / 1000);
   const lost = rec.filter(r => r.red !== 'win');
-  const out = { at: new Date().toISOString(), model: name, depth, hash, ladder: live.map, games: g, secs, pass, faces: rec };
+  const out = { at: new Date().toISOString(), model: name, depth, hash, ladder: live.map, games: g, secs, pass, order: 'top-down', ...(stoppedAt ? { stoppedAt } : {}), faces: rec };
   fs.appendFileSync(path.join(dir, 'rung-gauntlet.jsonl'), JSON.stringify(out) + '\n');
   if (rows.length) {
     const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -150,8 +156,8 @@ function runNet(live, netPath, depth, opts = {}) {
   }
   done[key] = { name: netId, at: out.at, pass };
   fs.writeFileSync(donePath, JSON.stringify(done, null, 1));
-  log(`${netId}: ${rec.length - lost.length}/${rec.length} faces beaten as Red in ${g} games, ${secs}s` +
-      (lost.length ? ` -- lost as Red to ${lost.map(r => `${r.face}${r.blue === 'win' ? ' (won as Blue)' : r.blue === 'loss' ? ' (lost as Blue too)' : ' (drew as Blue)'}`).join(', ')}` : '') +
+  log(`${netId}: ${rec.length - lost.length}/${faces.length} faces beaten as Red from the top in ${g} games, ${secs}s` +
+      (lost.length ? ` -- stopped: lost as Red to ${lost.map(r => `${r.face}${r.blue === 'win' ? ' (won as Blue)' : r.blue === 'loss' ? ' (lost as Blue too)' : ' (drew as Blue)'}`).join(', ')}` : '') +
       (pass ? ' -- CLEAN SWEEP: candidate for a new top rung' : ''));
   if (pass) {
     const base = path.join(dir, 'ladder-candidates', `${name}-D${depth}`);
