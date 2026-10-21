@@ -73,6 +73,24 @@ async function main(){
               `seat share ${(100*ladder.seatShare).toFixed(1)}%; game mix ${ladder.mixString}`);
   if(profile.coverage.length)console.log(`[rating] ${profile.coverage.length} Elo-zero face(s) left to the official temp-0 arena scheduler; self-play will not fake coverage`);
 
+  // The shipped ladder's net rungs (R11-R13) are the opponents every candidate loses to as Red, yet
+  // they are not roster faces, so a net met them only in its two gauntlet games. Pin them into the
+  // model pool at a guaranteed per-seat share (PINNED_RUNG_SHARE, default 10%) and fixed depth, so
+  // training games are played against exactly the opponents the gauntlet asks for.
+  const pinnedShare=Math.max(0,Math.min(.4,+(process.env.PINNED_RUNG_SHARE||.1)));
+  const pinnedNames=(process.env.PINNED_RUNG_NETS||'resume-691,resume-686,resume-698').split(',').map(s=>s.trim()).filter(Boolean);
+  const addPinnedRungs=a=>{
+    if(!pinnedShare||!slice.length)return;
+    const have=new Set([slice[0],...slice.slice(1)].map(p=>path.basename(p,'.json')));
+    const pins=pinnedNames.map(n=>path.join(dir,'models',n+'.json')).filter(f=>fs.existsSync(f)&&!have.has(path.basename(f,'.json')));
+    if(!pins.length)return;
+    const mass=Object.values(profile.weights||{}).map(Number).filter(x=>Number.isFinite(x)&&x>0).reduce((x,y)=>x+y,0)||1;
+    const each=mass*pinnedShare/(1-pinnedShare)/pins.length, w={...profile.weights}, dp={};
+    for(const f of pins){const n=path.basename(f,'.json');w[n]=each;dp[n]=2;}
+    setPool(a,[...slice.slice(1),...pins]);
+    setArg(a,'modelPoolWeights',JSON.stringify(w)); setArg(a,'modelPoolDepths',JSON.stringify(dp));
+    console.log(`[evolution] pinned rung nets in training pool: ${pins.map(f=>path.basename(f,'.json')+'@D2').join(', ')} (~${(100*pinnedShare).toFixed(0)}% of seats)`);
+  };
   const baseArgs=()=>{
     const a=original.slice();
     if(slice.length){setArg(a,'model',slice[0]);setPool(a,slice.slice(1));}
@@ -82,6 +100,7 @@ async function main(){
     setArg(a,'mix',ladder.mixString);
     setArg(a,'modelPoolWeights',JSON.stringify(profile.weights)); setArg(a,'modelVarietyFrac','1');
     setArg(a,'coverageQueue','[]');
+    addPinnedRungs(a);
     return a;
   };
 
