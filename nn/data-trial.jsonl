@@ -147,3 +147,4 @@
 {"model": "deep-m20-801", "arm": "newest25", "frac": 0.25, "positions": 1909982, "games": 102959, "bestValMse": 0.309415, "sizes": [94, 128, 64, 36, 1], "resume": null, "at": "2026-10-22T05:17:42"}
 {"model": "resume-726", "arm": "newest12", "frac": 0.125, "positions": 952274, "games": 50157, "bestValMse": 0.288793, "sizes": [94, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 1], "resume": "best.json", "at": "2026-10-22T07:00:26"}
 {"model": "deep-m22-802", "arm": "newest50", "frac": 0.5, "positions": 3856504, "games": 195945, "bestValMse": 0.304506, "sizes": [94, 128, 52, 28, 1], "resume": null, "at": "2026-10-22T07:08:21"}
+{"model": "resume-727", "arm": "newest25", "frac": 0.25, "positions": 1914564, "games": 103174, "bestValMse": 0.262438, "sizes": [94, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 1], "resume": "best.json", "at": "2026-10-22T08:47:16"}
