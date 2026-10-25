@@ -761,8 +761,8 @@ function main() {
     // to one index), which is weight pulling a rating toward itself rather than evidence. The
     // informative nnnn games are the mismatched ones -- different depth, or different architecture
     // out of the variety pool -- and those still record normally.
-    // MIXED nn-vs-ladder games are excluded, and this is the subtle one. Self-play runs its nets at
-    // --temperature (0.08 by default) so the corpus sees varied play; elorank rates the same nets as
+    // MIXED nn-vs-ladder games are excluded, and this is the subtle one. Self-play once ran its nets at
+    // --temperature 0.08 (the default is now 0; the flag survives for studies); elorank rates the same nets as
     // `nn:0:` -- temperature ZERO -- and ladder brains are deterministic in both. So a self-play
     // "nn vs L6" pits a deliberately-noised net against an un-noised opponent and files the result
     // under the SAME pool id elorank uses for that net's best play. Because a batch contributes far

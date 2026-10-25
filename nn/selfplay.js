@@ -44,8 +44,8 @@ function delArg(a,n){const k='--'+n;for(let i=a.indexOf(k);i>=0;i=a.indexOf(k)){
 function run(args){return new Promise((ok,bad)=>{const ch=spawn(process.execPath,[path.join(dir,'selfplay-legacy.js'),...args],{stdio:'inherit'});['SIGINT','SIGTERM'].forEach(s=>process.once(s,()=>{try{ch.kill(s);}catch(_){}}));ch.on('error',bad);ch.on('exit',c=>c===0?ok():bad(new Error('legacy selfplay exited '+c)));});}
 async function main(){
   const original=process.argv.slice(2), hadEloInbox=getArg(original,'eloInbox',null)!==null;
-  // Self-play uses exploration temperature for TRAINING diversity. That is a different brain from
-  // the temp-0 face the official ladder claims to rate, so none of these games may enter Elo.
+  // Self-play runs at temperature 0 (selfplay-legacy's default; nothing here overrides it), but its
+  // games still mix rotating pools, depths and openings, so none of them may enter Elo.
   // Official rating evidence and first coverage now come only from temp-0 arena/calibration games.
   if(hadEloInbox){delArg(original,'eloInbox');console.log('[rating] self-play Elo feed disabled: noisy training games are training-only; official Elo is temp-0 arena play');}
   const games=Math.max(1,+getArg(original,'games',100));
