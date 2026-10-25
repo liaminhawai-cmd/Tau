@@ -1,8 +1,8 @@
 # Tau NN training status
-_Last updated: 2026-10-25T05:32:07.310Z_
+_Last updated: 2026-10-25T05:36:32.176Z_
 
 **Self-play batch:** 1262
-**Stage:** mutant 181 training (mutate, 30 epochs, started 2026-10-25T05:32:07.310Z)
+**Stage:** rating pool placement (started 2026-10-25T05:36:32.176Z)
 **mix:** (see selfplay log: fixed-rung training reference)
 
 **Dual pool:** 4 active (minimum 4) (dual-pop-063-e60, dual-pop-140-e40, dual-pop-144-e60, dual-pop-149-e40)
