@@ -1,14 +1,14 @@
 # Tau NN training status
-_Last updated: 2026-10-26T12:51:23.349Z_
+_Last updated: 2026-10-26T12:51:59.401Z_
 
 **Self-play batch:** 1302
-**Stage:** self-play batch 1302 running, next check in 5 min
+**Stage:** mutant 187 training (mutate, 30 epochs, started 2026-10-26T12:51:59.401Z)
 **mix:** (see selfplay log: fixed-rung training reference)
 
 **Dual pool:** 4 active (minimum 4) (dual-pop-140-e40, dual-pop-149-e40, dual-pop-150-e60, dual-pop-152-e40); pending dual-pop-152-e40.json -> dual-pop-153-e60.json
 
 **Last gate result:** pool cycle 829 — no candidate provably beats ckpt-814@D3 (closest resume-753@D3: 41-15-0, -15 [-99, +63] Elo); keeping best.json
 
-**Last checkpoint:** ckpt-814.json at 2026-10-26T04:37:00.070Z
+**Last checkpoint:** ckpt-814.json at 2026-10-26T12:51:58.262Z
 
 **Last ladder sweep:** (none yet)
