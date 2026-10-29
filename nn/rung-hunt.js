@@ -182,7 +182,16 @@ async function main() {
     const base = playLine(eng, face, netBrain(eng, baseSpec), []);
     base.name = baseSpec.name;
     log(`${baseSpec.name}@D${depth} as Red vs ${face.id}: ${base.result} in ${base.plies} plies`);
-    if (base.result === 'win') { log(`${face.id}: the base net already wins this line as Red -- nothing to hunt`); continue; }
+    // --force hunts a line the net already wins (a cheap way to exercise the machinery on a low rung)
+    if (base.result === 'win' && !has('force')) { log(`${face.id}: the base net already wins this line as Red -- nothing to hunt`); continue; }
+    // Every branch replays this line move for move, so it has to reproduce the same game exactly.
+    const check = playLine(eng, face, null, base.plans, null, true);
+    if (check.plies !== base.plies || check.winner !== base.winner) {
+      log(`${face.id}: replaying the line did NOT reproduce the game (${check.plies} plies, winner ${check.winner} vs ` +
+          `${base.plies}, ${base.winner}) -- branches would start from the wrong positions; not hunting`);
+      process.exitCode = 1;
+      continue;
+    }
     // Red's decision points, last first. A ply where Red had no move has nothing to change.
     const redPlies = [];
     for (let k = base.plans.length - 1; k >= 0; k--) if (base.rows[k] && base.rows[k].m === 1 && base.plans[k]) redPlies.push(k);
@@ -200,13 +209,16 @@ async function main() {
           live, face, hunter: h, keepLosses, branchPlies,
           base: { path: baseSpec.path, depth: baseSpec.depth, plans: base.plans } } });
         w.on('message', m => {
-          if (m.done) return;
+          // a 'stop' only lands between games, so games already in flight still report: drop them
+          // a worker that has walked its plies is still listening for 'stop', which keeps it alive
+          if (m.done) { w.terminate(); return; }
+          if (found.length >= wins) return;
           games++;
           if (m.rows) { fs.writeSync(ws, m.rows.join('\n') + '\n'); if (m.result !== 'win') lossRows += m.rows.length; }
           if (m.result !== 'win') return;
-          const redBefore = branchPlies.length - branchPlies.indexOf(m.k);
+          const redMove = redPlies.length - redPlies.indexOf(m.k);   // redPlies runs last-first
           found.push({ k: m.k, hunter: h.id, plies: m.plies });
-          log(`  WIN: ${h.id} takes over Red at ply ${m.k} (Red decision ${redBefore} of the line) and beats ${face.id} in ${m.plies} plies${m.adjudicated ? ' (adjudicated)' : ''}`);
+          log(`  WIN: ${h.id} takes over Red at ply ${m.k} (Red's move ${redMove} of ${redPlies.length}) and beats ${face.id} in ${m.plies} plies${m.adjudicated ? ' (adjudicated)' : ''}`);
           fs.appendFileSync(path.join(dir, 'rung-hunt.jsonl'), JSON.stringify({ at: new Date().toISOString(), face: face.id,
             base: `${baseSpec.name}@D${depth}`, basePlies: base.plies, branchPly: m.k, hunter: h.id, plies: m.plies,
             adjudicated: m.adjudicated, plans: m.plans }) + '\n');
