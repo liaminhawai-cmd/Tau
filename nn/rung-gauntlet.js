@@ -213,5 +213,5 @@ function main() {
   } finally { if (has('queue')) try { fs.unlinkSync(lock); } catch (e) {} }
 }
 
-module.exports = { runNet, loadLive };
+module.exports = { runNet, loadLive, ensureLive };
 if (require.main === module) main();
