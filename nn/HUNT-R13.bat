@@ -30,6 +30,15 @@ set /p FACE="Rung to hunt, Enter for the top one: "
 set "FACEARG="
 if not "!FACE!"=="" set "FACEARG=--face !FACE!"
 
-node nn\rung-hunt.js --net "!NET!" --depth !DEPTH! !FACEARG! --wins 4
+rem Each hunter is one worker thread holding a full net plus the rung's committee (a few hundred MB
+rem each). Half the cores leaves the other half to a trainer running alongside; with the trainer
+rem stopped, give it the whole machine.
+set /a HALF=%NUMBER_OF_PROCESSORS%/2
+if !HALF! LSS 2 set /a HALF=2
+set "WORKERS="
+set /p WORKERS="Hunter threads, Enter for !HALF! (half the cores, leaves room for the trainer): "
+if "!WORKERS!"=="" set "WORKERS=!HALF!"
+
+node nn\rung-hunt.js --net "!NET!" --depth !DEPTH! !FACEARG! --wins 4 --workers !WORKERS!
 echo.
 pause
