@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-30T23:32:25.654Z",
+  "updated": "2026-10-31T00:43:06.940Z",
   "machine": "desktop-2b7iqhn",
   "basis": "global 90% Elo lower bound across D1-D4",
   "medals": {
@@ -8,27 +8,27 @@
       "sourceId": "resume-779@D2",
       "depth": 2,
       "games": 66,
-      "elo": 99.9,
-      "eloLo": 58.2,
-      "eloHi": 141.7
+      "elo": 97.3,
+      "eloLo": 57.9,
+      "eloHi": 136.7
     },
     "silver": {
       "source": "mutant-198",
       "sourceId": "mutant-198@D2",
       "depth": 2,
-      "games": 38,
-      "elo": 102.3,
-      "eloLo": 47.2,
-      "eloHi": 157.4
+      "games": 40,
+      "elo": 129,
+      "eloLo": 56.6,
+      "eloHi": 201.3
     },
     "bronze": {
       "source": "resume-784",
       "sourceId": "resume-784@D1",
       "depth": 1,
       "games": 96,
-      "elo": 79.6,
-      "eloLo": 39.9,
-      "eloHi": 119.4
+      "elo": 81.2,
+      "eloLo": 38.9,
+      "eloHi": 123.5
     }
   }
 }
