@@ -107,21 +107,26 @@ if (!isMainThread) {
   let stop = false;
   parentPort.on('message', m => { if (m === 'stop') stop = true; });
   (async () => {
+    // a swing hunter draws --swings different random swings at every branch ply: one swing per ply
+    // is a single lottery ticket, and the first R13 hunt (121 games, 2 of 11 hunters swinging) lost all
     for (const k of branchPlies) {
-      if (stop) break;
-      let first = null;
-      if (hunter.perturb) {
-        // the random swing has to be drawn from the branch position itself
-        playLine(eng, face, null, base.plans.slice(0, k), null, true);
-        first = randomOpeningPlan(eng);
-        if (!first) continue;
+      for (let s = 0; s < (hunter.perturb ? hunter.swings : 1); s++) {
+        if (stop) break;
+        let first = null;
+        if (hunter.perturb) {
+          // the random swing has to be drawn from the branch position itself
+          playLine(eng, face, null, base.plans.slice(0, k), null, true);
+          first = randomOpeningPlan(eng);
+          if (!first) continue;
+        }
+        const game = playLine(eng, face, red, base.plans.slice(0, k), first);
+        const keep = game.result === 'win' || (keepLosses && game.winner !== null);
+        parentPort.postMessage({ k, result: game.result, plies: game.plies, adjudicated: game.adjudicated,
+          plans: game.result === 'win' ? game.plans : undefined,
+          rows: keep ? toRows(game, `hunt-${face.id}-${hunter.id}-${k}-${s}`, hunter.id, face.id, eng.CFG.komiLoss) : undefined });
+        await new Promise(r => setImmediate(r));   // let a 'stop' in
       }
-      const game = playLine(eng, face, red, base.plans.slice(0, k), first);
-      const keep = game.result === 'win' || (keepLosses && game.winner !== null);
-      parentPort.postMessage({ k, result: game.result, plies: game.plies, adjudicated: game.adjudicated,
-        plans: game.result === 'win' ? game.plans : undefined,
-        rows: keep ? toRows(game, `hunt-${face.id}-${hunter.id}-${k}`, hunter.id, face.id, eng.CFG.komiLoss) : undefined });
-      await new Promise(r => setImmediate(r));   // let a 'stop' in
+      if (stop) break;
     }
     parentPort.postMessage({ done: true });
   })();
@@ -129,7 +134,7 @@ if (!isMainThread) {
 }
 
 // ---- main --------------------------------------------------------------------------------------
-function hunters(baseSpec, maxDepth, topNets, perturb) {
+function hunters(baseSpec, maxDepth, topNets, perturb, workers) {
   const out = [];
   const seen = new Set();
   const add = h => { const key = `${path.resolve(h.path)}|${h.depth}`; if (seen.has(key) || !fs.existsSync(h.path)) return; seen.add(key); out.push(h); };
@@ -152,8 +157,14 @@ function hunters(baseSpec, maxDepth, topNets, perturb) {
       if (out.length > before) n++;
     }
   } catch (e) { log(`no Elo summary (${e.message}) -- hunting with the base net's own family only`); }
-  for (let i = 0; i < perturb; i++) out.push({ id: `${baseSpec.name}@D${baseSpec.depth}+swing${i + 1}`, path: baseSpec.path, depth: baseSpec.depth, perturb: true });
-  return out;
+  const swings = Math.max(1, +arg('swings', 4));
+  const swingers = [];
+  for (let i = 0; i < perturb; i++) swingers.push({ id: `${baseSpec.name}@D${baseSpec.depth}+swing${i + 1}`, path: baseSpec.path, depth: baseSpec.depth, perturb: true, swings });
+  // --workers caps the pool; the swing hunters are kept and the lowest-rated nets give way, since
+  // the swings are the one move a deterministic net never tries (the second R13 hunt, at 6 workers,
+  // had silently dropped them both)
+  const cap = Math.max(1, workers);
+  return [...out.slice(0, Math.max(0, cap - swingers.length)), ...swingers].slice(0, cap);
 }
 
 async function main() {
@@ -172,7 +183,7 @@ async function main() {
   const baseSpec = { name: path.basename(netPath).replace(/\.json$/i, ''), path: netPath, depth };
   const wins = +arg('wins', 4);
   const cores = Math.max(1, os.cpus().length - 1);
-  const pool = hunters(baseSpec, +arg('maxDepth', 3), +arg('topNets', Math.max(2, cores - 3)), +arg('perturb', 2)).slice(0, +arg('workers', cores));
+  const pool = hunters(baseSpec, +arg('maxDepth', 3), +arg('topNets', Math.max(2, cores - 3)), +arg('perturb', 3), +arg('workers', cores));
   const keepLosses = has('keepLosses');
   const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   const dataOut = path.join(dir, 'data', `hunt-${os.hostname().toLowerCase()}-${day}.jsonl`);
@@ -232,7 +243,7 @@ async function main() {
     fs.closeSync(ws);
     const secs = Math.round((Date.now() - t0) / 1000);
     log(`${face.id}: ${found.length} winning Red line(s) in ${games} games, ${secs}s` +
-        (found.length ? ` -- earliest deviation at ply ${Math.min(...found.map(f => f.k))}; rows -> ${path.relative(dir, dataOut)}` : ' -- none found; try --perturb 6, --topNets 10 or --depth 3'));
+        (found.length ? ` -- earliest deviation at ply ${Math.min(...found.map(f => f.k))}; rows -> ${path.relative(dir, dataOut)}` : ' -- none found; try --perturb 6 --swings 10, or --depth 3'));
     if (lossRows) log(`  (+${lossRows} rows from hunters' lost games, --keepLosses)`);
   }
 }

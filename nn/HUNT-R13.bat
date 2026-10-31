@@ -39,6 +39,12 @@ set "WORKERS="
 set /p WORKERS="Hunter threads, Enter for !HALF! (half the cores, leaves room for the trainer): "
 if "!WORKERS!"=="" set "WORKERS=!HALF!"
 
-node nn\rung-hunt.js --net "!NET!" --depth !DEPTH! !FACEARG! --wins 4 --workers !WORKERS!
-echo.
-pause
+rem One parenthesised block, read whole before it runs: the trainer's periodic git pull can rewrite
+rem this file while the hunt is running, and cmd otherwise resumes reading the NEW file at the old
+rem byte offset afterwards ("'committee' is not recognized", then a second hunt started by itself).
+(
+  node nn\rung-hunt.js --net "!NET!" --depth !DEPTH! !FACEARG! --wins 4 --workers !WORKERS!
+  echo.
+  pause
+  exit /b
+)
