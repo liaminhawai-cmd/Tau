@@ -327,3 +327,4 @@
 {"model": "ultra-m26-876", "arm": "newest50", "frac": 0.5, "positions": 4418895, "games": 228640, "bestValMse": 0.282086, "sizes": [94, 128, 92, 64, 1], "resume": null, "at": "2026-11-02T04:03:23"}
 {"model": "resume-801", "arm": "newest12", "frac": 0.125, "positions": 1098038, "games": 58289, "bestValMse": 0.218058, "sizes": [94, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 1], "resume": "best.json", "at": "2026-11-02T05:42:17"}
 {"model": "ultra-m27-877", "arm": "newest12", "frac": 0.125, "positions": 1098115, "games": 58300, "bestValMse": 0.245351, "sizes": [94, 120, 128, 72, 64, 1], "resume": "ultra-m27-829.json", "at": "2026-11-02T05:47:44"}
+{"model": "resume-802", "arm": "newest25", "frac": 0.25, "positions": 2203591, "games": 116635, "bestValMse": 0.265085, "sizes": [94, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 1], "resume": "best.json", "at": "2026-11-02T11:04:22"}
